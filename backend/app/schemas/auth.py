@@ -1,0 +1,15 @@
+"""Schemas de autenticação."""
+from pydantic import BaseModel
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: int
+    display_name: str
+    role: str
