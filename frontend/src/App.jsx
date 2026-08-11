@@ -9,6 +9,7 @@ import Dashboard from "./pages/admin/Dashboard";
 import TicketList from "./pages/admin/TicketList";
 import NewTicket from "./pages/admin/NewTicket";
 import Assets from "./pages/admin/Assets";
+import ZabbixPanel from "./pages/admin/ZabbixPanel";
 
 // Auth
 import Login from "./pages/shared/Login";
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="tickets" element={<TicketList />} />
             <Route path="tickets/new" element={<NewTicket />} />
             <Route path="assets" element={<Assets />} />
+            <Route path="zabbix" element={<ZabbixPanel />} />
           </Route>
           
           <Route path="*" element={<Navigate to="/admin" replace />} />
