@@ -18,6 +18,7 @@ class Category(Base):
     is_active = Column(Boolean, default=True, nullable=False)
 
     subcategories = relationship("Subcategory", back_populates="category", order_by="Subcategory.name")
+    problem_types = relationship("ProblemType", back_populates="category", order_by="ProblemType.name")
 
     def __repr__(self):
         return f"<Category {self.id}: {self.name}>"
@@ -34,6 +35,7 @@ class Subcategory(Base):
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False, index=True)
 
     category = relationship("Category", back_populates="subcategories")
+    problem_types = relationship("ProblemType", back_populates="subcategory", order_by="ProblemType.name")
 
     def __repr__(self):
         return f"<Subcategory {self.id}: {self.name}>"

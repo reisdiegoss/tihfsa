@@ -8,7 +8,8 @@ from app.database import get_db
 from app.auth.dependencies import get_current_user, require_admin
 from app.models.user import User
 from app.models.category import Category, Subcategory
-from app.schemas.ticket import CategoryResponse, SubcategoryResponse, CategoryWithSubs
+from app.models.problem_type import ProblemType
+from app.schemas.ticket import CategoryResponse, SubcategoryResponse, CategoryWithSubs, ProblemTypeResponse
 
 router = APIRouter(prefix="/api/v1/categories", tags=["Categorias"])
 
@@ -18,19 +19,25 @@ def list_categories(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Lista todas as categorias com suas subcategorias."""
+    """Lista todas as categorias com suas subcategorias e problem_types."""
     categories = db.query(Category).filter(Category.is_active == True).order_by(Category.name).all()  # noqa: E712
     result = []
     for cat in categories:
-        subs = [
-            SubcategoryResponse.model_validate(s)
-            for s in cat.subcategories if s.is_active
-        ]
+        subs = []
+        for s in cat.subcategories:
+            if s.is_active:
+                pts = [ProblemTypeResponse.model_validate(pt) for pt in s.problem_types if pt.is_active]
+                sub_resp = SubcategoryResponse.model_validate(s)
+                sub_resp.problem_types = pts
+                subs.append(sub_resp)
+                
+        cat_pts = [ProblemTypeResponse.model_validate(pt) for pt in cat.problem_types if pt.is_active]
         result.append(CategoryWithSubs(
             id=cat.id,
             name=cat.name,
             description=cat.description,
             subcategories=subs,
+            problem_types=cat_pts,
         ))
     return result
 
@@ -68,3 +75,41 @@ def create_subcategory(
     db.commit()
     db.refresh(sub)
     return sub
+
+
+@router.post("/{category_id}/subcategories/{subcategory_id}/problems", response_model=ProblemTypeResponse, status_code=status.HTTP_201_CREATED)
+def create_problem_type_sub(
+    subcategory_id: int,
+    name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Cria um problema predefinido dentro de uma subcategoria."""
+    sub = db.query(Subcategory).filter(Subcategory.id == subcategory_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subcategoria não encontrada")
+
+    pt = ProblemType(name=name, subcategory_id=subcategory_id)
+    db.add(pt)
+    db.commit()
+    db.refresh(pt)
+    return pt
+
+
+@router.post("/{category_id}/problems", response_model=ProblemTypeResponse, status_code=status.HTTP_201_CREATED)
+def create_problem_type_cat(
+    category_id: int,
+    name: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Cria um problema predefinido dentro de uma categoria (novo fluxo)."""
+    cat = db.query(Category).filter(Category.id == category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+
+    pt = ProblemType(name=name, category_id=category_id)
+    db.add(pt)
+    db.commit()
+    db.refresh(pt)
+    return pt

@@ -1,7 +1,7 @@
 """
 Model Department — setores do hotel importados do AD.
 """
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -12,6 +12,8 @@ class Department(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, nullable=False, index=True)
+    ad_ou_dn = Column(String(300), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
 
     # FK — Gestor do departamento
     manager_id = Column(Integer, ForeignKey("users.id"), nullable=True)

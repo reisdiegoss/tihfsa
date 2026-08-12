@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { Search, Filter, Plus, FileText, ChevronRight, RefreshCw } from "lucide-react";
+import { Search, Plus, FileText, ChevronRight, RefreshCw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import api from "../../api/client";
 import TicketDetailDrawer from "../../components/admin/TicketDetailDrawer";
 
 export default function TicketList() {
+  const navigate = useNavigate();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -34,24 +36,33 @@ export default function TicketList() {
     return matchesSearch && matchesStatus;
   });
 
-  const statuses = ["Todos", "Novo", "Em Andamento", "Aguardando Validacao", "Fechado"];
+  const statuses = ["Todos", "Novo", "Em Andamento", "Aguardando Validação", "Fechado"];
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
       
       {/* Top Header & Actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Fila de Chamados de TI</h1>
           <p className="text-sm font-semibold text-slate-500 mt-1">Gerencie, atribua e resolva solicitações do hotel</p>
         </div>
-        <button
-          onClick={fetchTickets}
-          className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold shadow-xs hover:bg-slate-50 transition-colors cursor-pointer"
-        >
-          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          Atualizar Fila
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchTickets}
+            className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold shadow-xs hover:bg-slate-50 transition-colors cursor-pointer"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            Atualizar
+          </button>
+          <button
+            onClick={() => navigate("/admin/tickets/new")}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-xs hover:bg-blue-700 transition-colors cursor-pointer"
+          >
+            <Plus size={16} />
+            Novo Chamado
+          </button>
+        </div>
       </div>
 
       {/* Filter Tabs & Search Bar */}
@@ -99,7 +110,7 @@ export default function TicketList() {
               <thead>
                 <tr className="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50">
                   <th className="px-6 py-4">Chamado</th>
-                  <th className="px-6 py-4">Solicitante / Local</th>
+                  <th className="px-6 py-4">Solicitante</th>
                   <th className="px-6 py-4">Categoria</th>
                   <th className="px-6 py-4">Prioridade</th>
                   <th className="px-6 py-4">Status</th>
@@ -125,16 +136,19 @@ export default function TicketList() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="font-bold text-slate-800">{t.requester_name || "Desconhecido"}</p>
-                      <p className="text-xs text-slate-400 font-medium">Apt {t.apartment_number || "N/A"}</p>
+                      <p className="font-bold text-slate-800">{t.requester_name || "—"}</p>
+                      <p className="text-xs text-slate-400 font-medium">
+                        {new Date(t.created_at).toLocaleDateString("pt-BR")}
+                      </p>
                     </td>
                     <td className="px-6 py-4 font-semibold text-slate-600 text-xs">
-                      {t.category || "Geral"}
+                      {t.category_name || "Geral"}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold ${
                         t.priority === "Crítica" ? "bg-red-100 text-red-700" :
                         t.priority === "Alta" ? "bg-amber-100 text-amber-700" :
+                        t.priority === "Média" ? "bg-blue-100 text-blue-700" :
                         "bg-slate-100 text-slate-700"
                       }`}>
                         {t.priority}
@@ -144,7 +158,7 @@ export default function TicketList() {
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                         t.status === "Em Andamento" ? "bg-amber-100 text-amber-700" :
                         t.status === "Fechado" ? "bg-emerald-100 text-emerald-700" :
-                        t.status === "Aguardando Validacao" ? "bg-purple-100 text-purple-700" :
+                        t.status === "Aguardando Validação" ? "bg-purple-100 text-purple-700" :
                         "bg-blue-100 text-blue-700"
                       }`}>
                         {t.status}

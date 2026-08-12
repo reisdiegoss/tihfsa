@@ -7,17 +7,24 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
+
     try {
-      const user = await login(username, password);
-      if (user.role === "admin") navigate("/admin");
-      else navigate("/app");
+      await login(username, password);
+      // O redirecionamento real é feito pelo App.jsx (RootRedirect), 
+      // mas podemos forçar a navegação de forma limpa aqui para '/'
+      navigate("/");
     } catch (err) {
-      setError("Credenciais inválidas. Tente novamente.");
+      setError(err.message || "Falha na autenticação. Verifique suas credenciais.");
+    } finally {
+      setLoading(false);
     }
   };
 

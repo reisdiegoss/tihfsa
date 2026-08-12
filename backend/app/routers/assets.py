@@ -16,6 +16,8 @@ router = APIRouter(prefix="/api/v1/assets", tags=["Ativos (CMDB)"])
 @router.get("/", response_model=list[AssetResponse])
 def list_assets(
     type: str | None = None,
+    subcategory_id: int | None = None,
+    category_id: int | None = None,
     is_active: bool = True,
     search: str | None = None,
     db: Session = Depends(get_db),
@@ -25,6 +27,10 @@ def list_assets(
     query = db.query(Asset).filter(Asset.is_active == is_active)
     if type:
         query = query.filter(Asset.type == type)
+    if subcategory_id:
+        query = query.filter(Asset.subcategory_id == subcategory_id)
+    if category_id:
+        query = query.filter(Asset.category_id == category_id)
     if search:
         query = query.filter(Asset.name.ilike(f"%{search}%"))
     return query.order_by(Asset.name).all()

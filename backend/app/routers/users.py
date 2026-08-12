@@ -35,6 +35,7 @@ def list_users(
 @router.get("/simple", response_model=list[UserSimple])
 def list_users_simple(
     is_room: bool | None = None,
+    department_id: int | None = None,
     search: str | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -43,6 +44,8 @@ def list_users_simple(
     query = db.query(User).filter(User.is_active == True)  # noqa: E712
     if is_room is not None:
         query = query.filter(User.is_room == is_room)
+    if department_id:
+        query = query.filter(User.department_id == department_id)
     if search:
         query = query.filter(User.display_name.ilike(f"%{search}%"))
     return query.order_by(User.display_name).all()

@@ -49,6 +49,7 @@ def create_ticket(
         asset_id=data.asset_id,
         category_id=data.category_id,
         subcategory_id=data.subcategory_id,
+        problem_type_id=data.problem_type_id,
         status=TicketStatus.NEW,
     )
 
@@ -73,8 +74,14 @@ def list_tickets(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Lista chamados com filtros."""
-    query = db.query(Ticket)
+    """Lista chamados com filtros e nomes expandidos."""
+    from sqlalchemy.orm import joinedload
+
+    query = db.query(Ticket).options(
+        joinedload(Ticket.requester),
+        joinedload(Ticket.technician),
+        joinedload(Ticket.category),
+    )
     if status_filter:
         query = query.filter(Ticket.status == status_filter)
     if technician_id:
@@ -83,7 +90,31 @@ def list_tickets(
         query = query.filter(Ticket.requester_id == requester_id)
     if category_id:
         query = query.filter(Ticket.category_id == category_id)
-    return query.order_by(Ticket.created_at.desc()).offset(offset).limit(limit).all()
+
+    tickets = query.order_by(Ticket.created_at.desc()).offset(offset).limit(limit).all()
+
+    return [
+        TicketResponse(
+            id=t.id,
+            title=t.title,
+            description=t.description,
+            status=t.status.value,
+            priority=t.priority.value,
+            requester_id=t.requester_id,
+            technician_id=t.technician_id,
+            asset_id=t.asset_id,
+            category_id=t.category_id,
+            subcategory_id=t.subcategory_id,
+            created_at=t.created_at,
+            updated_at=t.updated_at,
+            solved_at=t.solved_at,
+            closed_at=t.closed_at,
+            requester_name=t.requester.display_name if t.requester else None,
+            technician_name=t.technician.display_name if t.technician else None,
+            category_name=t.category.name if t.category else None,
+        )
+        for t in tickets
+    ]
 
 
 @router.get("/stats")
@@ -105,7 +136,8 @@ def get_ticket(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Detalhe do chamado com interações e nomes expandidos."""
+    """Detalhe do chamado com interações, anexos e nomes expandidos."""
+    from app.models.ticket_attachment import TicketAttachment
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Chamado não encontrado")
@@ -123,6 +155,15 @@ def get_ticket(
         .order_by(TicketInteraction.created_at)
         .all()
     )
+    
+    attachments = (
+        db.query(TicketAttachment)
+        .filter(TicketAttachment.ticket_id == ticket_id)
+        .order_by(TicketAttachment.created_at)
+        .all()
+    )
+
+    from app.schemas.ticket import TicketAttachmentResponse
 
     return TicketDetail(
         id=ticket.id,
@@ -135,6 +176,7 @@ def get_ticket(
         asset_id=ticket.asset_id,
         category_id=ticket.category_id,
         subcategory_id=ticket.subcategory_id,
+        problem_type_id=ticket.problem_type_id,
         created_at=ticket.created_at,
         updated_at=ticket.updated_at,
         solved_at=ticket.solved_at,
@@ -145,6 +187,7 @@ def get_ticket(
         category_name=category.name if category else None,
         subcategory_name=subcategory.name if subcategory else None,
         interactions=[InteractionResponse.model_validate(i) for i in interactions],
+        attachments=[TicketAttachmentResponse.model_validate(a) for a in attachments],
     )
 
 

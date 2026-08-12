@@ -60,9 +60,17 @@ class Asset(Base):
     # FK — Usuário ou Apartamento dono do ativo
     assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    # FK — Subcategoria (vincula o ativo ao tipo de equipamento no helpdesk)
+    subcategory_id = Column(Integer, ForeignKey("subcategories.id"), nullable=True)
+
+    # FK — Categoria (vincula o ativo à categoria geral)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+
     # Relationships
     assigned_user = relationship("User", back_populates="assets")
     tickets = relationship("Ticket", back_populates="asset")
+    subcategory = relationship("Subcategory")
+    category = relationship("Category")
 
     def __repr__(self):
         return f"<Asset {self.id}: {self.name} ({self.type.value})>"

@@ -74,9 +74,10 @@ class Ticket(Base):
     # FK — Equipamento com problema (opcional)
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)
 
-    # FK — Categoria e Subcategoria
+    # FK — Categoria, Subcategoria e Tipo de Problema
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     subcategory_id = Column(Integer, ForeignKey("subcategories.id"), nullable=True)
+    problem_type_id = Column(Integer, ForeignKey("problem_types.id"), nullable=True)
 
     # Relationships
     requester = relationship("User", foreign_keys=[requester_id], back_populates="tickets_opened")
@@ -84,10 +85,16 @@ class Ticket(Base):
     asset = relationship("Asset", back_populates="tickets")
     category = relationship("Category")
     subcategory = relationship("Subcategory")
+    problem_type = relationship("ProblemType", back_populates="tickets")
     interactions = relationship(
         "TicketInteraction",
         back_populates="ticket",
         order_by="TicketInteraction.created_at",
+    )
+    attachments = relationship(
+        "TicketAttachment",
+        back_populates="ticket",
+        order_by="TicketAttachment.created_at",
     )
 
     def __repr__(self):

@@ -18,6 +18,8 @@ class AssetBase(BaseModel):
 
 class AssetCreate(AssetBase):
     assigned_user_id: int | None = None
+    subcategory_id: int | None = None
+    category_id: int | None = None
 
 
 class AssetUpdate(BaseModel):
@@ -32,6 +34,8 @@ class AssetUpdate(BaseModel):
     description: str | None = None
     specs: dict | None = None
     assigned_user_id: int | None = None
+    subcategory_id: int | None = None
+    category_id: int | None = None
     is_active: bool | None = None
 
 
@@ -41,4 +45,6 @@ class AssetResponse(AssetBase):
     id: int
     is_active: bool
     assigned_user_id: int | None = None
+    subcategory_id: int | None = None
+    category_id: int | None = None
     created_at: datetime

@@ -12,6 +12,7 @@ class TicketCreate(BaseModel):
     asset_id: int | None = None
     category_id: int | None = None
     subcategory_id: int | None = None
+    problem_type_id: int | None = None
 
 
 class TicketUpdate(BaseModel):
@@ -23,6 +24,7 @@ class TicketUpdate(BaseModel):
     asset_id: int | None = None
     category_id: int | None = None
     subcategory_id: int | None = None
+    problem_type_id: int | None = None
 
 
 class TicketSolve(BaseModel):
@@ -52,6 +54,16 @@ class InteractionResponse(BaseModel):
     created_at: datetime
 
 
+class TicketAttachmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    file_name: str
+    file_path: str
+    content_type: str
+    created_at: datetime
+
+
 class TicketResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -65,10 +77,15 @@ class TicketResponse(BaseModel):
     asset_id: int | None = None
     category_id: int | None = None
     subcategory_id: int | None = None
+    problem_type_id: int | None = None
     created_at: datetime
     updated_at: datetime
     solved_at: datetime | None = None
     closed_at: datetime | None = None
+    # Campos expandidos (populados na listagem)
+    requester_name: str | None = None
+    technician_name: str | None = None
+    category_name: str | None = None
 
 
 class TicketDetail(TicketResponse):
@@ -79,6 +96,7 @@ class TicketDetail(TicketResponse):
     category_name: str | None = None
     subcategory_name: str | None = None
     interactions: list[InteractionResponse] = []
+    attachments: list[TicketAttachmentResponse] = []
 
 
 class CategoryResponse(BaseModel):
@@ -89,6 +107,14 @@ class CategoryResponse(BaseModel):
     description: str | None = None
 
 
+class ProblemTypeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    subcategory_id: int | None = None
+    category_id: int | None = None
+
+
 class SubcategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -96,7 +122,9 @@ class SubcategoryResponse(BaseModel):
     name: str
     description: str | None = None
     category_id: int
+    problem_types: list[ProblemTypeResponse] = []
 
 
 class CategoryWithSubs(CategoryResponse):
     subcategories: list[SubcategoryResponse] = []
+    problem_types: list[ProblemTypeResponse] = []

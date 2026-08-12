@@ -1,10 +1,9 @@
 """
 Service AD Sync — sincronização de usuários do Active Directory via LDAP.
 
-Mapeia: sAMAccountName, displayName, mail, department, manager.
-Cria/atualiza registros nas tabelas users e departments.
+Permite listar OUs e importar usuários por OU seletivamente.
 """
-from ldap3 import Server, Connection, ALL, SUBTREE
+from ldap3 import Server, Connection, ALL, SUBTREE, LEVEL
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -12,75 +11,197 @@ from app.models.user import User, UserRole
 from app.models.department import Department
 
 
-def sync_active_directory(db: Session) -> dict:
+def _get_ldap_connection():
+    server = Server(settings.ldap_host, port=settings.ldap_port, get_info=ALL)
+    conn = Connection(
+        server,
+        user=settings.ldap_bind_user,
+        password=settings.ldap_bind_password,
+        auto_bind=True,
+    )
+    return conn
+
+
+def list_ad_ous() -> list[dict]:
     """
-    Sincroniza usuários do AD com o banco local.
+    Conecta ao AD e retorna uma lista de OUs sob a Base DN.
+    """
+    try:
+        conn = _get_ldap_connection()
+    except Exception as e:
+        raise ValueError(f"Falha ao conectar no LDAP: {e}")
+
+    search_filter = "(objectClass=organizationalUnit)"
+    
+    conn.search(
+        search_base=settings.ldap_base_dn,
+        search_filter=search_filter,
+        search_scope=SUBTREE,
+        attributes=["ou", "distinguishedName"]
+    )
+
+    ous = []
+    for entry in conn.entries:
+        ous.append({
+            "name": str(entry.ou) if entry.ou else str(entry.distinguishedName),
+            "dn": str(entry.distinguishedName)
+        })
+
+    conn.unbind()
+    return ous
+
+
+def list_ad_users_in_ou(ou_dn: str) -> list[dict]:
+    """
+    Retorna os usuários de uma OU específica no Active Directory.
+    """
+    try:
+        conn = _get_ldap_connection()
+    except Exception as e:
+        raise ValueError(f"Falha ao conectar no LDAP: {e}")
+
+    search_filter = "(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+    attributes = [
+        "sAMAccountName", "displayName", "mail", "department",
+        "title", "telephoneNumber",
+    ]
+
+    try:
+        conn.search(
+            search_base=ou_dn,
+            search_filter=search_filter,
+            search_scope=SUBTREE,
+            attributes=attributes,
+        )
+        
+        users = []
+        for entry in conn.entries:
+            username = str(entry.sAMAccountName) if entry.sAMAccountName else None
+            if not username:
+                continue
+            users.append({
+                "username": username,
+                "display_name": str(entry.displayName) if entry.displayName else username,
+                "email": str(entry.mail) if entry.mail else None,
+                "department": str(entry.department) if entry.department else "Geral",
+                "title": str(entry.title) if entry.title else None,
+                "phone": str(entry.telephoneNumber) if entry.telephoneNumber else None,
+                "ou_dn": ou_dn
+            })
+        conn.unbind()
+        return users
+    except Exception as e:
+        conn.unbind()
+        raise ValueError(f"Erro ao buscar usuários da OU {ou_dn}: {e}")
+
+
+def import_ad_departments(db: Session, target_ous: list[str]) -> dict:
+    """
+    Importa/cadastra apenas os Setores (Departamentos) baseados nas OUs do Active Directory.
+    """
+    report = {"created": 0, "updated": 0, "errors": []}
+    for ou_dn in target_ous:
+        try:
+            # Extrair nome simples da OU (ex: OU=Tecnologia,DC=... -> Tecnologia)
+            ou_name = ou_dn.split(",")[0].replace("OU=", "")
+            dept = db.query(Department).filter(
+                (Department.name == ou_name) | (Department.ad_ou_dn == ou_dn)
+            ).first()
+
+            if not dept:
+                dept = Department(name=ou_name, ad_ou_dn=ou_dn, is_active=True)
+                db.add(dept)
+                db.commit()
+                report["created"] += 1
+            else:
+                dept.ad_ou_dn = ou_dn
+                dept.is_active = True
+                db.commit()
+                report["updated"] += 1
+        except Exception as e:
+            db.rollback()
+            report["errors"].append(f"Erro ao importar OU {ou_dn}: {e}")
+            
+    return report
+
+
+def sync_active_directory(db: Session, target_ous: list[str] = None) -> dict:
+    """
+    Sincroniza usuários e setores do AD com o banco local.
+    Se target_ous for fornecido, importa apenas dessas OUs.
     Retorna relatório: {created, updated, deactivated, errors}.
     """
     report = {"created": 0, "updated": 0, "deactivated": 0, "errors": []}
 
     try:
-        server = Server(settings.ldap_host, port=settings.ldap_port, get_info=ALL)
-        conn = Connection(
-            server,
-            user=settings.ldap_bind_user,
-            password=settings.ldap_bind_password,
-            auto_bind=True,
-        )
+        conn = _get_ldap_connection()
     except Exception as e:
         report["errors"].append(f"Falha ao conectar no LDAP: {e}")
         return report
 
-    # Buscar todos os usuários na OU configurada
     search_filter = "(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
     attributes = [
         "sAMAccountName", "displayName", "mail", "department",
         "manager", "title", "telephoneNumber",
     ]
 
-    conn.search(
-        search_base=settings.ldap_base_dn,
-        search_filter=search_filter,
-        search_scope=SUBTREE,
-        attributes=attributes,
-    )
-
+    bases_to_search = target_ous if target_ous else [settings.ldap_base_dn]
+    
     ad_usernames = set()
     ad_users_data = []
 
-    for entry in conn.entries:
+    for base_dn in bases_to_search:
         try:
-            username = str(entry.sAMAccountName) if entry.sAMAccountName else None
-            if not username:
-                continue
+            conn.search(
+                search_base=base_dn,
+                search_filter=search_filter,
+                search_scope=SUBTREE,
+                attributes=attributes,
+            )
+            
+            for entry in conn.entries:
+                try:
+                    username = str(entry.sAMAccountName) if entry.sAMAccountName else None
+                    if not username:
+                        continue
 
-            ad_usernames.add(username)
-            ad_users_data.append({
-                "username": username,
-                "display_name": str(entry.displayName) if entry.displayName else username,
-                "email": str(entry.mail) if entry.mail else None,
-                "department": str(entry.department) if entry.department else None,
-                "manager_dn": str(entry.manager) if entry.manager else None,
-                "phone": str(entry.telephoneNumber) if entry.telephoneNumber else None,
-            })
+                    ad_usernames.add(username)
+                    dept_name = str(entry.department) if entry.department else "Geral"
+                    
+                    ad_users_data.append({
+                        "username": username,
+                        "display_name": str(entry.displayName) if entry.displayName else username,
+                        "email": str(entry.mail) if entry.mail else None,
+                        "department": dept_name,
+                        "ou_dn": base_dn,
+                        "manager_dn": str(entry.manager) if entry.manager else None,
+                        "phone": str(entry.telephoneNumber) if entry.telephoneNumber else None,
+                    })
+                except Exception as e:
+                    report["errors"].append(f"Erro ao processar entry: {e}")
         except Exception as e:
-            report["errors"].append(f"Erro ao processar entry: {e}")
+            report["errors"].append(f"Erro ao buscar na OU {base_dn}: {e}")
 
     conn.unbind()
 
-    # Mapear departamentos
-    dept_names = {u["department"] for u in ad_users_data if u["department"]}
+    # Mapear departamentos (criar os que não existem e atualizar o ad_ou_dn)
     dept_map = {}
-    for dept_name in dept_names:
+    for data in ad_users_data:
+        dept_name = data["department"]
+        ou_dn = data["ou_dn"]
+        
         dept = db.query(Department).filter(Department.name == dept_name).first()
         if not dept:
-            dept = Department(name=dept_name)
+            dept = Department(name=dept_name, ad_ou_dn=ou_dn, is_active=True)
             db.add(dept)
             db.flush()
+        else:
+            dept.ad_ou_dn = ou_dn
+            dept.is_active = True
+        
         dept_map[dept_name] = dept.id
 
     # Criar/atualizar usuários
-    username_to_id = {}
     for data in ad_users_data:
         user = db.query(User).filter(User.ad_username == data["username"]).first()
         if user:
@@ -105,8 +226,6 @@ def sync_active_directory(db: Session) -> dict:
             db.flush()
             report["created"] += 1
 
-        username_to_id[data["username"]] = user.id
-
     # Resolver hierarquia de gestores (segunda passada)
     for data in ad_users_data:
         if data["manager_dn"]:
@@ -123,17 +242,18 @@ def sync_active_directory(db: Session) -> dict:
                     if manager.role == UserRole.USER:
                         manager.role = UserRole.MANAGER
 
-    # Desativar usuários que não estão mais no AD (exceto admin root e rooms)
-    db_users = db.query(User).filter(
-        User.ad_username.isnot(None),
-        User.is_room == False,  # noqa: E712
-        User.ad_username != settings.admin_username,
-    ).all()
+    # Se a sincronização for parcial (target_ous), não desativamos os outros usuários
+    if not target_ous:
+        db_users = db.query(User).filter(
+            User.ad_username.isnot(None),
+            User.is_room == False,  # noqa: E712
+            User.ad_username != settings.admin_username,
+        ).all()
 
-    for user in db_users:
-        if user.ad_username not in ad_usernames:
-            user.is_active = False
-            report["deactivated"] += 1
+        for user in db_users:
+            if user.ad_username not in ad_usernames:
+                user.is_active = False
+                report["deactivated"] += 1
 
     db.commit()
     return report

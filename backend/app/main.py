@@ -8,10 +8,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import auth, users, assets, tickets, categories, sync, zabbix
+from app.routers import auth, users, assets, tickets, categories, sync, zabbix, attachments, departments, ad_import
+
+# Criar pasta uploads se não existir
+os.makedirs("uploads", exist_ok=True)
 
 
 @asynccontextmanager
@@ -53,7 +58,12 @@ app.include_router(tickets.router)
 app.include_router(categories.router)
 app.include_router(sync.router)
 app.include_router(zabbix.router)
+app.include_router(attachments.router)
+app.include_router(departments.router)
+app.include_router(ad_import.router)
 
+# Servir arquivos estáticos (uploads)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.get("/", tags=["Health"])
 def health_check():

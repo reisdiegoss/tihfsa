@@ -4,7 +4,7 @@
 const STATUS_MAP = {
   "Novo": "status-new",
   "Em Andamento": "status-progress",
-  "Aguardando Validacao": "status-validation",
+  "Aguardando Validação": "status-validation",
   "Fechado": "status-closed",
   "Rejeitado": "status-rejected",
 };
@@ -12,7 +12,7 @@ const STATUS_MAP = {
 const STATUS_DOTS = {
   "Novo": "var(--color-status-new)",
   "Em Andamento": "var(--color-status-progress)",
-  "Aguardando Validacao": "var(--color-status-validation)",
+  "Aguardando Validação": "var(--color-status-validation)",
   "Fechado": "var(--color-status-closed)",
   "Rejeitado": "var(--color-status-rejected)",
 };
