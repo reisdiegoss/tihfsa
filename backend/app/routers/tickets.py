@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth.dependencies import get_current_user, require_technician
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.models.ticket_interaction import TicketInteraction
 from app.models.asset import Asset
@@ -72,18 +72,55 @@ def list_tickets(
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """Lista chamados com filtros e nomes expandidos."""
+    """Lista chamados com filtros e visibilidade por papel."""
     from sqlalchemy.orm import joinedload
+    from sqlalchemy import or_
 
     query = db.query(Ticket).options(
         joinedload(Ticket.requester),
         joinedload(Ticket.technician),
         joinedload(Ticket.category),
     )
-    if status_filter:
-        query = query.filter(Ticket.status == status_filter)
+
+    # Visibilidade por Papéis (Multi-Role)
+    role_val = current_user.role.value if isinstance(current_user.role, UserRole) else str(current_user.role).lower()
+    u_roles = current_user.roles if (current_user.roles and isinstance(current_user.roles, list)) else [role_val]
+    u_roles_lower = [r.lower() for r in u_roles]
+
+    is_admin = "admin" in u_roles_lower
+    is_tech = "technician" in u_roles_lower or "tecnico" in u_roles_lower
+    is_mgr = "manager" in u_roles_lower or "gerente" in u_roles_lower
+
+    if is_admin or is_tech:
+        pass  # Acesso completo a todos os chamados
+    elif is_mgr:
+        managed_dept_ids = [d.id for d in current_user.managed_departments] if current_user.managed_departments else []
+        if current_user.department_id and current_user.department_id not in managed_dept_ids:
+            managed_dept_ids.append(current_user.department_id)
+
+        if managed_dept_ids:
+            query = query.join(Ticket.requester).filter(
+                or_(
+                    Ticket.requester_id == current_user.id,
+                    User.department_id.in_(managed_dept_ids)
+                )
+            )
+        else:
+            query = query.filter(Ticket.requester_id == current_user.id)
+    else:
+        query = query.filter(Ticket.requester_id == current_user.id)
+
+    if status_filter and isinstance(status_filter, str) and status_filter.strip():
+        target_status = None
+        for s in TicketStatus:
+            if s.value == status_filter or s.name == status_filter:
+                target_status = s
+                break
+        if target_status:
+            query = query.filter(Ticket.status == target_status)
+
     if technician_id:
         query = query.filter(Ticket.technician_id == technician_id)
     if requester_id:
@@ -163,7 +200,26 @@ def get_ticket(
         .all()
     )
 
-    from app.schemas.ticket import TicketAttachmentResponse
+    from app.schemas.ticket import TicketAttachmentResponse, InteractionResponse
+
+    interaction_responses = []
+    for i in interactions:
+        u_name = i.user.display_name if i.user else f"Usuário #{i.user_id}"
+        u_role = i.user.role.value if (i.user and hasattr(i.user.role, "value")) else str(i.user.role if i.user else "user")
+        i_attachments = [a for a in attachments if a.interaction_id == i.id]
+
+        interaction_responses.append(
+            InteractionResponse(
+                id=i.id,
+                message=i.message,
+                is_solution=i.is_solution,
+                user_id=i.user_id,
+                user_name=u_name,
+                user_role=u_role,
+                attachments=[TicketAttachmentResponse.model_validate(a) for a in i_attachments],
+                created_at=i.created_at,
+            )
+        )
 
     return TicketDetail(
         id=ticket.id,
@@ -186,7 +242,7 @@ def get_ticket(
         asset_name=asset.name if asset else None,
         category_name=category.name if category else None,
         subcategory_name=subcategory.name if subcategory else None,
-        interactions=[InteractionResponse.model_validate(i) for i in interactions],
+        interactions=interaction_responses,
         attachments=[TicketAttachmentResponse.model_validate(a) for a in attachments],
     )
 
@@ -279,4 +335,16 @@ def add_interaction(
     db.add(interaction)
     db.commit()
     db.refresh(interaction)
-    return interaction
+
+    u_name = current_user.display_name
+    u_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+
+    return InteractionResponse(
+        id=interaction.id,
+        message=interaction.message,
+        is_solution=interaction.is_solution,
+        user_id=interaction.user_id,
+        user_name=u_name,
+        user_role=u_role,
+        created_at=interaction.created_at,
+    )

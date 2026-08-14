@@ -1,8 +1,8 @@
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, LogOut } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function Header() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
     <header className="h-20 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between sticky top-0 z-10 shrink-0">
@@ -20,7 +20,7 @@ export default function Header() {
       </div>
 
       {/* Right Side */}
-      <div className="flex items-center gap-4 sm:gap-6 ml-4">
+      <div className="flex items-center gap-3 sm:gap-5 ml-4">
         <button className="relative text-slate-400 hover:text-blue-600 transition-colors cursor-pointer shrink-0">
           <Bell size={20} />
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
@@ -34,6 +34,14 @@ export default function Header() {
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 text-slate-600 font-bold text-sm flex items-center justify-center border border-slate-200 shrink-0">
             {user?.displayName?.charAt(0) || "A"}
           </div>
+
+          <button
+            onClick={logout}
+            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer ml-1"
+            title="Sair da Sessão"
+          >
+            <LogOut size={20} />
+          </button>
         </div>
       </div>
     </header>

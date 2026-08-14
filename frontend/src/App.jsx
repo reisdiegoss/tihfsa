@@ -20,10 +20,10 @@ import NewRequest from "./pages/client/NewRequest";
 import Login from "./pages/shared/Login";
 
 function ProtectedAdminRoute({ children }) {
-  const { user, loading } = useAuth();
+  const { user, isStaff, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === "User") return <Navigate to="/app" replace />;
+  if (!isStaff) return <Navigate to="/app" replace />;
   return children; 
 }
 
@@ -31,18 +31,20 @@ function ProtectedAppRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  // Admins e Tecnicos também podem acessar o /app se quiserem (testes)
   return children; 
 }
 
 // Rota raiz "/"
 function RootRedirect() {
-  const { user, loading } = useAuth();
+  const { user, isStaff, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === "User") return <Navigate to="/app" replace />;
+  if (!isStaff) return <Navigate to="/app" replace />;
   return <Navigate to="/admin" replace />;
 }
+
+// Public Wallboard / TV NOC Page
+import PublicNocPanel from "./pages/public/PublicNocPanel";
 
 export default function App() {
   return (
@@ -50,6 +52,8 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/noc" element={<PublicNocPanel />} />
+          <Route path="/noc/public" element={<PublicNocPanel />} />
           <Route path="/" element={<RootRedirect />} />
           
           {/* Main Admin UI Route */}

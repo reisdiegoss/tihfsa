@@ -1,9 +1,17 @@
 import { useState, useEffect } from "react";
-import { Activity, AlertTriangle, AlertCircle, ShieldAlert, CheckCircle, Info, TicketPlus, RefreshCw, Server, Search, Terminal } from "lucide-react";
+import { 
+  Activity, AlertTriangle, AlertCircle, ShieldAlert, CheckCircle, 
+  Info, TicketPlus, RefreshCw, Server, Terminal, ExternalLink, Filter, Tv, Network, List
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import api from "../../api/client";
+import TopologyMapBuilder from "../../components/admin/TopologyMapBuilder";
 
 export default function ZabbixPanel() {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("alerts"); // 'alerts' ou 'topology'
   const [alerts, setAlerts] = useState([]);
+  const [totalNetworkProblems, setTotalNetworkProblems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [creatingTicket, setCreatingTicket] = useState(null);
@@ -13,20 +21,11 @@ export default function ZabbixPanel() {
     api.get("/zabbix/alerts")
       .then((res) => {
         setAlerts(res.data.alerts || []);
+        setTotalNetworkProblems(res.data.total_zabbix_problems || 0);
         setLastUpdate(new Date());
       })
       .catch((err) => {
         console.error("Zabbix API Error:", err);
-        // Fallback mockup para visualização se a API estiver offline
-        if (err.message === "Network Error" || err.code === "ERR_NETWORK") {
-          setAlerts([
-            { eventid: "1001", name: "Zabbix agent on Core-SW is unreachable for 5 minutes", severity: "4", clock: Date.now() / 1000 - 300, host: "Core-SW" },
-            { eventid: "1002", name: "High CPU utilization (over 90% for 5m)", severity: "3", clock: Date.now() / 1000 - 1200, host: "SRV-BD-01" },
-            { eventid: "1003", name: "Lack of available memory on server", severity: "2", clock: Date.now() / 1000 - 3600, host: "SRV-APP-02" },
-            { eventid: "1004", name: "Link Down on Port gi1/0/24", severity: "5", clock: Date.now() / 1000 - 50, host: "SW-Andar-1" },
-          ]);
-          setLastUpdate(new Date());
-        }
       })
       .finally(() => setLoading(false));
   };
@@ -38,22 +37,26 @@ export default function ZabbixPanel() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleCreateTicket = (alert) => {
-    setCreatingTicket(alert.eventid);
+  const handleCreateTicket = (alertItem) => {
+    if (alertItem.ticket_id) {
+      navigate("/admin/tickets");
+      return;
+    }
+
+    setCreatingTicket(alertItem.eventid);
     const payload = {
-      title: `[Zabbix] ${alert.host || "Host Desconhecido"} - ${alert.name}`,
-      description: `Alerta gerado automaticamente pelo NOC.\nEvento ID: ${alert.eventid}\nGravidade: ${alert.severity}\nInício: ${new Date(alert.clock * 1000).toLocaleString()}`
+      title: `${alertItem.host || "Host"} - ${alertItem.name}`,
+      description: `Alerta Zabbix NOC (Evento: ${alertItem.eventid})\nGravidade: ${alertItem.severity}`,
+      asset_id: alertItem.asset_id,
     };
 
-    api.post(`/zabbix/alerts/${alert.eventid}/create-ticket`, payload)
+    api.post(`/zabbix/alerts/${alertItem.eventid}/create-ticket`, payload)
       .then(() => {
-        alert("Chamado aberto com sucesso!");
-        // Opcional: remover da lista se quiser, mas o Zabbix continuará reportando se não for resolvido
+        fetchAlerts();
       })
       .catch((err) => {
         console.error(err);
-        // Simulação se API mockada falhar
-        setTimeout(() => alert("Chamado aberto com sucesso! (Mock)"), 500);
+        alert("Erro ao criar chamado.");
       })
       .finally(() => setCreatingTicket(null));
   };
@@ -90,94 +93,162 @@ export default function ZabbixPanel() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </span>
-                <span className="text-xs font-semibold text-emerald-400">Integração Ativa</span>
+                <span className="text-xs font-semibold text-emerald-400">Integração Ativa (Filtrado por Ativos TIHFSA)</span>
                 <span className="text-xs text-slate-500 ml-2">| Última atualização: {lastUpdate.toLocaleTimeString()}</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex gap-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl px-6 py-3 flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl px-5 py-3 flex items-center gap-4">
             <div className="text-right">
-              <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Desastres / Críticos</p>
+              <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Críticos (Ativos TIHFSA)</p>
               <p className="text-2xl font-black text-red-500">{disasterCount}</p>
             </div>
             <div className="h-10 w-px bg-slate-800"></div>
             <div className="text-left">
-              <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Atenção</p>
+              <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Atenção (Ativos TIHFSA)</p>
               <p className="text-2xl font-black text-amber-500">{warningCount}</p>
             </div>
           </div>
 
+          <a 
+            href="/noc" 
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-14 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2 cursor-pointer text-xs uppercase"
+            title="Abrir URL pública em tela cheia para TV ou Monitor de setor (sem necessidade de senha)"
+          >
+            <Tv size={18} />
+            <span>Painel TV Público (/noc)</span>
+          </a>
+
           <button 
             onClick={fetchAlerts}
-            className="h-16 px-6 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] flex items-center justify-center gap-2"
+            className="h-14 px-6 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] flex items-center justify-center gap-2 cursor-pointer"
           >
-            <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
             <span className="hidden sm:inline">Recarregar</span>
           </button>
         </div>
       </div>
 
+      {/* Mode Switcher Tabs (Feed de Incidentes vs Topologia de Rede) */}
+      <div className="bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-6 flex items-center gap-2 max-w-md">
+        <button
+          onClick={() => setActiveTab("alerts")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+            activeTab === "alerts"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+              : "text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          <List size={16} /> Incidentes & Chamados NOC
+        </button>
+        <button
+          onClick={() => setActiveTab("topology")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+            activeTab === "topology"
+              ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+              : "text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          <Network size={16} /> Fluxograma de Topologia
+        </button>
+      </div>
+
+      {activeTab === "topology" ? (
+        <TopologyMapBuilder />
+      ) : (
+        <>
+          {/* Info Bar Explicativa do Filtro */}
+          <div className="bg-slate-900/80 border border-blue-900/40 rounded-2xl p-4 mb-6 text-xs text-slate-400 flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <Filter size={18} className="text-blue-400 shrink-0" />
+              <span>
+                Exibindo apenas alertas de equipamentos <strong>importados no CMDB do TIHFSA</strong>. Chamados são <strong>abertos automaticamente</strong> para cada alerta detectado.
+              </span>
+            </div>
+            <span className="text-[11px] font-bold bg-blue-950 text-blue-300 border border-blue-800/50 px-3 py-1 rounded-full">
+              {alerts.length} alertas de ativos ({totalNetworkProblems} incidentes globais no Zabbix)
+            </span>
+          </div>
+
       {/* Main Alert Feed */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
         <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
           <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-            <Terminal size={16} /> Feed de Incidentes em Tempo Real
+            <Terminal size={16} /> Feed de Incidentes dos Equipamentos do TIHFSA
           </h2>
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-            <span>Total de problemas ativos: <strong className="text-slate-300">{alerts.length}</strong></span>
+            <span>Alertas ativos: <strong className="text-slate-300">{alerts.length}</strong></span>
           </div>
         </div>
 
         {loading && alerts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-slate-500">
             <RefreshCw size={40} className="animate-spin mb-4 text-blue-500 opacity-50" />
-            <p className="font-bold text-slate-400">Conectando ao Zabbix Server...</p>
+            <p className="font-bold text-slate-400">Consultando Zabbix Server e chamados automáticos...</p>
           </div>
         ) : alerts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-slate-500">
             <CheckCircle size={64} className="mb-4 text-emerald-500/50" />
-            <p className="font-black text-xl text-emerald-400">Tudo Verde!</p>
-            <p className="text-sm font-medium mt-2 text-slate-400">Nenhum incidente ativo reportado pelo Zabbix no momento.</p>
+            <p className="font-black text-xl text-emerald-400">Tudo OK com os Equipamentos do TIHFSA!</p>
+            <p className="text-sm font-medium mt-2 text-slate-400">Nenhum incidente ativo nos equipamentos cadastrados no momento.</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-800/50">
-            {alerts.sort((a, b) => parseInt(b.severity) - parseInt(a.severity)).map((alert) => {
-              const style = getSeverityStyle(alert.severity);
-              const timeString = new Date(alert.clock * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            {alerts.sort((a, b) => parseInt(b.severity) - parseInt(a.severity)).map((alertItem) => {
+              const style = getSeverityStyle(alertItem.severity);
+              const timeString = new Date(alertItem.clock * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               
               return (
-                <div key={alert.eventid} className={`p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors hover:bg-slate-800/50 group`}>
+                <div key={alertItem.eventid} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors hover:bg-slate-800/50 group">
                   
                   <div className="flex items-start gap-4">
                     <div className={`mt-1 p-2.5 rounded-xl ${style.bg} ${style.border} border`}>
                       {style.icon}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
                           {style.label}
                         </span>
-                        <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
-                          <Server size={12} /> {alert.host || "Host Desconhecido"}
+                        <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                          <Server size={12} className="text-blue-400" /> {alertItem.host}
                         </span>
+                        {alertItem.host_ip && (
+                          <span className="text-[11px] font-mono text-slate-500 bg-slate-800 px-2 py-0.5 rounded">
+                            {alertItem.host_ip}
+                          </span>
+                        )}
                       </div>
-                      <h3 className="text-base font-bold text-slate-200">{alert.name}</h3>
-                      <p className="text-xs text-slate-500 font-medium mt-1">Evento ID: {alert.eventid} • Iniciado às {timeString}</p>
+                      <h3 className="text-base font-bold text-slate-200">{alertItem.name}</h3>
+                      <p className="text-xs text-slate-500 font-medium mt-1">Evento Zabbix: #{alertItem.eventid} • Iniciado às {timeString}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0 self-start md:self-center">
-                    <button 
-                      onClick={() => handleCreateTicket(alert)}
-                      disabled={creatingTicket === alert.eventid}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity bg-blue-600/20 hover:bg-blue-600 border border-blue-500/30 hover:border-blue-500 text-blue-400 hover:text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {creatingTicket === alert.eventid ? <RefreshCw size={16} className="animate-spin" /> : <TicketPlus size={16} />}
-                      Abrir Chamado
-                    </button>
+                    {alertItem.ticket_id ? (
+                      <button
+                        onClick={() => navigate("/admin/tickets")}
+                        className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500 hover:text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
+                      >
+                        <CheckCircle size={16} />
+                        <span>Chamado #{alertItem.ticket_id} Aberto Automático</span>
+                        <ExternalLink size={14} />
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleCreateTicket(alertItem)}
+                        disabled={creatingTicket === alertItem.eventid}
+                        className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {creatingTicket === alertItem.eventid ? <RefreshCw size={16} className="animate-spin" /> : <TicketPlus size={16} />}
+                        Abrir Chamado
+                      </button>
+                    )}
                   </div>
 
                 </div>
@@ -186,6 +257,8 @@ export default function ZabbixPanel() {
           </div>
         )}
       </div>
+        </>
+      )}
 
     </div>
   );

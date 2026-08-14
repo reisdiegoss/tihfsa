@@ -16,6 +16,9 @@ class Category(Base):
     name = Column(String(100), unique=True, nullable=False)
     description = Column(String(300), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    is_global = Column(Boolean, default=False, server_default="0", nullable=False)
+    zabbix_group_id = Column(String(50), nullable=True)
+    zabbix_group_name = Column(String(150), nullable=True)
 
     subcategories = relationship("Subcategory", back_populates="category", order_by="Subcategory.name")
     problem_types = relationship("ProblemType", back_populates="category", order_by="ProblemType.name")

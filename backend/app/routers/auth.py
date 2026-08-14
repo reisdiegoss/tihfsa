@@ -50,11 +50,13 @@ def login(
 
         if admin and admin.password_hash and verify_password(form_data.password, admin.password_hash):
             token = create_access_token({"sub": str(admin.id), "role": admin.role.value})
+            admin_roles = admin.roles if (admin.roles and isinstance(admin.roles, list)) else [admin.role.value]
             return TokenResponse(
                 access_token=token,
                 user_id=admin.id,
                 display_name=admin.display_name,
                 role=admin.role.value,
+                roles=admin_roles,
             )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
 
@@ -70,11 +72,13 @@ def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas no AD")
 
     token = create_access_token({"sub": str(user.id), "role": user.role.value})
+    user_roles = user.roles if (user.roles and isinstance(user.roles, list)) else [user.role.value]
     return TokenResponse(
         access_token=token,
         user_id=user.id,
         display_name=user.display_name,
         role=user.role.value,
+        roles=user_roles,
     )
 
 

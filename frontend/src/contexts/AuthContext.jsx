@@ -33,6 +33,7 @@ export function AuthProvider({ children }) {
       id: data.user_id,
       displayName: data.display_name,
       role: data.role,
+      roles: data.roles || [data.role],
     };
 
     localStorage.setItem("tihfsa_token", data.access_token);
@@ -47,11 +48,14 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  const isAdmin = user?.role === "admin" || user?.role === "technician";
-  const isManager = user?.role === "manager";
+  const userRoles = (user?.roles && user.roles.length > 0 ? user.roles : [user?.role || "user"]).map(r => r.toLowerCase());
+  const isAdmin = userRoles.includes("admin");
+  const isTechnician = userRoles.includes("tecnico") || userRoles.includes("technician");
+  const isManager = userRoles.includes("manager") || userRoles.includes("gerente");
+  const isStaff = isAdmin || isTechnician || isManager;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin, isManager }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin, isTechnician, isManager, isStaff }}>
       {children}
     </AuthContext.Provider>
   );

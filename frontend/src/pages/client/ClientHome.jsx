@@ -3,21 +3,21 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Ticket, Sparkles, ChevronRight, MapPin } from "lucide-react";
+import { Plus, Ticket, Sparkles, ChevronRight, MapPin, LogOut } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import StatusBadge from "../../components/ui/StatusBadge";
 
 export default function ClientHome() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [tickets, setTickets] = useState([]);
 
   useEffect(() => {
     if (user?.id) {
-      api.get(`/tickets?requester_id=${user.id}&limit=5`).then((r) => setTickets(r.data)).catch(console.error);
+      api.get(`/tickets/?requester_id=${user.id}&limit=5`).then((r) => setTickets(r.data)).catch(console.error);
     }
-  }, [user]);
+  }, [user?.id]);
 
   return (
     <div className="min-h-screen w-full bg-slate-50 text-slate-900 pb-12">
@@ -43,13 +43,23 @@ export default function ClientHome() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
-            <div className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
-              {user?.displayName?.charAt(0) || "U"}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
+              <div className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
+                {user?.displayName?.charAt(0) || "U"}
+              </div>
+              <span className="text-xs font-semibold text-slate-700 truncate max-w-[100px]">
+                {user?.displayName?.split(" ")[0] || "Usuário"}
+              </span>
             </div>
-            <span className="text-xs font-semibold text-slate-700 truncate max-w-[100px]">
-              {user?.displayName?.split(" ")[0] || "Usuário"}
-            </span>
+
+            <button
+              onClick={logout}
+              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all cursor-pointer"
+              title="Sair da Sessão"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </div>
       </header>

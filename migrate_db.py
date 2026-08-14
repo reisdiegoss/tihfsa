@@ -50,5 +50,39 @@ def run_migration():
         except Exception as e:
             print(f"departments.manager_id already exists or error: {e}")
 
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE assets ADD COLUMN subcategory_id INTEGER REFERENCES subcategories(id)"))
+            print("Added subcategory_id to assets")
+        except Exception as e:
+            print(f"assets.subcategory_id already exists or error: {e}")
+
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS department_managers (
+                    department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    PRIMARY KEY (department_id, user_id)
+                );
+            """))
+            print("Created department_managers table")
+        except Exception as e:
+            print(f"department_managers table creation error: {e}")
+
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE categories ADD COLUMN zabbix_group_id VARCHAR(50)"))
+            print("Added zabbix_group_id to categories")
+        except Exception as e:
+            print(f"categories.zabbix_group_id already exists or error: {e}")
+
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE categories ADD COLUMN zabbix_group_name VARCHAR(150)"))
+            print("Added zabbix_group_name to categories")
+        except Exception as e:
+            print(f"categories.zabbix_group_name already exists or error: {e}")
+
 if __name__ == "__main__":
     run_migration()

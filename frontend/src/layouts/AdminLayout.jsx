@@ -5,9 +5,9 @@ import Header from "../components/admin/Header";
 import BottomNav from "../components/admin/BottomNav";
 
 export default function AdminLayout() {
-  const { isAdmin } = useAuth();
+  const { isStaff } = useAuth();
 
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (!isStaff) return <Navigate to="/app" replace />;
 
   return (
     <div className="flex h-screen w-full bg-[#f8fafc] overflow-hidden">

@@ -30,6 +30,7 @@ class TicketInteraction(Base):
     # Relationships
     ticket = relationship("Ticket", back_populates="interactions")
     user = relationship("User", back_populates="interactions")
+    attachments = relationship("TicketAttachment", back_populates="interaction")
 
     def __repr__(self):
         return f"<Interaction {self.id} on Ticket #{self.ticket_id}>"

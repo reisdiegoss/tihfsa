@@ -1,12 +1,12 @@
 """
 Router Departments — CRUD de departamentos/setores do hotel.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict
 
 from app.database import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_technician
 from app.models.user import User
 from app.models.department import Department
 
@@ -29,3 +29,21 @@ def list_departments(
 ):
     """Lista todos os departamentos ativos."""
     return db.query(Department).filter(Department.is_active == True).order_by(Department.name).all()  # noqa: E712
+
+
+@router.delete("/{dept_id}")
+def delete_department(
+    dept_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_technician),
+):
+    """Exclui um departamento/setor específico."""
+    dept = db.query(Department).filter(Department.id == dept_id).first()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Setor não encontrado")
+    
+    # Desvincular membros
+    db.query(User).filter(User.department_id == dept_id).update({User.department_id: None})
+    db.delete(dept)
+    db.commit()
+    return {"message": f"Setor {dept.name} excluído com sucesso"}

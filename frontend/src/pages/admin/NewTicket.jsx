@@ -14,6 +14,8 @@ export default function NewTicket() {
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [requesterAssets, setRequesterAssets] = useState([]);
   
   // Selections
   const [departmentId, setDepartmentId] = useState("");
@@ -35,20 +37,37 @@ export default function NewTicket() {
 
   // Load initial data
   useEffect(() => {
-    api.get("/departments").then(r => setDepartments(r.data)).catch(console.error);
-    api.get("/categories").then(r => setCategories(r.data)).catch(console.error);
+    api.get("/departments/").then(r => setDepartments(r.data)).catch(console.error);
+    api.get("/categories/").then(r => setCategories(r.data)).catch(console.error);
+    api.get("/locations/").then(r => setLocations(r.data)).catch(console.error);
   }, []);
 
-  // Fetch assets when category changes
+  // Fetch assets when category or requester changes
   useEffect(() => {
     if (categoryId) {
-      api.get(`/assets?category_id=${categoryId}`).then(r => {
-        setAssets(r.data);
-      }).catch(console.error);
+      let url = `/assets/?category_id=${categoryId}`;
+      if (requesterId) {
+        url += `&assigned_user_id=${requesterId}`;
+      }
+      api.get(url)
+        .then(r => {
+          setAssets(r.data);
+        })
+        .catch(console.error);
     } else {
       setAssets([]);
     }
-  }, [categoryId]);
+  }, [categoryId, requesterId]);
+
+  // Handle location auto-population from asset
+  useEffect(() => {
+    if (assetId) {
+      const selectedAsset = assets.find(a => a.id === Number(assetId));
+      if (selectedAsset && selectedAsset.location_id) {
+        setLocation(selectedAsset.location_id.toString());
+      }
+    }
+  }, [assetId, assets]);
 
   // Load users when department changes
   useEffect(() => {
@@ -62,6 +81,24 @@ export default function NewTicket() {
       setRequesterId("");
     }
   }, [departmentId]);
+
+  // Load requester assets when requester changes
+  useEffect(() => {
+    if (requesterId) {
+      api.get(`/assets/?assigned_user_id=${requesterId}`).then(r => {
+        setRequesterAssets(r.data);
+      }).catch(console.error);
+    } else {
+      setRequesterAssets([]);
+    }
+  }, [requesterId]);
+
+  // Categories filtering based on requester assets and globals
+  const displayedCategories = categories.filter(c => {
+    if (requesterAssets.length === 0) return true; // Show all if no assets
+    const hasCategory = requesterAssets.some(a => a.category_id === c.id);
+    return c.is_global || hasCategory;
+  });
 
   const selectedCategory = categories.find(c => c.id === Number(categoryId));
   const problemTypes = selectedCategory?.problem_types || [];
@@ -102,13 +139,15 @@ export default function NewTicket() {
     }
 
     if (location) {
-      finalTitle = `[${location.toUpperCase()}] ${finalTitle}`;
+      const locObj = locations.find(l => l.id === Number(location));
+      const locName = locObj ? locObj.name : location;
+      finalTitle = `[${locName.toUpperCase()}] ${finalTitle}`;
     }
 
     setLoading(true);
     try {
       // 1. Create Ticket
-      const ticketRes = await api.post("/tickets", {
+      const ticketRes = await api.post("/tickets/", {
         title: finalTitle,
         description: description || null,
         priority,
@@ -227,23 +266,25 @@ export default function NewTicket() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                 >
                   <option value="">Selecione a categoria...</option>
-                  {categories.map((c) => (
+                  {displayedCategories.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>
 
-              {categoryId && filteredAssets.length > 0 && (
+              {categoryId && (
                 <div className="space-y-2 animate-fade-in">
                   <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Item / Ativo (CMDB)</label>
                   <select
                     value={assetId}
                     onChange={(e) => setAssetId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
                   >
                     <option value="">Nenhum / Não aplicável</option>
-                    {filteredAssets.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name} {a.ip_address ? `(${a.ip_address})` : ""}</option>
+                    {assets.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} {a.location_name ? `📍 ${a.location_name}` : ""} {a.ip_address ? `(${a.ip_address})` : ""}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -298,23 +339,30 @@ export default function NewTicket() {
               <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 <MapPin size={12} /> Local / UH Onde o problema ocorre
               </label>
-              <input
-                type="text"
+              <select
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="Ex: UH 105, Restaurante, Lobby"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              />
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+              >
+                <option value="">Selecione o local...</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">
               <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Descrição Detalhada</label>
               <textarea
-                rows={4}
+                rows={3}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.max(100, e.target.scrollHeight)}px`;
+                }}
                 placeholder="Descreva o cenário, testes já realizados..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 resize-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 resize-none overflow-hidden min-h-[100px]"
               />
             </div>
             

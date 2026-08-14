@@ -13,3 +13,4 @@ class TokenResponse(BaseModel):
     user_id: int
     display_name: str
     role: str
+    roles: list[str] = ["user"]

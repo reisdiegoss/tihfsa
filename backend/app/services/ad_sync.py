@@ -4,6 +4,7 @@ Service AD Sync — sincronização de usuários do Active Directory via LDAP.
 Permite listar OUs e importar usuários por OU seletivamente.
 """
 from ldap3 import Server, Connection, ALL, SUBTREE, LEVEL
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -51,9 +52,9 @@ def list_ad_ous() -> list[dict]:
     return ous
 
 
-def list_ad_users_in_ou(ou_dn: str) -> list[dict]:
+def list_ad_users_in_ou(db: Session, ou_dn: str) -> list[dict]:
     """
-    Retorna os usuários de uma OU específica no Active Directory.
+    Lista os usuários pertencentes a uma OU do Active Directory e indica se já foram importados.
     """
     try:
         conn = _get_ldap_connection()
@@ -74,6 +75,10 @@ def list_ad_users_in_ou(ou_dn: str) -> list[dict]:
             attributes=attributes,
         )
         
+        imported_usernames = set(
+            r[0] for r in db.query(User.ad_username).filter(User.ad_username.isnot(None)).all()
+        )
+
         users = []
         for entry in conn.entries:
             username = str(entry.sAMAccountName) if entry.sAMAccountName else None
@@ -86,7 +91,8 @@ def list_ad_users_in_ou(ou_dn: str) -> list[dict]:
                 "department": str(entry.department) if entry.department else "Geral",
                 "title": str(entry.title) if entry.title else None,
                 "phone": str(entry.telephoneNumber) if entry.telephoneNumber else None,
-                "ou_dn": ou_dn
+                "ou_dn": ou_dn,
+                "imported": username in imported_usernames
             })
         conn.unbind()
         return users
@@ -95,18 +101,78 @@ def list_ad_users_in_ou(ou_dn: str) -> list[dict]:
         raise ValueError(f"Erro ao buscar usuários da OU {ou_dn}: {e}")
 
 
+def import_single_user_from_ad(db: Session, username: str, ou_dn: str) -> User:
+    """
+    Importa ou atualiza um único usuário do Active Directory para o banco local.
+    """
+    conn = _get_ldap_connection()
+    search_filter = f"(&(objectClass=user)(objectCategory=person)(sAMAccountName={username}))"
+    attributes = ["sAMAccountName", "displayName", "mail", "department", "telephoneNumber"]
+    
+    conn.search(search_base=ou_dn, search_filter=search_filter, search_scope=SUBTREE, attributes=attributes)
+    if not conn.entries:
+        conn.unbind()
+        raise ValueError(f"Usuário {username} não encontrado no AD.")
+        
+    entry = conn.entries[0]
+    dept_name = str(entry.department) if entry.department else "Geral"
+    
+    # 1. Garantir departamento
+    dept = db.query(Department).filter(Department.ad_ou_dn == ou_dn).first()
+    if not dept:
+        dept = db.query(Department).filter(func.lower(Department.name) == dept_name.lower()).first()
+    if not dept:
+        dept = Department(name=dept_name, ad_ou_dn=ou_dn, is_active=True)
+        db.add(dept)
+        db.commit()
+
+    # 2. Criar ou atualizar usuário
+    user = db.query(User).filter(User.ad_username == username).first()
+    if not user:
+        user = User(
+            ad_username=username,
+            display_name=str(entry.displayName) if entry.displayName else username,
+            email=str(entry.mail) if entry.mail else None,
+            department_id=dept.id,
+            is_room=False,
+            role=UserRole.USER,
+            phone=str(entry.telephoneNumber) if entry.telephoneNumber else None,
+            is_active=True
+        )
+        db.add(user)
+    else:
+        user.display_name = str(entry.displayName) if entry.displayName else username
+        if entry.mail:
+            user.email = str(entry.mail)
+        user.department_id = dept.id
+        user.is_active = True
+        
+    db.commit()
+    db.refresh(user)
+    conn.unbind()
+    return user
+
+
 def import_ad_departments(db: Session, target_ous: list[str]) -> dict:
     """
     Importa/cadastra apenas os Setores (Departamentos) baseados nas OUs do Active Directory.
+    Garante ausência de duplicatas buscando por ad_ou_dn primeiro e por nome em seguida.
     """
     report = {"created": 0, "updated": 0, "errors": []}
     for ou_dn in target_ous:
         try:
-            # Extrair nome simples da OU (ex: OU=Tecnologia,DC=... -> Tecnologia)
-            ou_name = ou_dn.split(",")[0].replace("OU=", "")
-            dept = db.query(Department).filter(
-                (Department.name == ou_name) | (Department.ad_ou_dn == ou_dn)
-            ).first()
+            ou_name = ou_dn.split(",")[0].replace("OU=", "").strip()
+            if not ou_name:
+                continue
+
+            # 1. Buscar por ad_ou_dn
+            dept = db.query(Department).filter(Department.ad_ou_dn == ou_dn).first()
+
+            # 2. Se não achou por DN, buscar por nome (insensível a maiúsculas/minúsculas)
+            if not dept:
+                dept = db.query(Department).filter(
+                    func.lower(Department.name) == ou_name.lower()
+                ).first()
 
             if not dept:
                 dept = Department(name=ou_name, ad_ou_dn=ou_dn, is_active=True)
@@ -184,20 +250,26 @@ def sync_active_directory(db: Session, target_ous: list[str] = None) -> dict:
 
     conn.unbind()
 
-    # Mapear departamentos (criar os que não existem e atualizar o ad_ou_dn)
+    # Mapear departamentos (sem criar duplicatas)
     dept_map = {}
     for data in ad_users_data:
         dept_name = data["department"]
         ou_dn = data["ou_dn"]
         
-        dept = db.query(Department).filter(Department.name == dept_name).first()
+        dept = db.query(Department).filter(Department.ad_ou_dn == ou_dn).first()
+        if not dept:
+            dept = db.query(Department).filter(
+                func.lower(Department.name) == dept_name.lower()
+            ).first()
+            
         if not dept:
             dept = Department(name=dept_name, ad_ou_dn=ou_dn, is_active=True)
             db.add(dept)
-            db.flush()
+            db.commit()
         else:
             dept.ad_ou_dn = ou_dn
             dept.is_active = True
+            db.commit()
         
         dept_map[dept_name] = dept.id
 

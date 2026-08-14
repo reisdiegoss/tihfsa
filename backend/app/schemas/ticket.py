@@ -51,6 +51,9 @@ class InteractionResponse(BaseModel):
     message: str
     is_solution: bool
     user_id: int
+    user_name: str | None = None
+    user_role: str | None = None
+    attachments: list["TicketAttachmentResponse"] = []
     created_at: datetime
 
 
@@ -58,6 +61,8 @@ class TicketAttachmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    ticket_id: int | None = None
+    interaction_id: int | None = None
     file_name: str
     file_path: str
     content_type: str
@@ -105,6 +110,9 @@ class CategoryResponse(BaseModel):
     id: int
     name: str
     description: str | None = None
+    zabbix_group_id: str | None = None
+    zabbix_group_name: str | None = None
+    is_global: bool = False
 
 
 class ProblemTypeResponse(BaseModel):

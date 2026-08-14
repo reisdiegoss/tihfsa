@@ -8,7 +8,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text
+    Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text, JSON
 )
 from sqlalchemy.orm import relationship
 
@@ -31,6 +31,7 @@ class User(Base):
     email = Column(String(200), nullable=True, index=True)
     password_hash = Column(String(255), nullable=True)  # Apenas admin root
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
+    roles = Column(JSON, nullable=True)  # Lista de múltiplos papéis: ["user", "manager", "technician", "admin"]
     is_room = Column(Boolean, default=False, nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     phone = Column(String(50), nullable=True)
@@ -51,6 +52,8 @@ class User(Base):
     department = relationship("Department", back_populates="members", foreign_keys=[department_id])
     manager = relationship("User", remote_side=[id], foreign_keys=[manager_id])
     subordinates = relationship("User", foreign_keys=[manager_id], back_populates="manager")
+    from app.models.department import department_managers
+    managed_departments = relationship("Department", secondary=department_managers, back_populates="managers")
     assets = relationship("Asset", back_populates="assigned_user")
     tickets_opened = relationship("Ticket", foreign_keys="Ticket.requester_id", back_populates="requester")
     tickets_assigned = relationship("Ticket", foreign_keys="Ticket.technician_id", back_populates="technician")

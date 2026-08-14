@@ -42,7 +42,7 @@ class Asset(Base):
     id = Column(Integer, primary_key=True, index=True)
     asset_tag = Column(String(50), unique=True, nullable=True, index=True)  # Patrimônio
     name = Column(String(200), nullable=False)  # Ex: "TV Samsung 55' - Apt 101"
-    type = Column(Enum(AssetType), nullable=False, index=True)
+    type = Column(String(100), nullable=False, index=True)  # Nome do tipo de ativo dinâmico
     brand = Column(String(100), nullable=True)
     model = Column(String(100), nullable=True)
     serial_number = Column(String(100), nullable=True)
@@ -66,11 +66,15 @@ class Asset(Base):
     # FK — Categoria (vincula o ativo à categoria geral)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
 
+    # FK — Localização física (ex: Lobby, UH 101, Rack TI)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+
     # Relationships
     assigned_user = relationship("User", back_populates="assets")
     tickets = relationship("Ticket", back_populates="asset")
     subcategory = relationship("Subcategory")
     category = relationship("Category")
+    location = relationship("Location", back_populates="assets")
 
     def __repr__(self):
         return f"<Asset {self.id}: {self.name} ({self.type.value})>"

@@ -1,9 +1,9 @@
 """
-Router Attachments — upload de imagens e PDFs para chamados.
+Router Attachments — upload de imagens e PDFs para chamados e mensagens da linha do tempo.
 """
 import os
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -23,18 +23,19 @@ ALLOWED_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/p
 async def upload_attachment(
     ticket_id: int,
     file: UploadFile = File(...),
+    interaction_id: int | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Faz upload de um anexo (imagem ou PDF) para o chamado.
+    Faz upload de um anexo (imagem ou PDF) para o chamado ou vinculado a um comentário específico.
     """
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Chamado não encontrado")
 
     if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(status_code=400, detail="Formato de arquivo não suportado. Use JPG, PNG ou PDF.")
+        raise HTTPException(status_code=400, detail="Formato de arquivo não suportado. Use JPG, PNG, WEBP ou PDF.")
 
     # Criar pasta específica para o ticket se não existir
     ticket_upload_dir = os.path.join(UPLOAD_DIR, "tickets", str(ticket_id))
@@ -59,6 +60,7 @@ async def upload_attachment(
     # Registrar no banco
     attachment = TicketAttachment(
         ticket_id=ticket_id,
+        interaction_id=interaction_id,
         file_name=file.filename or "Anexo",
         file_path=web_path,
         content_type=file.content_type,

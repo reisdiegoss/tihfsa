@@ -20,6 +20,7 @@ class AssetCreate(AssetBase):
     assigned_user_id: int | None = None
     subcategory_id: int | None = None
     category_id: int | None = None
+    location_id: int | None = None
 
 
 class AssetUpdate(BaseModel):
@@ -36,6 +37,7 @@ class AssetUpdate(BaseModel):
     assigned_user_id: int | None = None
     subcategory_id: int | None = None
     category_id: int | None = None
+    location_id: int | None = None
     is_active: bool | None = None
 
 
@@ -45,6 +47,16 @@ class AssetResponse(AssetBase):
     id: int
     is_active: bool
     assigned_user_id: int | None = None
+    assigned_user_name: str | None = None
     subcategory_id: int | None = None
     category_id: int | None = None
+    category_name: str | None = None
+    location_id: int | None = None
+    location_name: str | None = None
+    icmp_status: str | None = "no_ip"
+    zabbix_status: str | None = "no_ip"
+    zabbix_alert_title: str | None = None
+    zabbix_severity: str | None = None
+    monitoring_protocol: str | None = "icmp"
+    snmp_status: str | None = "not_configured"
     created_at: datetime

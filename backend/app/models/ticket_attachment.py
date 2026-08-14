@@ -1,5 +1,5 @@
 """
-Model TicketAttachment — anexos (imagens, PDFs) para um chamado.
+Model TicketAttachment — anexos (imagens, PDFs) para um chamado ou mensagem específica.
 """
 from datetime import datetime, timezone
 
@@ -14,6 +14,7 @@ class TicketAttachment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False, index=True)
+    interaction_id = Column(Integer, ForeignKey("ticket_interactions.id"), nullable=True, index=True)
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)
     content_type = Column(String(100), nullable=False)
@@ -24,6 +25,7 @@ class TicketAttachment(Base):
     )
 
     ticket = relationship("Ticket", back_populates="attachments")
+    interaction = relationship("TicketInteraction", back_populates="attachments")
 
     def __repr__(self):
         return f"<TicketAttachment {self.id}: {self.file_name}>"
