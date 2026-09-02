@@ -11,14 +11,12 @@
 #    ./start.sh --status     # Verifica se está rodando
 # ============================================================
 
-set -euo pipefail
-
 # ── Cores ────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 BOLD='\033[1m'
 
 # ── Diretórios ───────────────────────────────────────────────
@@ -51,26 +49,20 @@ log_warn()    { echo -e "${YELLOW}[AVISO]${NC}  $1"; }
 log_error()   { echo -e "${RED}[ERRO]${NC}    $1"; }
 log_step()    { echo -e "${BOLD}${YELLOW}[$1]${NC} $2"; }
 
-# ── Verificar se é root ──────────────────────────────────────
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        log_warn "Executando sem root. Algumas instalações podem pedir 'sudo'."
+# ── Matar processo por porta ─────────────────────────────────
+kill_port() {
+    local port=$1
+    local pid=""
+    pid=$(lsof -ti :"$port" 2>/dev/null || true)
+    if [[ -n "$pid" ]]; then
+        kill -9 $pid 2>/dev/null || true
+        log_info "Processo na porta $port (PID: $pid) encerrado."
     fi
 }
 
 # ── Verificar porta em uso ───────────────────────────────────
 is_port_in_use() {
-    ss -tlnp 2>/dev/null | grep -q ":$1 " && return 0 || return 1
-}
-
-# ── Matar processo por porta ─────────────────────────────────
-kill_port() {
-    local port=$1
-    local pid
-    pid=$(ss -tlnp 2>/dev/null | grep ":$port " | grep -oP 'pid=\K[0-9]+' | head -1)
-    if [[ -n "$pid" ]]; then
-        kill -9 "$pid" 2>/dev/null && log_info "Processo na porta $port (PID: $pid) encerrado."
-    fi
+    lsof -ti :"$1" >/dev/null 2>&1
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -78,7 +70,7 @@ kill_port() {
 # ══════════════════════════════════════════════════════════════
 install_dependencies() {
     log_step "1/5" "Atualizando pacotes do sistema..."
-    sudo apt-get update -qq
+    sudo apt-get update -qq || { log_error "Falha no apt-get update"; return 1; }
 
     log_step "2/5" "Instalando dependências do sistema..."
     sudo apt-get install -y -qq \
@@ -90,12 +82,18 @@ install_dependencies() {
         build-essential \
         curl \
         git \
-        > /dev/null 2>&1
+        lsof \
+        2>&1 | tail -5
     log_success "Pacotes do sistema instalados."
 
     # Node.js 20 LTS (via NodeSource)
     log_step "3/5" "Verificando Node.js..."
-    if ! command -v node &>/dev/null || [[ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 20 ]]; then
+    local node_version=""
+    if command -v node &>/dev/null; then
+        node_version=$(node -v | cut -d. -f1 | tr -d 'v')
+    fi
+
+    if [[ -z "$node_version" ]] || [[ "$node_version" -lt 20 ]]; then
         log_info "Instalando Node.js 20 LTS..."
         curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1
         sudo apt-get install -y -qq nodejs > /dev/null 2>&1
@@ -110,6 +108,7 @@ install_dependencies() {
         python3 -m venv "$VENV_DIR"
         log_info "Virtualenv criado em $VENV_DIR"
     fi
+    # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
     pip install --upgrade pip -q
     pip install -r "$BACKEND_DIR/requirements.txt" -q
@@ -119,7 +118,7 @@ install_dependencies() {
     # Frontend: npm install
     log_step "5/5" "Instalando dependências do Frontend (npm)..."
     cd "$FRONTEND_DIR"
-    npm install --silent 2>/dev/null
+    npm install 2>&1 | tail -3
     cd "$SCRIPT_DIR"
     log_success "Dependências do Frontend instaladas."
 
@@ -142,83 +141,106 @@ start_services() {
 
     # ── Backend (FastAPI + Uvicorn) ──────────────────────────
     log_step "1/2" "Iniciando Backend (FastAPI) na porta $BACKEND_PORT..."
-    
+
+    # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
+
     cd "$BACKEND_DIR"
-    
     nohup python3 -m uvicorn app.main:app \
         --host 0.0.0.0 \
         --port $BACKEND_PORT \
         --reload \
         > "$LOG_DIR/backend.log" 2>&1 &
-    
-    echo $! > "$PID_DIR/backend.pid"
-    deactivate
+    local backend_pid=$!
+    echo "$backend_pid" > "$PID_DIR/backend.pid"
     cd "$SCRIPT_DIR"
+    deactivate
+
+    log_info "Backend PID: $backend_pid — Log: $LOG_DIR/backend.log"
 
     # Validar Backend
-    log_info "Aguardando Backend responder..."
+    log_info "Aguardando Backend responder (máx 30s)..."
     local retries=0
     local max_retries=30
+    local backend_ok=false
     while [[ $retries -lt $max_retries ]]; do
-        if curl -s "$BACKEND_URL/" | grep -q "online\|status" 2>/dev/null; then
-            log_success "Backend iniciado e validado! ($BACKEND_URL)"
+        if curl -s --max-time 2 "$BACKEND_URL/" 2>/dev/null | grep -q "online\|status"; then
+            backend_ok=true
             break
         fi
         retries=$((retries + 1))
-        sleep 1
         printf "."
+        sleep 1
     done
     echo ""
 
-    if [[ $retries -ge $max_retries ]]; then
-        log_error "Backend NÃO respondeu após ${max_retries}s. Verifique: $LOG_DIR/backend.log"
-        log_warn "Continuando mesmo assim (pode estar demorando a conectar ao DB)..."
+    if $backend_ok; then
+        log_success "Backend iniciado e validado! ($BACKEND_URL)"
+    else
+        log_warn "Backend não respondeu após ${max_retries}s."
+        log_warn "Últimas linhas do log:"
+        tail -10 "$LOG_DIR/backend.log" 2>/dev/null || true
+        echo ""
+        log_warn "Continuando com o Frontend..."
     fi
 
     # ── Frontend (Vite) ──────────────────────────────────────
     log_step "2/2" "Iniciando Frontend (Vite) na porta $FRONTEND_PORT..."
-    
+
     cd "$FRONTEND_DIR"
-    
     nohup npx vite --host 0.0.0.0 --port $FRONTEND_PORT \
         > "$LOG_DIR/frontend.log" 2>&1 &
-    
-    echo $! > "$PID_DIR/frontend.pid"
+    local frontend_pid=$!
+    echo "$frontend_pid" > "$PID_DIR/frontend.pid"
     cd "$SCRIPT_DIR"
 
+    log_info "Frontend PID: $frontend_pid — Log: $LOG_DIR/frontend.log"
+
     # Validar Frontend
-    log_info "Aguardando Frontend responder..."
+    log_info "Aguardando Frontend responder (máx 30s)..."
     retries=0
+    local frontend_ok=false
     while [[ $retries -lt $max_retries ]]; do
-        if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$FRONTEND_PORT/" 2>/dev/null | grep -q "200"; then
-            log_success "Frontend iniciado e validado! ($FRONTEND_URL)"
+        local http_code=""
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 "http://localhost:$FRONTEND_PORT/" 2>/dev/null || true)
+        if [[ "$http_code" == "200" ]]; then
+            frontend_ok=true
             break
         fi
         retries=$((retries + 1))
-        sleep 1
         printf "."
+        sleep 1
     done
     echo ""
 
-    if [[ $retries -ge $max_retries ]]; then
-        log_error "Frontend NÃO respondeu após ${max_retries}s. Verifique: $LOG_DIR/frontend.log"
+    if $frontend_ok; then
+        log_success "Frontend iniciado e validado! ($FRONTEND_URL)"
+    else
+        log_warn "Frontend não respondeu após ${max_retries}s."
+        log_warn "Últimas linhas do log:"
+        tail -10 "$LOG_DIR/frontend.log" 2>/dev/null || true
     fi
 
+    # ── Resultado Final ──────────────────────────────────────
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║      SISTEMA TIHFSA OPERACIONAL!             ║${NC}"
+    if $backend_ok && $frontend_ok; then
+        echo -e "${GREEN}║       SISTEMA TIHFSA OPERACIONAL!            ║${NC}"
+    else
+        echo -e "${YELLOW}║    SISTEMA TIHFSA INICIADO (COM AVISOS)      ║${NC}"
+    fi
     echo -e "${GREEN}╠══════════════════════════════════════════════╣${NC}"
-    echo -e "${GREEN}║${NC}  Backend:  ${CYAN}$BACKEND_URL${NC}"
-    echo -e "${GREEN}║${NC}  Frontend: ${CYAN}$FRONTEND_URL${NC}"
+    echo -e "${GREEN}║${NC}  Backend:  ${CYAN}$BACKEND_URL${NC}  (PID: $backend_pid)"
+    echo -e "${GREEN}║${NC}  Frontend: ${CYAN}$FRONTEND_URL${NC}  (PID: $frontend_pid)"
     echo -e "${GREEN}║${NC}  Logs:     ${CYAN}$LOG_DIR/${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
     echo ""
-    log_info "Para ver os logs em tempo real:"
-    echo "    tail -f $LOG_DIR/backend.log"
-    echo "    tail -f $LOG_DIR/frontend.log"
+    log_info "Comandos úteis:"
+    echo "    tail -f $LOG_DIR/backend.log     # Log do Backend"
+    echo "    tail -f $LOG_DIR/frontend.log    # Log do Frontend"
+    echo "    ./start.sh --status              # Status dos serviços"
+    echo "    ./start.sh --stop                # Parar tudo"
     echo ""
-    log_info "Para parar: ./start.sh --stop"
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -231,11 +253,13 @@ stop_services() {
     for service in backend frontend; do
         local pidfile="$PID_DIR/${service}.pid"
         if [[ -f "$pidfile" ]]; then
-            local pid
+            local pid=""
             pid=$(cat "$pidfile")
             if kill -0 "$pid" 2>/dev/null; then
-                kill "$pid" 2>/dev/null
+                kill "$pid" 2>/dev/null || true
                 log_success "$service (PID: $pid) encerrado."
+            else
+                log_warn "$service (PID: $pid) já estava parado."
             fi
             rm -f "$pidfile"
         fi
@@ -258,14 +282,18 @@ check_status() {
 
     # Backend
     if is_port_in_use $BACKEND_PORT; then
-        echo -e "  Backend  (porta $BACKEND_PORT): ${GREEN}● RODANDO${NC}"
+        local bpid=""
+        bpid=$(lsof -ti :$BACKEND_PORT 2>/dev/null || true)
+        echo -e "  Backend  (porta $BACKEND_PORT): ${GREEN}● RODANDO${NC}  (PID: $bpid)"
     else
         echo -e "  Backend  (porta $BACKEND_PORT): ${RED}● PARADO${NC}"
     fi
 
     # Frontend
     if is_port_in_use $FRONTEND_PORT; then
-        echo -e "  Frontend (porta $FRONTEND_PORT): ${GREEN}● RODANDO${NC}"
+        local fpid=""
+        fpid=$(lsof -ti :$FRONTEND_PORT 2>/dev/null || true)
+        echo -e "  Frontend (porta $FRONTEND_PORT): ${GREEN}● RODANDO${NC}  (PID: $fpid)"
     else
         echo -e "  Frontend (porta $FRONTEND_PORT): ${RED}● PARADO${NC}"
     fi
@@ -275,11 +303,10 @@ check_status() {
 }
 
 # ══════════════════════════════════════════════════════════════
-#  MAIN — Roteamento de comandos
+#  MAIN
 # ══════════════════════════════════════════════════════════════
 main() {
     banner
-    check_root
 
     local action="${1:-full}"
 
