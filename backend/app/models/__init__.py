@@ -9,6 +9,7 @@ from app.models.ticket_attachment import TicketAttachment
 from app.models.category import Category, Subcategory
 from app.models.problem_type import ProblemType
 from app.models.asset_type import AssetTypeModel
+from app.models.integration_config import EvolutionConfig
 
 __all__ = [
     "User",
@@ -22,4 +23,5 @@ __all__ = [
     "Subcategory",
     "ProblemType",
     "AssetTypeModel",
+    "EvolutionConfig",
 ]

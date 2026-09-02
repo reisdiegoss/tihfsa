@@ -266,3 +266,24 @@ class ZabbixService:
             "problems": formatted_problems,
             "host_name": host["name"]
         }
+
+    @classmethod
+    def get_host_network_items(cls, host_id: str) -> list[dict]:
+        """Busca os itens de rede de um host (tráfego, status operacional, SD-WAN)."""
+        if not cls._auth_token:
+            if not cls.authenticate():
+                return []
+
+        # Buscamos itens cujos nomes indicam que são de interface de rede, saúde de links (SD-WAN) ou VPN.
+        result = cls._call_api("item.get", {
+            "output": ["itemid", "name", "lastvalue", "lastclock", "units", "value_type", "key_"],
+            "hostids": host_id,
+            "search": {
+                "name": ["Bits received", "Bits sent", "Operational status", "Health check state", "VPN state", "Speed"]
+            },
+            "searchByAny": True,
+            "selectTags": "extend"
+        })
+
+        items = result.get("result", [])
+        return items

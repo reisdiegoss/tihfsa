@@ -5,6 +5,142 @@ import {
   ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2
 } from "lucide-react";
 import api from "../../api/client";
+const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
+  if (!unifiDev) return null;
+  // If selectedMetrics array is explicitly empty, don't render the block at all
+  if (selectedMetrics && selectedMetrics.length === 0) return null;
+  
+  // Default to all metrics if not specified (retro-compatibility)
+  const showMetric = (metric) => !selectedMetrics || selectedMetrics.includes(metric);
+  
+  // Parse metrics
+  const cpu = unifiDev.system_stats?.cpu || unifiDev['system-stats']?.cpu || 0;
+  const mem = unifiDev.system_stats?.mem || unifiDev['system-stats']?.mem || 0;
+  const fw = unifiDev.version || "N/A";
+  const uptimeSecs = unifiDev.uptime || 0;
+  const uptimeDays = Math.floor(uptimeSecs / 86400);
+  const isAP = unifiDev.type === 'uap';
+  
+  // Switch specific: Aggregate port rates
+  let totalRxRate = 0;
+  let totalTxRate = 0;
+  if (!isAP && unifiDev.port_table && showMetric('rx_tx')) {
+     unifiDev.port_table.forEach(p => {
+         if (p.up && p['rx_bytes-r']) totalRxRate += p['rx_bytes-r'];
+         if (p.up && p['tx_bytes-r']) totalTxRate += p['tx_bytes-r'];
+     });
+  }
+  
+  const formatBytes = (bytes) => {
+      if (bytes === 0) return '0 B/s';
+      const k = 1024;
+      const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="mt-2 space-y-1.5 border-t border-slate-700/50 pt-2 w-full">
+      <div className="bg-blue-950/40 rounded-lg p-1.5 border border-blue-900/50 text-[9px] flex flex-col gap-1 shadow-inner">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between font-bold border-b border-blue-900/50 pb-1 mb-0.5 text-blue-300">
+          <span className="flex items-center gap-1">
+            <svg className="w-3 h-3 text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            UniFi {isAP ? 'AP' : 'Switch'}
+          </span>
+          <span className={unifiDev.state === 1 ? "text-emerald-400 flex items-center gap-1" : "text-amber-400 flex items-center gap-1"}>
+            <span className={`w-1.5 h-1.5 rounded-full ${unifiDev.state === 1 ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`} />
+            {unifiDev.state === 1 ? "ONLINE" : "OFFLINE"}
+          </span>
+        </div>
+
+        {/* Common Metrics */}
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-0.5">
+          {showMetric('cpu') && (
+          <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
+            <span>CPU</span>
+            <span className={cpu > 80 ? "text-red-400 font-bold" : "text-blue-300"}>{parseFloat(cpu).toFixed(1)}%</span>
+          </div>
+          )}
+          {showMetric('ram') && (
+          <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
+            <span>RAM</span>
+            <span className={mem > 80 ? "text-red-400 font-bold" : "text-blue-300"}>{parseFloat(mem).toFixed(1)}%</span>
+          </div>
+          )}
+          {showMetric('uptime') && (
+          <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
+            <span>Uptime</span>
+            <span className="text-slate-300">{uptimeDays > 0 ? `${uptimeDays}d` : `${Math.floor(uptimeSecs/3600)}h`}</span>
+          </div>
+          )}
+          {showMetric('fw') && (
+          <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
+            <span>Fw</span>
+            <span className="text-slate-300 truncate max-w-[40px]" title={fw}>{fw}</span>
+          </div>
+          )}
+        </div>
+
+        {/* Access Point Specific */}
+        {isAP && (showMetric('wifi_experience') || showMetric('clients') || showMetric('channel_utilization')) && (
+          <div className="mt-1 pt-1 border-t border-blue-900/30 flex flex-col gap-1">
+            {showMetric('wifi_experience') && (
+            <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
+              <span className="font-bold text-blue-200">WiFi Experience</span>
+              <span className={unifiDev.satisfaction < 70 ? "text-amber-400 font-bold" : "text-emerald-400 font-bold"}>
+                {unifiDev.satisfaction || 0}%
+              </span>
+            </div>
+            )}
+            {showMetric('clients') && (
+            <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
+              <span>Clientes Conectados</span>
+              <span className="text-blue-300 font-bold">{unifiDev.num_sta || 0}</span>
+            </div>
+            )}
+            
+            {/* Radio Table (Channel Utilization) */}
+            {showMetric('channel_utilization') && unifiDev.radio_table_stats && unifiDev.radio_table_stats.map((radio, idx) => (
+              <div key={idx} className="flex justify-between items-center text-slate-400 font-mono text-[8.5px] bg-slate-900/40 px-1 rounded">
+                <span>{radio.radio === 'ng' ? '2.4G' : (radio.radio === 'na' ? '5G' : '6G')} (CH {radio.channel})</span>
+                <span className={radio.cu_total > 70 ? "text-amber-400" : "text-slate-300"}>Uso: {radio.cu_total || 0}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Switch Specific */}
+        {!isAP && (showMetric('lan_experience') || showMetric('rx_tx')) && (
+          <div className="mt-1 pt-1 border-t border-blue-900/30 flex flex-col gap-1">
+            {showMetric('lan_experience') && (
+            <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
+              <span className="font-bold text-blue-200">Experiência LAN</span>
+              <span className={unifiDev.satisfaction < 90 ? "text-amber-400 font-bold" : "text-emerald-400 font-bold"}>
+                {unifiDev.satisfaction || 100}%
+              </span>
+            </div>
+            )}
+            {showMetric('rx_tx') && (
+              <>
+                <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px] bg-slate-900/40 px-1 rounded">
+                  <span className="flex items-center gap-1"><span className="text-emerald-500">↓</span> RX Rate</span>
+                  <span className="text-slate-300">{formatBytes(totalRxRate)}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px] bg-slate-900/40 px-1 rounded">
+                  <span className="flex items-center gap-1"><span className="text-blue-400">↑</span> TX Rate</span>
+                  <span className="text-slate-300">{formatBytes(totalTxRate)}</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+};
 
 export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapLoaded }) {
   const [mapData, setMapData] = useState({
@@ -25,17 +161,33 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   // Estados de edição / seleção
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [isAddNodeModalOpen, setIsAddNodeModalOpen] = useState(false);
+  const [isEditNodeModalOpen, setIsEditNodeModalOpen] = useState(false);
   const [isAddEdgeModalOpen, setIsAddEdgeModalOpen] = useState(false);
   const [isNewMapModalOpen, setIsNewMapModalOpen] = useState(false);
+  const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
 
-  // Formulário para novo nó
   const [newNodeForm, setNewNodeForm] = useState({
     asset_id: "",
+    child_asset_ids: [],
     label: "",
+    ip_address: "",
     icon_type: "Switch", // 'Switch', 'AccessPoint', 'Phone', 'Server', 'Firewall', 'Cloud'
     x: 400,
     y: 300,
+    zabbix_selected_metrics: [],
   });
+  
+  const [editNodeForm, setEditNodeForm] = useState({
+    id: "",
+    asset_id: "",
+    child_asset_ids: [],
+    label: "",
+    ip_address: "",
+    icon_type: "Switch",
+    zabbix_selected_metrics: [],
+  });
+  const [availableZabbixItems, setAvailableZabbixItems] = useState([]);
+  const [selectedZabbixInterface, setSelectedZabbixInterface] = useState("");
 
   // Formulário para nova conexão
   const [newEdgeForm, setNewEdgeForm] = useState({
@@ -57,6 +209,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [isPanMode, setIsPanMode] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Métricas ao vivo do Zabbix para exibir DENTRO dos cards
+  const [liveMetrics, setLiveMetrics] = useState({});
+  // Métricas do UniFi para exibir no painel de prevenção
+  const [unifiMetrics, setUnifiMetrics] = useState([]);
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [draggingNodeId, setDraggingNodeId] = useState(null);
@@ -139,7 +296,46 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         }));
       })
       .catch(console.error);
-  };
+        
+      fetchLiveMetrics(id);
+    };
+
+    const fetchLiveMetrics = async (mapId) => {
+      // Fetch UniFi Preventative Metrics regardless of mapId
+      try {
+        const unifiRes = await api.get("/integrations/unifi/devices");
+        if (unifiRes.data && unifiRes.data.devices) {
+          setUnifiMetrics(unifiRes.data.devices);
+        }
+      } catch (e) {
+        // silent fail if UniFi is not configured
+      }
+
+      if (!mapId) return; // Se não tem mapa selecionado, não busca métricas do zabbix
+
+      try {
+        const res = await api.get(`/network-maps/${mapId}`);
+        const mapNodes = res.data.nodes_data || [];
+        
+        const assetsToFetch = mapNodes.filter(n => n.asset_id);
+        const metricsMap = { ...liveMetrics };
+        
+        await Promise.all(assetsToFetch.map(async (node) => {
+          try {
+            const metricsRes = await api.get(`/zabbix/assets/${node.asset_id}/network-interfaces`);
+            if (metricsRes.data && metricsRes.data.interfaces && metricsRes.data.interfaces.length > 0) {
+              metricsMap[node.asset_id] = metricsRes.data.interfaces;
+            }
+          } catch (e) {
+            // silent fail for nodes without metrics
+          }
+        }));
+        setLiveMetrics(metricsMap);
+      } catch (err) {
+        console.error("Erro ao buscar métricas ao vivo", err);
+      }
+    };
+
 
   useEffect(() => {
     fetchMaps();
@@ -167,6 +363,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       zoom_level: zoom,
       pan_x: Math.round(pan.x),
       pan_y: Math.round(pan.y),
+      background_image_url: mapData.background_image_url,
     };
 
     api.put(`/network-maps/${mapData.id}`, payload)
@@ -211,31 +408,47 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   // Gerar Diagrama de Exemplo (Presets iguais à imagem fornecida)
   const handleSeedExampleMap = () => {
     const defaultNodes = [
-      { id: "node_fw", asset_id: null, label: "Firewall Core", icon_type: "Firewall", x: 260, y: 320, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_algar", asset_id: null, label: "Provedor Algar Telecom", icon_type: "Cloud", x: 80, y: 220, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_mega", asset_id: null, label: "Provedor Mega Telecom", icon_type: "Cloud", x: 80, y: 110, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_tesa", asset_id: null, label: "Provedor TESA Link", icon_type: "Cloud", x: 80, y: 440, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_fw", asset_id: null,
+    child_asset_ids: [], label: "Firewall Core", icon_type: "Firewall", x: 260, y: 320, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_algar", asset_id: null,
+    child_asset_ids: [], label: "Provedor Algar Telecom", icon_type: "Cloud", x: 80, y: 220, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_mega", asset_id: null,
+    child_asset_ids: [], label: "Provedor Mega Telecom", icon_type: "Cloud", x: 80, y: 110, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_tesa", asset_id: null,
+    child_asset_ids: [], label: "Provedor TESA Link", icon_type: "Cloud", x: 80, y: 440, icmp_status: "online", zabbix_status: "ok" },
       
-      { id: "node_sw_core", asset_id: null, label: "Switch_Core_Huawei", icon_type: "Switch", x: 520, y: 320, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_sw_core", asset_id: null,
+    child_asset_ids: [], label: "Switch_Core_Huawei", icon_type: "Switch", x: 520, y: 320, icmp_status: "online", zabbix_status: "ok" },
       
       // Access Points no topo
-      { id: "node_ap1", asset_id: null, label: "AP-ALPHA-NOC", icon_type: "AccessPoint", x: 380, y: 110, icmp_status: "online", zabbix_status: "problem", zabbix_alert_title: "High error rate" },
-      { id: "node_ap2", asset_id: null, label: "AP_SALA_REUNIAO", icon_type: "AccessPoint", x: 500, y: 110, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_ap3", asset_id: null, label: "AP-ALPHA-OFFICE", icon_type: "AccessPoint", x: 620, y: 110, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_ap4", asset_id: null, label: "AP-ALPHA-PRESIDENTE", icon_type: "AccessPoint", x: 740, y: 110, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_ap1", asset_id: null,
+    child_asset_ids: [], label: "AP-ALPHA-NOC", icon_type: "AccessPoint", x: 380, y: 110, icmp_status: "online", zabbix_status: "problem", zabbix_alert_title: "High error rate" },
+      { id: "node_ap2", asset_id: null,
+    child_asset_ids: [], label: "AP_SALA_REUNIAO", icon_type: "AccessPoint", x: 500, y: 110, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_ap3", asset_id: null,
+    child_asset_ids: [], label: "AP-ALPHA-OFFICE", icon_type: "AccessPoint", x: 620, y: 110, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_ap4", asset_id: null,
+    child_asset_ids: [], label: "AP-ALPHA-PRESIDENTE", icon_type: "AccessPoint", x: 740, y: 110, icmp_status: "online", zabbix_status: "ok" },
 
       // Switch Cisco com Alerta Vermelho
-      { id: "node_sw_cisco", asset_id: null, label: "Switch_Cisco_Andar", icon_type: "Switch", x: 720, y: 380, icmp_status: "online", zabbix_status: "problem", zabbix_alert_title: "Link-down alert" },
+      { id: "node_sw_cisco", asset_id: null,
+    child_asset_ids: [], label: "Switch_Cisco_Andar", icon_type: "Switch", x: 720, y: 380, icmp_status: "online", zabbix_status: "problem", zabbix_alert_title: "Link-down alert" },
 
       // Telefones IP à direita
-      { id: "node_tel1", asset_id: null, label: "Telefone Pregão", icon_type: "Phone", x: 920, y: 130, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_tel2", asset_id: null, label: "Telefone Sala Reunião", icon_type: "Phone", x: 920, y: 220, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_tel3", asset_id: null, label: "Telefone Financeiro", icon_type: "Phone", x: 920, y: 310, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_tel4", asset_id: null, label: "Telefone RH", icon_type: "Phone", x: 920, y: 400, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_tel1", asset_id: null,
+    child_asset_ids: [], label: "Telefone Pregão", icon_type: "Phone", x: 920, y: 130, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_tel2", asset_id: null,
+    child_asset_ids: [], label: "Telefone Sala Reunião", icon_type: "Phone", x: 920, y: 220, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_tel3", asset_id: null,
+    child_asset_ids: [], label: "Telefone Financeiro", icon_type: "Phone", x: 920, y: 310, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_tel4", asset_id: null,
+    child_asset_ids: [], label: "Telefone RH", icon_type: "Phone", x: 920, y: 400, icmp_status: "online", zabbix_status: "ok" },
 
       // Servidores no rodapé
-      { id: "node_srv_zabbix", asset_id: null, label: "Servidor Zabbix NOC", icon_type: "Server", x: 720, y: 550, icmp_status: "online", zabbix_status: "ok" },
-      { id: "node_videowall", asset_id: null, label: "VideoWall TV Controller", icon_type: "Server", x: 520, y: 550, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_srv_zabbix", asset_id: null,
+    child_asset_ids: [], label: "Servidor Zabbix NOC", icon_type: "Server", x: 720, y: 550, icmp_status: "online", zabbix_status: "ok" },
+      { id: "node_videowall", asset_id: null,
+    child_asset_ids: [], label: "VideoWall TV Controller", icon_type: "Server", x: 520, y: 550, icmp_status: "online", zabbix_status: "ok" },
     ];
 
     const defaultEdges = [
@@ -359,6 +572,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       generatedNodes.push({
         id: "node_fw_virtual",
         asset_id: null,
+    child_asset_ids: [],
         label: "Firewall Core / ISP",
         icon_type: "Firewall",
         x: 450,
@@ -401,6 +615,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       generatedNodes.push({
         id: mainSwitchNodeId,
         asset_id: null,
+    child_asset_ids: [],
         label: "Switch Core Central",
         icon_type: "Switch",
         x: 450,
@@ -565,17 +780,28 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   // Adicionar Nó ao Mapa
   const handleAddNode = () => {
     const selectedAsset = assetsList.find(a => String(a.id) === String(newNodeForm.asset_id));
+    
+    // Calcula o centro da tela atual baseado no pan e zoom
+    const container = containerRef.current;
+    const cWidth = container ? container.clientWidth : 1200;
+    const cHeight = container ? container.clientHeight : 750;
+    const centerX = (-pan.x + cWidth / 2) / zoom - 60;
+    const centerY = (-pan.y + cHeight / 2) / zoom - 45;
+
     const newNode = {
       id: `node_${Date.now()}`,
       asset_id: selectedAsset ? selectedAsset.id : null,
       label: newNodeForm.label || (selectedAsset ? selectedAsset.name : "Novo Equipamento"),
       icon_type: newNodeForm.icon_type,
-      x: Math.floor(Math.random() * 400) + 200,
-      y: Math.floor(Math.random() * 300) + 150,
+      x: Math.round(centerX),
+      y: Math.round(centerY),
       icmp_status: selectedAsset ? selectedAsset.icmp_status : "online",
       zabbix_status: selectedAsset ? selectedAsset.zabbix_status : "ok",
       zabbix_alert_title: selectedAsset ? selectedAsset.zabbix_alert_title : null,
-      ip_address: selectedAsset ? selectedAsset.ip_address : "",
+      ip_address: newNodeForm.ip_address || (selectedAsset ? selectedAsset.ip_address : ""),
+      zabbix_selected_metrics: [...newNodeForm.zabbix_selected_metrics],
+      child_asset_ids: newNodeForm.child_asset_ids || [],
+      rack_display_options: newNodeForm.rack_display_options || { show_ip: true, unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'] }
     };
 
     setMapData((prev) => ({
@@ -584,7 +810,83 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }));
 
     setIsAddNodeModalOpen(false);
-    setNewNodeForm({ asset_id: "", label: "", icon_type: "Switch", x: 400, y: 300 });
+    setNewNodeForm({ asset_id: "",
+    child_asset_ids: [], label: "", ip_address: "", icon_type: "Switch", x: 400, y: 300, zabbix_selected_metrics: [] });
+    setAvailableZabbixItems([]);
+    setSelectedZabbixInterface("");
+  };
+
+  // Abrir Modal de Edição de Nó
+  const openEditNodeModal = async (nodeId) => {
+    const node = mapData.nodes_data.find(n => n.id === nodeId);
+    if (!node) return;
+    
+    setEditNodeForm({
+      id: node.id,
+      asset_id: node.asset_id ? String(node.asset_id) : "",
+      label: node.label,
+      icon_type: node.icon_type,
+      zabbix_selected_metrics: node.zabbix_selected_metrics || [],
+      child_asset_ids: node.child_asset_ids || [],
+      rack_display_options: node.rack_display_options || { show_ip: true, unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'] }
+    });
+    setAvailableZabbixItems([]);
+    setSelectedZabbixInterface("");
+
+    if (node.asset_id) {
+      const selected = assetsList.find(a => String(a.id) === String(node.asset_id));
+      if (selected && selected.zabbix_items) {
+        setAvailableZabbixItems(selected.zabbix_items);
+        const interfaces = Array.from(new Set(selected.zabbix_items.map(i => i.interface_name).filter(Boolean)));
+        let initialInterface = "";
+        if (node.zabbix_selected_metrics && node.zabbix_selected_metrics.length > 0) {
+          const firstChecked = selected.zabbix_items.find(i => node.zabbix_selected_metrics.some(m => (typeof m === 'string' ? m : m.name) === i.name));
+          if (firstChecked && firstChecked.interface_name) {
+            initialInterface = firstChecked.interface_name;
+          }
+        }
+        
+        if (!initialInterface && interfaces.length > 0) {
+          initialInterface = interfaces[0];
+        }
+        
+        setSelectedZabbixInterface(initialInterface);
+      }
+    }
+    
+    setIsEditNodeModalOpen(true);
+  };
+
+  // Salvar Edição do Nó
+  const handleSaveEditNode = () => {
+    const selectedAsset = assetsList.find(a => String(a.id) === editNodeForm.asset_id);
+    
+    setHasUnsavedChanges(true);
+    setMapData(prev => ({
+      ...prev,
+      nodes_data: prev.nodes_data.map(n => {
+        if (n.id === editNodeForm.id) {
+          return {
+            ...n,
+            asset_id: selectedAsset ? selectedAsset.id : null,
+            child_asset_ids: editNodeForm.child_asset_ids || [],
+            rack_display_options: editNodeForm.rack_display_options || { show_ip: true, unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'] },
+            label: editNodeForm.label || (selectedAsset ? selectedAsset.name : n.label),
+            icon_type: editNodeForm.icon_type,
+            ip_address: editNodeForm.ip_address || (selectedAsset ? selectedAsset.ip_address : n.ip_address),
+            zabbix_selected_metrics: [...editNodeForm.zabbix_selected_metrics],
+            icmp_status: selectedAsset ? selectedAsset.icmp_status : n.icmp_status,
+            zabbix_status: selectedAsset ? selectedAsset.zabbix_status : n.zabbix_status,
+            zabbix_alert_title: selectedAsset ? selectedAsset.zabbix_alert_title : n.zabbix_alert_title,
+          };
+        }
+        return n;
+      }),
+    }));
+    
+    setIsEditNodeModalOpen(false);
+    setAvailableZabbixItems([]);
+    setSelectedZabbixInterface("");
   };
 
   // Adicionar Conexão entre Nós
@@ -694,6 +996,28 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }
   };
 
+  // Determina se o Nó (ou qualquer um de seus filhos) está offline
+  const getIsNodeOffline = (node) => {
+    if (node.icmp_status === "offline") return true;
+    if (node.ip_address) {
+      const u = unifiMetrics.find(um => um.ip === node.ip_address);
+      if (u && u.state === 0) return true;
+    }
+    if (node.child_asset_ids && node.child_asset_ids.length > 0) {
+      for (const cid of node.child_asset_ids) {
+        const childAsset = assetsList.find(a => String(a.id) === String(cid));
+        if (childAsset) {
+          if (childAsset.icmp_status === "offline") return true;
+          if (childAsset.ip_address) {
+            const uc = unifiMetrics.find(um => um.ip === childAsset.ip_address);
+            if (uc && uc.state === 0) return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
   return (
     <div className="space-y-4">
       
@@ -766,14 +1090,26 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               <LinkIcon size={15} /> Conectar Nós (Cabos)
             </button>
 
+            
+
+
             {selectedNodeId && (
-              <button
-                onClick={handleDeleteSelectedNode}
-                className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-red-500/30"
-                title="Excluir nó selecionado"
-              >
-                <Trash2 size={14} /> Excluir Nó
-              </button>
+              <>
+                <button
+                  onClick={() => openEditNodeModal(selectedNodeId)}
+                  className="bg-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-blue-500/30"
+                  title="Editar configurações deste equipamento"
+                >
+                  <Edit3 size={14} /> Editar Equipamento
+                </button>
+                <button
+                  onClick={handleDeleteSelectedNode}
+                  className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-red-500/30"
+                  title="Excluir nó selecionado"
+                >
+                  <Trash2 size={14} /> Excluir Nó
+                </button>
+              </>
             )}
 
             {hasUnsavedChanges && (
@@ -900,11 +1236,22 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             }}
             className="w-[4000px] h-[3000px] absolute inset-0"
           >
+            
+            {/* Background Image (Planta Baixa) */}
+            {mapData.background_image_url && (
+              <img 
+                src={mapData.background_image_url} 
+                alt="Planta Baixa" 
+                className="absolute top-0 left-0 w-full h-full object-contain opacity-50 pointer-events-none -z-20"
+                style={{ objectPosition: "center" }}
+              />
+            )}
+
             {/* Background Grid Lines Pattern */}
             <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#334155_1.5px,transparent_1.5px)] [background-size:28px_28px]" />
 
             {/* SVG Layer for Network Edges / Connecting Cables */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
               {mapData.edges_data.map((edge) => {
                 const sourceNode = mapData.nodes_data.find(n => n.id === edge.source_id);
                 const targetNode = mapData.nodes_data.find(n => n.id === edge.target_id);
@@ -917,9 +1264,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 const x2 = targetNode.x + 60;
                 const y2 = targetNode.y + 45;
 
-                const isSourceProblem = sourceNode.zabbix_status === "problem" || sourceNode.icmp_status === "offline";
-                const isTargetProblem = targetNode.zabbix_status === "problem" || targetNode.icmp_status === "offline";
-                const isProblemLink = isSourceProblem || isTargetProblem;
+                const isSourceOffline = sourceNode.icmp_status === "offline";
+                const isTargetOffline = targetNode.icmp_status === "offline";
+                const isProblemLink = isSourceOffline || isTargetOffline;
 
                 const strokeColor = isProblemLink ? "#ef4444" : "#10b981";
 
@@ -971,37 +1318,49 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             </svg>
 
             {/* DOM Layer for Network Nodes / Hardware Cards */}
-            <div className="absolute inset-0 z-20">
+            <div className="absolute inset-0">
               {mapData.nodes_data.map((node) => {
-                const isProblem = node.zabbix_status === "problem";
-                const isOffline = node.icmp_status === "offline";
+                const isOffline = getIsNodeOffline(node);
                 const isSelected = selectedNodeId === node.id;
 
                 return (
                   <div
                     key={node.id}
                     onMouseDown={(e) => handleMouseDownNode(node.id, e)}
+                    onDoubleClick={() => {
+                      if (!isPublicView) {
+                        openEditNodeModal(node.id);
+                      }
+                    }}
                     style={{ left: `${node.x}px`, top: `${node.y}px` }}
-                    className={`absolute w-36 p-3 rounded-2xl border transition-all duration-150 cursor-grab active:cursor-grabbing backdrop-blur-md shadow-xl ${
-                      isOffline
-                        ? "bg-red-950/80 border-red-500 text-white ring-4 ring-red-500/20 animate-bounce"
-                        : isProblem
-                        ? "bg-red-950/60 border-red-500/80 text-white ring-2 ring-red-500/30"
-                        : isSelected
-                        ? "bg-slate-900 border-blue-500 ring-2 ring-blue-500/40 text-white"
-                        : "bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-200"
+                    className={`absolute transition-all duration-150 cursor-grab active:cursor-grabbing shadow-xl ${
+                      node.icon_type === 'Zone' 
+                        ? "w-56 p-4 border-4 border-dashed rounded-3xl z-30 backdrop-blur-md " + (
+                          isOffline ? "border-red-500 bg-red-950/80 animate-bounce" : "border-slate-500 bg-slate-800/80"
+                        )
+                        : node.icon_type === 'Rack' 
+                        ? "w-56 p-4 border-2 rounded-xl z-30 backdrop-blur-md " + (
+                          isOffline ? "border-red-500 bg-red-950/80 animate-bounce" : "border-slate-400 bg-slate-900/90 shadow-xl"
+                        )
+                        : "w-36 p-3 rounded-2xl border z-30 backdrop-blur-md " + (
+                          isOffline
+                            ? "bg-red-950/80 border-red-500 text-white ring-4 ring-red-500/20 animate-bounce"
+                            : isSelected
+                            ? "bg-slate-900 border-blue-500 ring-2 ring-blue-500/40 text-white"
+                            : "bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-200"
+                        )
                     }`}
                   >
                     {/* Node Icon Header */}
                     <div className="flex items-center justify-between gap-1 mb-1">
                       <div className={`p-2 rounded-xl ${
-                        isProblem || isOffline ? "bg-red-500/20 border border-red-500/30" : "bg-slate-800"
+                        isOffline ? "bg-red-500/20 border border-red-500/30" : "bg-slate-800"
                       }`}>
-                        {renderNodeIcon(node.icon_type, isProblem, isOffline)}
+                        {renderNodeIcon(node.icon_type, false, isOffline)}
                       </div>
 
                       <span className={`w-2.5 h-2.5 rounded-full ${
-                        isOffline ? "bg-red-500 animate-ping" : isProblem ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-pulse"
+                        isOffline ? "bg-red-500 animate-ping" : "bg-emerald-500 animate-pulse"
                       }`} />
                     </div>
 
@@ -1016,14 +1375,93 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                           {node.ip_address}
                         </p>
                       )}
-
-                      {/* Zabbix Alert Pill */}
-                      {isProblem && (
-                        <div className="mt-1.5 p-1 rounded bg-red-500/20 border border-red-500/40 text-[9px] font-black text-red-300 truncate" title={node.zabbix_alert_title}>
-                          ⚠️ {node.zabbix_alert_title || "Em Alerta"}
+                      {node.child_asset_ids && node.child_asset_ids.length > 0 && (
+                        <div className="mt-2 w-full">
+                          <div className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                            {node.child_asset_ids.length} {node.child_asset_ids.length === 1 ? 'Equipamento' : 'Equipamentos'}
+                          </div>
+                          <div className="space-y-1">
+                            {node.child_asset_ids.map(cid => {
+                              const child = assetsList.find(a => String(a.id) === String(cid));
+                              if (!child) return null;
+                              const childUnifiDev = child.ip_address ? unifiMetrics.find(um => um.ip === child.ip_address) : null;
+                              const childOffline = child.icmp_status === "offline" || (childUnifiDev && childUnifiDev.state === 0);
+                              
+                              const showIp = node.rack_display_options?.show_ip ?? true;
+                              const unifiMetricsSelected = node.rack_display_options?.unifi_metrics ?? ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'];
+                              
+                              return (
+                                <div key={cid} className={`flex flex-col gap-1.5 px-2 py-1.5 rounded-lg text-[10px] ${childOffline ? 'bg-red-900/40 border border-red-500/30' : 'bg-slate-800/60'}`}>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${childOffline ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
+                                    <span className="font-bold text-white truncate flex-1">{child.name}</span>
+                                    {showIp && <span className="font-mono text-slate-500 text-[9px]">{child.ip_address || ''}</span>}
+                                  </div>
+                                  {childUnifiDev && <UnifiMetricsBlock unifiDev={childUnifiDev} selectedMetrics={unifiMetricsSelected} />}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
+                    
+                    {/* Renderização das Métricas Zabbix dentro do Card */}
+                    {node.asset_id && liveMetrics[node.asset_id] && (
+                      <div className="mt-3 space-y-1.5 border-t border-slate-700/50 pt-2">
+                        {liveMetrics[node.asset_id].map((iface, idx) => {
+                          // Se o usuário selecionou métricas específicas (array existe), mostramos apenas as selecionadas.
+                          // Se for um nó antigo sem a prop zabbix_selected_metrics, mostramos todas (retro-compatibilidade).
+                          if (node.zabbix_selected_metrics && Array.isArray(node.zabbix_selected_metrics) && node.zabbix_selected_metrics.length > 0) {
+                            const assetObj = assetsList.find(a => String(a.id) === String(node.asset_id));
+                            if (assetObj && assetObj.zabbix_items) {
+                              const checkedItemsForThisIface = assetObj.zabbix_items.filter(
+                                i => i.interface_name === iface.interface_name && node.zabbix_selected_metrics.some(m => (typeof m === 'string' ? m : m.name) === i.name)
+                              );
+                              if (checkedItemsForThisIface.length === 0) return null;
+                            } else {
+                              return null;
+                            }
+                          }
+
+                          const isDown = iface.status === "down";
+                          return (
+                            <div key={idx} className={`bg-slate-950/50 rounded-lg p-1.5 border ${isDown ? 'border-red-500/30' : 'border-slate-800'} text-[9px] flex flex-col gap-1`}>
+                              <div className="flex items-center justify-between font-bold border-b border-slate-800 pb-1 mb-0.5">
+                                <span className="text-slate-300 truncate max-w-[80px]" title={iface.interface_name}>{iface.interface_name}</span>
+                                {iface.status !== "unknown" && (
+                                  <span className={isDown ? "text-red-400" : "text-emerald-400"}>
+                                    {isDown ? "DOWN" : "UP"}
+                                  </span>
+                                )}
+                              </div>
+                              {node.zabbix_selected_metrics
+                                .filter(m => {
+                                  const mName = typeof m === 'string' ? m : m.name;
+                                  return iface.raw_items && iface.raw_items[mName] !== undefined;
+                                })
+                                .map(m => {
+                                  const mName = typeof m === 'string' ? m : m.name;
+                                  const customLabel = typeof m === 'string' ? (mName.split(': ').pop() || mName) : (m.custom_label || mName.split(': ').pop() || mName);
+                                  return (
+                                  <div key={mName} className="flex justify-between items-center text-slate-500 font-mono text-[8px]">
+                                    <span className="truncate pr-2" title={customLabel}>{customLabel}</span>
+                                    <span className={String(iface.raw_items[mName]).includes("DOWN") || String(iface.raw_items[mName]).includes("ERROR") ? "text-red-400 font-bold" : "text-emerald-400"}>
+                                      {iface.raw_items[mName]}
+                                    </span>
+                                  </div>
+                                )})}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Renderização das Métricas UniFi */}
+                    {unifiMetrics.length > 0 && node.ip_address && (
+                      <UnifiMetricsBlock unifiDev={unifiMetrics.find(u => u.ip === node.ip_address)} selectedMetrics={null} />
+                    )}
+
                   </div>
                 );
               })}
@@ -1045,18 +1483,29 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3 text-xs max-h-[60vh] overflow-y-auto pr-2">
               <div>
                 <label className="block text-slate-400 font-bold mb-1">Vincular Ativo do CMDB (Opcional):</label>
                 <select
                   value={newNodeForm.asset_id}
-                  onChange={(e) => {
-                    const selected = assetsList.find(a => String(a.id) === e.target.value);
+                  onChange={async (e) => {
+                    const assetId = e.target.value;
+                    const selected = assetsList.find(a => String(a.id) === assetId);
+                    
                     setNewNodeForm(prev => ({
                       ...prev,
-                      asset_id: e.target.value,
-                      label: selected ? selected.name : prev.label
+                      asset_id: assetId,
+                      label: selected ? selected.name : prev.label,
+                      zabbix_selected_metrics: []
                     }));
+                    setAvailableZabbixItems([]);
+                    setSelectedZabbixInterface("");
+
+                    if (assetId && selected && selected.zabbix_items) {
+                      setAvailableZabbixItems(selected.zabbix_items);
+                      const interfaces = Array.from(new Set(selected.zabbix_items.map(i => i.interface_name).filter(Boolean)));
+                      if (interfaces.length > 0) setSelectedZabbixInterface(interfaces[0]);
+                    }
                   }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
                 >
@@ -1065,6 +1514,21 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     <option key={a.id} value={a.id}>{a.name} ({a.ip_address || "Sem IP"}) • {a.type}</option>
                   ))}
                 </select>
+              </div>
+
+
+
+
+              
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Endereço IP (Opcional - Necessário para UniFi se não tiver CMDB):</label>
+                <input
+                  type="text"
+                  placeholder="Ex: 192.168.1.10"
+                  value={newNodeForm.ip_address}
+                  onChange={(e) => setNewNodeForm(prev => ({ ...prev, ip_address: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                />
               </div>
 
               <div>
@@ -1091,13 +1555,400 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   <option value="Server">Servidor / Datacenter</option>
                   <option value="Firewall">Firewall / Gateway</option>
                   <option value="Cloud">Link de Provedor WAN / Nuvem</option>
+                  <option value="Rack">Rack (Contêiner)</option>
+                  <option value="Zone">Ambiente / Sala (Zona)</option>
                 </select>
               </div>
+
+              {/* Seleção de Filhos para Racks e Zonas */}
+              {(newNodeForm.icon_type === 'Rack' || newNodeForm.icon_type === 'Zone') && (
+                <div className="mt-3">
+                  <label className="block text-slate-400 font-bold mb-1 flex items-center gap-2">
+                    <CheckCircle size={14} className="text-blue-500"/>
+                    Ativos Contidos (Agrupamento):
+                  </label>
+                  <div className="max-h-48 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl p-2 space-y-1">
+                    {assetsList.map(a => {
+                      const isChecked = newNodeForm.child_asset_ids?.includes(String(a.id));
+                      return (
+                        <label key={a.id} className={`flex items-center gap-2 text-xs p-1.5 rounded-md cursor-pointer transition-colors ${isChecked ? 'bg-blue-900/40 text-blue-300' : 'text-slate-300 hover:bg-slate-800'}`}>
+                          <input 
+                            type="checkbox" 
+                            className="w-3.5 h-3.5 accent-blue-500 rounded"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const newIds = e.target.checked 
+                                ? [...(newNodeForm.child_asset_ids || []), String(a.id)]
+                                : (newNodeForm.child_asset_ids || []).filter(id => id !== String(a.id));
+                              setNewNodeForm(prev => ({...prev, child_asset_ids: newIds}));
+                            }}
+                          />
+                          <span className="font-semibold truncate">{a.name}</span>
+                          <span className="text-[9px] text-slate-500 ml-auto font-mono">{a.ip_address}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+
+              {availableZabbixItems.length > 0 && (
+                <div className="pt-2 border-t border-slate-800">
+                  <div className="mb-3">
+                    <label className="block text-slate-300 font-black mb-1">Selecione o Grupo / Interface:</label>
+                    <select
+                      value={selectedZabbixInterface}
+                      onChange={(e) => setSelectedZabbixInterface(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                    >
+                      <option value="">Selecione uma interface</option>
+                      {Array.from(new Set(availableZabbixItems.map(i => i.interface_name).filter(Boolean))).map(iface => (
+                        <option key={iface} value={iface}>{iface}</option>
+                      ))}
+                      <option value="geral">Métricas Gerais / Sem Interface</option>
+                    </select>
+                  </div>
+
+                  {selectedZabbixInterface && (
+                    <>
+                      <label className="block text-slate-300 font-black mb-2">Exibir Métricas neste Nó:</label>
+                      <div className="space-y-2 max-h-40 overflow-y-auto bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        {availableZabbixItems
+                          .filter(i => (selectedZabbixInterface === "geral" ? !i.interface_name : i.interface_name === selectedZabbixInterface))
+                          .map(item => {
+                            const isChecked = newNodeForm.zabbix_selected_metrics.some(m => (typeof m === 'string' ? m : m.name) === item.name);
+                            const metricObj = newNodeForm.zabbix_selected_metrics.find(m => (typeof m === 'string' ? m : m.name) === item.name) || {};
+                            const customLabel = typeof metricObj === 'string' ? (metricObj.split(': ').pop() || metricObj) : (metricObj.custom_label || item.name.split(': ').pop() || item.name);
+                            return (
+                              <div key={item.name} className="flex flex-col gap-1">
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      setNewNodeForm(prev => {
+                                        const curr = [...prev.zabbix_selected_metrics];
+                                        if (e.target.checked) curr.push({ name: item.name, custom_label: item.name.split(': ').pop() || item.name });
+                                        else {
+                                          const idx = curr.findIndex(m => (typeof m === 'string' ? m : m.name) === item.name);
+                                          if (idx > -1) curr.splice(idx, 1);
+                                        }
+                                        return { ...prev, zabbix_selected_metrics: curr };
+                                      });
+                                    }}
+                                    className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-blue-500/50 cursor-pointer"
+                                  />
+                                  <span className="text-slate-400 font-bold group-hover:text-white transition-colors text-xs">{item.name}</span>
+                                </label>
+                                {isChecked && (
+                                  <div className="pl-6 pb-2 flex flex-col gap-1">
+                                    <label className="text-[10px] text-slate-500 font-bold">Rótulo no Mapa (Personalizado):</label>
+                                    <input
+                                      type="text"
+                                      value={customLabel}
+                                      onChange={(e) => {
+                                        setNewNodeForm(prev => {
+                                          const curr = [...prev.zabbix_selected_metrics];
+                                          const idx = curr.findIndex(m => (typeof m === 'string' ? m : m.name) === item.name);
+                                          if (idx > -1) curr[idx] = { name: item.name, custom_label: e.target.value };
+                                          return { ...prev, zabbix_selected_metrics: curr };
+                                        });
+                                      }}
+                                      className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-blue-500 w-full"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1.5 font-semibold">
+                        Apenas os itens marcados aparecerão dentro do bloco na topologia.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="pt-3 flex items-center justify-end gap-2">
-              <button onClick={() => setIsAddNodeModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold">Cancelar</button>
-              <button onClick={handleAddNode} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black">Adicionar Nó</button>
+              <button onClick={() => setIsAddNodeModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold cursor-pointer">Cancelar</button>
+              <button onClick={handleAddNode} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black cursor-pointer">Adicionar Nó</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Nó */}
+      {isEditNodeModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Edit3 size={18} className="text-blue-400" /> Editar Equipamento
+              </h3>
+              <button onClick={() => setIsEditNodeModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs max-h-[60vh] overflow-y-auto pr-2">
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Vincular Ativo do CMDB (Opcional):</label>
+                <select
+                  value={editNodeForm.asset_id}
+                  onChange={async (e) => {
+                    const assetId = e.target.value;
+                    const selected = assetsList.find(a => String(a.id) === assetId);
+                    
+                    setEditNodeForm(prev => ({
+                      ...prev,
+                      asset_id: assetId,
+                      label: selected ? selected.name : prev.label,
+                      zabbix_selected_metrics: []
+                    }));
+                    setAvailableZabbixMetrics([]);
+
+                    if (assetId && selected && selected.zabbix_items) {
+                      setAvailableZabbixMetrics(selected.zabbix_items.map(i => i.name));
+                    }
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                >
+                  <option value="">Nenhum (Equipamento de Infra / Link)</option>
+                  {assetsList.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name} ({a.ip_address || "Sem IP"}) • {a.type}</option>
+                  ))}
+                </select>
+              </div>
+
+
+
+
+              
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Endereço IP (Opcional - Necessário para UniFi se não tiver CMDB):</label>
+                <input
+                  type="text"
+                  placeholder="Ex: 192.168.1.10"
+                  value={newNodeForm.ip_address}
+                  onChange={(e) => setNewNodeForm(prev => ({ ...prev, ip_address: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Nome / Rótulo no Mapa:</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Switch_Core_01, AP-Recepcao..."
+                  value={editNodeForm.label}
+                  onChange={(e) => setEditNodeForm(prev => ({ ...prev, label: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Tipo de Ícone:</label>
+                <select
+                  value={editNodeForm.icon_type}
+                  onChange={(e) => setEditNodeForm(prev => ({ ...prev, icon_type: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                >
+                  <option value="Switch">Switch / Roteador</option>
+                  <option value="AccessPoint">Access Point (Wi-Fi)</option>
+                  <option value="Phone">Telefone IP / Ramal</option>
+                  <option value="Server">Servidor / Datacenter</option>
+                  <option value="Firewall">Firewall / Gateway</option>
+                  <option value="Cloud">Link de Provedor WAN / Nuvem</option>
+                  <option value="Rack">Rack (Contêiner)</option>
+                  <option value="Zone">Ambiente / Sala (Zona)</option>
+                </select>
+              </div>
+
+              {/* Seleção de Filhos para Racks e Zonas */}
+              {(editNodeForm.icon_type === 'Rack' || editNodeForm.icon_type === 'Zone') && (
+                <div className="mt-3">
+                  <label className="block text-slate-400 font-bold mb-1 flex items-center gap-2">
+                    <CheckCircle size={14} className="text-blue-500"/>
+                    Ativos Contidos (Agrupamento):
+                  </label>
+                  <div className="max-h-48 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl p-2 space-y-1">
+                    {assetsList.map(a => {
+                      const isChecked = editNodeForm.child_asset_ids?.includes(String(a.id));
+                      return (
+                        <label key={a.id} className={`flex items-center gap-2 text-xs p-1.5 rounded-md cursor-pointer transition-colors ${isChecked ? 'bg-blue-900/40 text-blue-300' : 'text-slate-300 hover:bg-slate-800'}`}>
+                          <input 
+                            type="checkbox" 
+                            className="w-3.5 h-3.5 accent-blue-500 rounded"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const newIds = e.target.checked 
+                                ? [...(editNodeForm.child_asset_ids || []), String(a.id)]
+                                : (editNodeForm.child_asset_ids || []).filter(id => id !== String(a.id));
+                              setEditNodeForm(prev => ({...prev, child_asset_ids: newIds}));
+                            }}
+                          />
+                          <span className="font-semibold truncate">{a.name}</span>
+                          <span className="text-[9px] text-slate-500 ml-auto font-mono">{a.ip_address}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {editNodeForm.child_asset_ids && editNodeForm.child_asset_ids.length > 0 && (
+                    <div className="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                      <label className="block text-slate-400 font-bold mb-2 text-xs">Exibição dos Filhos no Mapa:</label>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                          <input 
+                            type="checkbox" 
+                            className="w-3.5 h-3.5 accent-blue-500 rounded"
+                            checked={editNodeForm.rack_display_options?.show_ip ?? true}
+                            onChange={(e) => {
+                              setEditNodeForm(prev => ({
+                                ...prev,
+                                rack_display_options: {
+                                  ...prev.rack_display_options,
+                                  show_ip: e.target.checked
+                                }
+                              }));
+                            }}
+                          />
+                          Mostrar Endereço IP
+                        </label>
+
+                        <div className="border-t border-slate-800 mt-2 pt-2">
+                          <label className="block text-slate-400 font-bold mb-2 text-xs">Métricas UniFi (Detalhes Avançados):</label>
+                          <div className="grid grid-cols-2 gap-2 pl-2">
+                            {[
+                              { id: 'cpu', label: 'CPU' },
+                              { id: 'ram', label: 'RAM' },
+                              { id: 'uptime', label: 'Uptime' },
+                              { id: 'fw', label: 'Firmware' },
+                              { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
+                              { id: 'clients', label: 'Clientes (AP)' },
+                              { id: 'channel_utilization', label: 'Uso de Canal (AP)' },
+                              { id: 'lan_experience', label: 'LAN Exp. (SW)' },
+                              { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
+                            ].map(metric => (
+                              <label key={metric.id} className="flex items-center gap-2 cursor-pointer text-[10px] text-slate-400 hover:text-slate-200">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-3 h-3 accent-blue-500 rounded"
+                                  checked={(editNodeForm.rack_display_options?.unifi_metrics || []).includes(metric.id)}
+                                  onChange={(e) => {
+                                    setEditNodeForm(prev => {
+                                      const currentMetrics = prev.rack_display_options?.unifi_metrics || [];
+                                      return {
+                                        ...prev,
+                                        rack_display_options: {
+                                          ...prev.rack_display_options,
+                                          unifi_metrics: e.target.checked 
+                                            ? [...currentMetrics, metric.id]
+                                            : currentMetrics.filter(m => m !== metric.id)
+                                        }
+                                      };
+                                    });
+                                  }}
+                                />
+                                {metric.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+
+
+
+              {availableZabbixItems.length > 0 && (
+                <div className="pt-2 border-t border-slate-800">
+                  <div className="mb-3">
+                    <label className="block text-slate-300 font-black mb-1">Selecione o Grupo / Interface:</label>
+                    <select
+                      value={selectedZabbixInterface}
+                      onChange={(e) => setSelectedZabbixInterface(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                    >
+                      <option value="">Selecione uma interface</option>
+                      {Array.from(new Set(availableZabbixItems.map(i => i.interface_name).filter(Boolean))).map(iface => (
+                        <option key={iface} value={iface}>{iface}</option>
+                      ))}
+                      <option value="geral">Métricas Gerais / Sem Interface</option>
+                    </select>
+                  </div>
+
+                  {selectedZabbixInterface && (
+                    <>
+                      <label className="block text-slate-300 font-black mb-2">Exibir Métricas neste Nó:</label>
+                      <div className="space-y-2 max-h-40 overflow-y-auto bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        {availableZabbixItems
+                          .filter(i => (selectedZabbixInterface === "geral" ? !i.interface_name : i.interface_name === selectedZabbixInterface))
+                          .map(item => {
+                            const isChecked = editNodeForm.zabbix_selected_metrics.some(m => (typeof m === 'string' ? m : m.name) === item.name);
+                            const metricObj = editNodeForm.zabbix_selected_metrics.find(m => (typeof m === 'string' ? m : m.name) === item.name) || {};
+                            const customLabel = typeof metricObj === 'string' ? (metricObj.split(': ').pop() || metricObj) : (metricObj.custom_label || item.name.split(': ').pop() || item.name);
+                            return (
+                              <div key={item.name} className="flex flex-col gap-1">
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      setEditNodeForm(prev => {
+                                        const curr = [...prev.zabbix_selected_metrics];
+                                        if (e.target.checked) curr.push({ name: item.name, custom_label: item.name.split(': ').pop() || item.name });
+                                        else {
+                                          const idx = curr.findIndex(m => (typeof m === 'string' ? m : m.name) === item.name);
+                                          if (idx > -1) curr.splice(idx, 1);
+                                        }
+                                        return { ...prev, zabbix_selected_metrics: curr };
+                                      });
+                                    }}
+                                    className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-blue-500/50 cursor-pointer"
+                                  />
+                                  <span className="text-slate-400 font-bold group-hover:text-white transition-colors text-xs">{item.name}</span>
+                                </label>
+                                {isChecked && (
+                                  <div className="pl-6 pb-2 flex flex-col gap-1">
+                                    <label className="text-[10px] text-slate-500 font-bold">Rótulo no Mapa (Personalizado):</label>
+                                    <input
+                                      type="text"
+                                      value={customLabel}
+                                      onChange={(e) => {
+                                        setEditNodeForm(prev => {
+                                          const curr = [...prev.zabbix_selected_metrics];
+                                          const idx = curr.findIndex(m => (typeof m === 'string' ? m : m.name) === item.name);
+                                          if (idx > -1) curr[idx] = { name: item.name, custom_label: e.target.value };
+                                          return { ...prev, zabbix_selected_metrics: curr };
+                                        });
+                                      }}
+                                      className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-blue-500 w-full"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1.5 font-semibold">
+                        Apenas os itens marcados aparecerão dentro do bloco na topologia.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-2">
+              <button onClick={() => { setIsEditNodeModalOpen(false); setAvailableZabbixItems([]); setSelectedZabbixInterface(""); }} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold cursor-pointer">Cancelar</button>
+              <button onClick={handleSaveEditNode} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black cursor-pointer">Salvar Alterações</button>
             </div>
           </div>
         </div>
@@ -1210,6 +2061,63 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         </div>
       )}
 
+    {/* Modal Planta Baixa */}
+      {isFloorplanModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Image size={18} className="text-amber-400" /> Definir Planta Baixa (Fundo)
+              </h3>
+              <button onClick={() => setIsFloorplanModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <p className="text-xs text-slate-400">
+                Cole a URL de uma imagem (JPG, PNG) para servir de planta baixa ou diagrama estrutural ao fundo do mapa.
+              </p>
+              <div>
+                <label className="block text-slate-400 font-bold mb-1 text-xs">URL da Imagem:</label>
+                <input
+                  type="text"
+                  placeholder="https://exemplo.com/planta.png"
+                  value={mapData.background_image_url || ""}
+                  onChange={(e) => {
+                    setMapData(prev => ({ ...prev, background_image_url: e.target.value }));
+                    setHasUnsavedChanges(true);
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                />
+              </div>
+              
+              {mapData.background_image_url && (
+                <div className="mt-2 text-right">
+                  <button
+                    onClick={() => {
+                      setMapData(prev => ({ ...prev, background_image_url: "" }));
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="text-red-400 text-xs font-bold hover:underline cursor-pointer"
+                  >
+                    Remover Planta Baixa
+                  </button>
+                </div>
+              )}
+
+              <button
+                onClick={() => setIsFloorplanModalOpen(false)}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl px-4 py-2 text-sm transition-colors cursor-pointer"
+              >
+                Concluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+
+      

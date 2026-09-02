@@ -14,6 +14,15 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 
+class ZabbixMonitorType(str, enum.Enum):
+    TRAFFIC_IN = "TRAFFIC_IN"
+    TRAFFIC_OUT = "TRAFFIC_OUT"
+    STATUS_UPDOWN = "STATUS_UPDOWN"
+    SDWAN_STATUS = "SDWAN_STATUS"
+    SPEED = "SPEED"
+    CUSTOM = "CUSTOM"
+
+
 class AssetType(str, enum.Enum):
     # Apartamento
     TV = "TV"
@@ -75,7 +84,25 @@ class Asset(Base):
     subcategory = relationship("Subcategory")
     category = relationship("Category")
     location = relationship("Location", back_populates="assets")
+    zabbix_items = relationship("AssetZabbixItem", back_populates="asset", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Asset {self.id}: {self.name} ({self.type.value})>"
+
+
+class AssetZabbixItem(Base):
+    __tablename__ = "asset_zabbix_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(Integer, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    zabbix_item_id = Column(String(50), nullable=False)
+    name = Column(String(200), nullable=False)
+    interface_name = Column(String(100), nullable=True)
+    monitor_type = Column(String(50), default=ZabbixMonitorType.CUSTOM.value, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    asset = relationship("Asset", back_populates="zabbix_items")
+
+    def __repr__(self):
+        return f"<AssetZabbixItem {self.id}: {self.name} ({self.monitor_type})>"
 

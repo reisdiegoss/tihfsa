@@ -23,6 +23,7 @@ def _format_map_response(net_map: NetworkMap) -> dict:
         "location_name": net_map.location.name if net_map.location else None,
         "nodes_data": net_map.nodes_data or [],
         "edges_data": net_map.edges_data or [],
+        "background_image_url": getattr(net_map, "background_image_url", None),
         "zoom_level": getattr(net_map, "zoom_level", 1.0) or 1.0,
         "pan_x": getattr(net_map, "pan_x", 0) or 0,
         "pan_y": getattr(net_map, "pan_y", 0) or 0,
@@ -107,6 +108,7 @@ def create_network_map(
         zoom_level=map_data.zoom_level if map_data.zoom_level is not None else 1.0,
         pan_x=map_data.pan_x if map_data.pan_x is not None else 0,
         pan_y=map_data.pan_y if map_data.pan_y is not None else 0,
+        background_image_url=map_data.background_image_url,
     )
     db.add(net_map)
     db.commit()
@@ -143,6 +145,8 @@ def update_network_map(
         net_map.pan_x = map_data.pan_x
     if map_data.pan_y is not None:
         net_map.pan_y = map_data.pan_y
+    if map_data.background_image_url is not None:
+        net_map.background_image_url = map_data.background_image_url
 
     db.commit()
     db.refresh(net_map)

@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { 
   Activity, Server, Wifi, Cpu, AlertCircle, CheckCircle, 
-  RefreshCw, MapPin, Tag, Copy, Check, Tv, Maximize2, Terminal, X, Search, Network
+  RefreshCw, MapPin, Tag, Copy, Check, Tv, Maximize2, Terminal, X, Search, Network,
+  Lock, Unlock, Key
 } from "lucide-react";
 import api from "../../api/client";
 import TopologyMapBuilder from "../../components/admin/TopologyMapBuilder";
@@ -36,6 +37,59 @@ export default function PublicNocPanel() {
 
   // Modal de Diagnóstico Ping ao Vivo
   const [pingModal, setPingModal] = useState({ open: false, asset: null, loading: false, result: null });
+
+  // Unlock Modal & State (TV Inline Editing)
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [unlockModalOpen, setUnlockModalOpen] = useState(false);
+  const [unlockUsername, setUnlockUsername] = useState("admin");
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockError, setUnlockError] = useState("");
+  const [unlockTimer, setUnlockTimer] = useState(null);
+
+  const handleUnlockSubmit = (e) => {
+    e.preventDefault();
+    setUnlockError("");
+    const formData = new URLSearchParams();
+    formData.append("username", unlockUsername);
+    formData.append("password", unlockPassword);
+
+    api.post("/auth/login", formData, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    })
+      .then((res) => {
+        setIsUnlocked(true);
+        setUnlockModalOpen(false);
+        setUnlockPassword("");
+        // Auto lock after 3 minutes
+        resetUnlockTimer();
+      })
+      .catch((err) => {
+        setUnlockError("Credenciais inválidas");
+      });
+  };
+
+  const resetUnlockTimer = () => {
+    if (unlockTimer) clearTimeout(unlockTimer);
+    const timer = setTimeout(() => {
+      setIsUnlocked(false);
+    }, 3 * 60 * 1000); // 3 minutes
+    setUnlockTimer(timer);
+  };
+
+  // Reset timer on user interaction if unlocked
+  useEffect(() => {
+    const handleActivity = () => {
+      if (isUnlocked) resetUnlockTimer();
+    };
+    window.addEventListener("mousemove", handleActivity);
+    window.addEventListener("keydown", handleActivity);
+    window.addEventListener("click", handleActivity);
+    return () => {
+      window.removeEventListener("mousemove", handleActivity);
+      window.removeEventListener("keydown", handleActivity);
+      window.removeEventListener("click", handleActivity);
+    };
+  }, [isUnlocked, unlockTimer]);
 
   const fetchData = () => {
     setLoading(true);
@@ -86,7 +140,15 @@ export default function PublicNocPanel() {
   };
 
   const handleCopyShareableUrl = () => {
-    navigator.clipboard.writeText(window.location.href);
+    const params = new URLSearchParams();
+    if (locationId) params.set("location_id", locationId);
+    if (assetType && assetType !== "Todos") params.set("type", assetType);
+    if (statusFilter && statusFilter !== "Todos") params.set("status", statusFilter);
+    if (viewMode) params.set("view", viewMode);
+    if (mapId) params.set("map_id", mapId);
+    params.set("refresh", String(refreshIntervalSec));
+    const fullUrl = `${window.location.origin}/noc?${params.toString()}`;
+    navigator.clipboard.writeText(fullUrl);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2500);
   };
@@ -131,9 +193,34 @@ export default function PublicNocPanel() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl md:text-2xl font-black text-white tracking-tight uppercase">TIHFSA • Painel NOC TV</h1>
-              <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-0.5 rounded-full text-xs font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> TRANSMISSÃO PÚBLICA AO VIVO
-              </span>
+              <button 
+                onClick={() => {
+                  if (isUnlocked) {
+                    setIsUnlocked(false);
+                    if (unlockTimer) clearTimeout(unlockTimer);
+                  } else {
+                    setUnlockModalOpen(true);
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold transition-colors cursor-pointer border ${
+                  isUnlocked 
+                    ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20" 
+                    : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                }`}
+                title={isUnlocked ? "Modo de Edição Ativo. Cliqua para bloquear." : "Clique para desbloquear edição"}
+              >
+                {isUnlocked ? (
+                  <>
+                    <Unlock size={14} className="animate-pulse" />
+                    MODO DE EDIÇÃO AO VIVO
+                  </>
+                ) : (
+                  <>
+                    <Lock size={14} />
+                    TRANSMISSÃO PÚBLICA AO VIVO
+                  </>
+                )}
+              </button>
             </div>
             <p className="text-xs font-semibold text-slate-400 mt-1 flex items-center gap-2">
               <span>Monitoramento Unificado ICMP / Zabbix / SNMP</span>
@@ -235,7 +322,7 @@ export default function PublicNocPanel() {
 
       {/* Exibição do Mapa de Topologia em Tela Cheia para TV */}
       {viewMode === "map" ? (
-        <TopologyMapBuilder isPublicView={true} mapId={mapId ? parseInt(mapId, 10) : undefined} />
+        <TopologyMapBuilder isPublicView={!isUnlocked} mapId={mapId ? parseInt(mapId, 10) : undefined} />
       ) : (
         <>
           {/* Counter Metric Cards */}
@@ -452,27 +539,30 @@ export default function PublicNocPanel() {
       </>
       )}
 
-      {/* Modal Diagnóstico Ping ao Vivo */}
+      {/* Ping Modal */}
       {pingModal.open && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <Terminal size={18} className="text-blue-400" /> Diagnóstico Ping ao Vivo
-              </h3>
+        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
+                  <Terminal size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-200">Terminal de Diagnóstico</h3>
+                  <p className="text-xs text-slate-400">Ping ICMP para {pingModal.asset?.ip_address || "N/A"}</p>
+                </div>
+              </div>
               <button 
                 onClick={() => setPingModal({ open: false, asset: null, loading: false, result: null })}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-white transition-colors"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
-
-            <div className="space-y-2 text-xs">
-              <p className="text-slate-400 font-bold">
-                Alvo: <strong className="text-white">{pingModal.asset?.name}</strong> (IP: <span className="font-mono text-blue-400">{pingModal.asset?.ip_address}</span>)
-              </p>
-
+            
+            <div className="p-4 bg-[#0a0a0a] font-mono text-sm h-80 overflow-y-auto">
+              <div className="text-emerald-400 mb-2">$ ping -c 4 {pingModal.asset?.ip_address}</div>
               {pingModal.loading ? (
                 <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-3">
                   <RefreshCw size={32} className="animate-spin text-blue-500" />
@@ -517,6 +607,70 @@ export default function PublicNocPanel() {
         </div>
       )}
 
+
+      {/* Unlock Modal for TV Editing */}
+      {unlockModalOpen && (
+        <div className="fixed inset-0 z-[110] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                  <Key size={20} />
+                </div>
+                <h2 className="text-lg font-bold text-white">Desbloquear Painel</h2>
+              </div>
+              <button onClick={() => setUnlockModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-400 mb-4">
+              O modo de edição permite arrastar e modificar o mapa diretamente na TV. O painel bloqueará automaticamente após 3 minutos de inatividade.
+            </p>
+
+            <form onSubmit={handleUnlockSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Usuário</label>
+                <input
+                  type="text"
+                  value={unlockUsername}
+                  onChange={(e) => setUnlockUsername(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Senha de Admin</label>
+                <input
+                  type="password"
+                  value={unlockPassword}
+                  onChange={(e) => setUnlockPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:border-blue-500 outline-none"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {unlockError && (
+                <div className="text-xs text-red-400 bg-red-400/10 p-2 rounded-lg text-center font-semibold">
+                  {unlockError}
+                </div>
+              )}
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-2 text-sm font-bold transition-all cursor-pointer shadow-lg shadow-blue-500/20"
+                >
+                  Confirmar e Desbloquear
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+

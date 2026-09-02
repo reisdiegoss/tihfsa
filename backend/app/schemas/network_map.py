@@ -10,6 +10,7 @@ class NetworkMapBase(BaseModel):
     description: str | None = None
     is_default: bool = False
     location_id: int | None = None
+    background_image_url: str | None = None
     nodes_data: list[dict] = []
     edges_data: list[dict] = []
     zoom_level: float | None = 1.0
@@ -26,6 +27,7 @@ class NetworkMapUpdate(BaseModel):
     description: str | None = None
     is_default: bool | None = None
     location_id: int | None = None
+    background_image_url: str | None = None
     nodes_data: list[dict] | None = None
     edges_data: list[dict] | None = None
     zoom_level: float | None = None

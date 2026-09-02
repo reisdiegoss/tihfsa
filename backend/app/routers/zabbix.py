@@ -10,6 +10,7 @@ from app.models.user import User, UserRole
 from app.models.asset import Asset
 from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.services.zabbix_service import ZabbixService
+from app.services.evolution_service import EvolutionService
 
 router = APIRouter(prefix="/api/v1/zabbix", tags=["Zabbix"])
 
@@ -46,14 +47,10 @@ def _get_or_create_zabbix_system_user(db: Session) -> User:
     return system_user
 
 
-@router.get("/alerts")
-def list_zabbix_alerts(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
+def sync_active_zabbix_alerts(db: Session):
     """
-    Retorna apenas alertas do Zabbix cujos hosts foram importados para o CMDB do TIHFSA.
-    Gera um chamado automático associado ao usuário de sistema 'Sistema Zabbix NOC' caso não exista um em aberto.
+    Função centralizada para buscar problemas ativos no Zabbix e criar chamados
+    automaticamente. Retorna um dicionário com os alertas mapeados.
     """
     try:
         raw_problems = ZabbixService.get_active_triggers_with_hosts()
@@ -69,13 +66,12 @@ def list_zabbix_alerts(
         filtered_alerts = []
         noc_system_user = _get_or_create_zabbix_system_user(db)
 
-        for prob in raw_problems:
-            trigger_id = prob["trigger_id"]
-            event_title = prob["name"]
-            severity = prob["severity"]
-            clock = prob["clock"]
-            hosts = prob.get("hosts", [])
+        # Agrupar problemas ativos por asset
+        problems_by_asset_id = {}
+        unmatched_problems = []
 
+        for prob in raw_problems:
+            hosts = prob.get("hosts", [])
             matched_asset = None
             for h in hosts:
                 h_name = (h.get("name") or h.get("host") or "").strip()
@@ -88,62 +84,148 @@ def list_zabbix_alerts(
                     matched_asset = asset_by_name[h_name.lower()]
                     break
 
-            # Se o alerta pertence a um ativo cadastrado no TIHFSA:
             if matched_asset:
-                ticket_tag = f"[Zabbix #{trigger_id}]"
+                if matched_asset.id not in problems_by_asset_id:
+                    problems_by_asset_id[matched_asset.id] = {
+                        "asset": matched_asset,
+                        "problems": []
+                    }
+                problems_by_asset_id[matched_asset.id]["problems"].append(prob)
+            else:
+                unmatched_problems.append(prob)
 
-                # Verificar se já existe chamado em aberto para este evento/ativo
-                existing_ticket = (
-                    db.query(Ticket)
-                    .filter(
-                        Ticket.asset_id == matched_asset.id,
-                        Ticket.title.contains(ticket_tag),
-                        Ticket.status.in_([
-                            TicketStatus.NEW,
-                            TicketStatus.IN_PROGRESS,
-                            TicketStatus.PENDING_VALIDATION,
-                        ])
-                    )
-                    .first()
+        # FASE 1: CRIAR OU ATUALIZAR CHAMADO POR EQUIPAMENTO
+        for asset_id, data in problems_by_asset_id.items():
+            asset = data["asset"]
+            probs = data["problems"]
+            
+            # Ordena os problemas para pegar o de maior severidade como principal
+            probs.sort(key=lambda x: int(x.get("priority") or x.get("severity") or "0"), reverse=True)
+            main_prob = probs[0]
+            
+            main_trigger_id = main_prob.get("triggerid") or main_prob.get("trigger_id") or main_prob.get("eventid")
+            main_event_title = main_prob.get("description") or main_prob.get("name") or "Alerta Zabbix"
+            main_severity = main_prob.get("priority") or main_prob.get("severity") or "3"
+            main_clock = main_prob.get("lastchange") or main_prob.get("clock") or "0"
+
+            ticket_tag = f"[NOC Zabbix] Alertas - {asset.name}"
+
+            # Verificar se já existe chamado em aberto para este equipamento gerado pelo Zabbix
+            existing_ticket = (
+                db.query(Ticket)
+                .filter(
+                    Ticket.asset_id == asset.id,
+                    Ticket.title.like(ticket_tag + "%"),
+                    Ticket.status.in_([
+                        TicketStatus.NEW,
+                        TicketStatus.IN_PROGRESS,
+                        TicketStatus.PENDING_VALIDATION,
+                    ])
                 )
+                .first()
+            )
 
-                # Se NÃO existe chamado aberto para este alerta do ativo, CRIAR AUTOMATICAMENTE via Sistema Zabbix NOC!
-                if not existing_ticket:
-                    prio = _map_zabbix_severity_to_priority(severity)
-                    new_ticket = Ticket(
-                        title=f"{ticket_tag} {matched_asset.name} - {event_title}",
-                        description=(
-                            f"Chamado gerado automaticamente pelo NOC via Monitoramento Zabbix.\n\n"
-                            f"Equipamento: {matched_asset.name}\n"
-                            f"IP: {matched_asset.ip_address or 'N/A'}\n"
-                            f"Alerta: {event_title}\n"
-                            f"Severidade Zabbix: {severity}\n"
-                            f"ID do Evento: {trigger_id}"
-                        ),
-                        status=TicketStatus.NEW,
-                        priority=prio,
-                        requester_id=noc_system_user.id,
-                        asset_id=matched_asset.id,
-                        category_id=matched_asset.category_id,
-                        subcategory_id=matched_asset.subcategory_id,
+            # Extrair os trigger_ids atuais vinculados ao ativo
+            current_trigger_ids = [str(p.get("triggerid") or p.get("trigger_id") or p.get("eventid")) for p in probs]
+            all_alerts_text = "\n".join([f"- {p.get('description') or p.get('name')} (Sev: {p.get('priority') or p.get('severity')})" for p in probs])
+
+            if not existing_ticket:
+                # Criar um chamado agrupado para o ativo
+                prio = _map_zabbix_severity_to_priority(main_severity)
+                new_ticket = Ticket(
+                    title=ticket_tag,
+                    description=(
+                        f"Chamado gerado automaticamente pelo NOC via Monitoramento Zabbix.\n\n"
+                        f"Equipamento: {asset.name}\n"
+                        f"IP: {asset.ip_address or 'N/A'}\n\n"
+                        f"**Alertas Ativos:**\n{all_alerts_text}\n\n"
+                        f"Ids: {','.join(current_trigger_ids)}"
+                    ),
+                    status=TicketStatus.NEW,
+                    priority=prio,
+                    requester_id=noc_system_user.id,
+                    asset_id=asset.id,
+                    category_id=asset.category_id,
+                    subcategory_id=asset.subcategory_id,
+                )
+                db.add(new_ticket)
+                db.commit()
+                db.refresh(new_ticket)
+                existing_ticket = new_ticket
+                
+                # Notificar no WhatsApp que o equipamento caiu e um chamado foi gerado
+                try:
+                    msg_text = (
+                        f"🚨 *ALERTA ZABBIX: {asset.name}* 🚨\n\n"
+                        f"⚠️ Múltiplos ou Novo Alerta Registrado\n"
+                        f"🔴 Principal: {main_event_title}\n"
+                        f"🌐 IP: {asset.ip_address or 'N/A'}\n"
+                        f"🚨 Severidade Máxima: {main_severity}\n\n"
+                        f"🎫 Chamado automático agrupado: *#{new_ticket.id}*"
                     )
-                    db.add(new_ticket)
-                    db.commit()
-                    db.refresh(new_ticket)
-                    existing_ticket = new_ticket
+                    EvolutionService.send_whatsapp_message(msg_text)
+                except Exception as e:
+                    print(f"[Zabbix WhatsApp Notification Error] {e}")
+            else:
+                # Atualizar chamado existente se surgiram novos alertas que não estão na descrição
+                if existing_ticket.description:
+                    for tid in current_trigger_ids:
+                        if "Ids:" in str(existing_ticket.description) and tid not in str(existing_ticket.description):
+                            for p in probs:
+                                p_tid = str(p.get("triggerid") or p.get("trigger_id") or p.get("eventid"))
+                                if p_tid == tid:
+                                    new_alert_desc = p.get('description') or p.get('name')
+                                    existing_ticket.description = str(existing_ticket.description) + f"\n\n⚠️ Novo alerta detectado: {new_alert_desc} (Sev: {p.get('priority') or p.get('severity')})"
+                                    existing_ticket.description += f", {tid}"
+                                    db.commit()
+                                    break
 
-                filtered_alerts.append({
-                    "eventid": trigger_id,
-                    "name": event_title,
-                    "severity": severity,
-                    "clock": clock,
-                    "host": matched_asset.name,
-                    "host_ip": matched_asset.ip_address,
-                    "asset_id": matched_asset.id,
-                    "category_id": matched_asset.category_id,
-                    "ticket_id": existing_ticket.id if existing_ticket else None,
-                    "ticket_status": existing_ticket.status.value if existing_ticket else None,
-                })
+            # Alimentar o filtered_alerts pro endpoint /alerts
+            filtered_alerts.append({
+                "eventid": main_trigger_id,
+                "name": main_event_title,
+                "severity": main_severity,
+                "clock": main_clock,
+                "host": asset.name,
+                "host_ip": asset.ip_address,
+                "asset_id": asset.id,
+                "category_id": asset.category_id,
+                "ticket_id": existing_ticket.id if existing_ticket else None,
+                "ticket_status": existing_ticket.status.value if existing_ticket else None,
+            })
+
+        # FASE 2: AUTO-RESOLUÇÃO (Atualizar para PENDING_VALIDATION)
+        # Buscar todos os chamados abertos que foram gerados pelo Zabbix de forma agrupada
+        open_zabbix_tickets = db.query(Ticket).filter(
+            Ticket.title.like("[NOC Zabbix] Alertas - %"),
+            Ticket.status.in_([TicketStatus.NEW, TicketStatus.IN_PROGRESS])
+        ).all()
+        
+        for ticket in open_zabbix_tickets:
+            asset_probs = problems_by_asset_id.get(ticket.asset_id, {}).get("problems", [])
+            
+            has_critical_problems = False
+            for p in asset_probs:
+                p_sev = int(p.get("priority") or p.get("severity") or "0")
+                if p_sev >= 3: # 3=Average, 4=High, 5=Disaster
+                    has_critical_problems = True
+                    break
+                    
+            if not has_critical_problems:
+                ticket.status = TicketStatus.PENDING_VALIDATION
+                ticket.description = str(ticket.description) + "\n\n✅ [SISTEMA] Equipamento Online! Alertas críticos normalizados no Zabbix. Aguardando validação manual para encerramento."
+                db.commit()
+                
+                try:
+                    asset_name = ticket.asset.name if ticket.asset else "Desconhecido"
+                    msg_text = (
+                        f"✅ *ZABBIX: EQUIPAMENTO ONLINE!* ✅\n\n"
+                        f"O equipamento *{asset_name}* restabeleceu a conexão ou normalizou o alerta crítico.\n\n"
+                        f"🎫 O chamado agrupado *#{ticket.id}* está aguardando validação."
+                    )
+                    EvolutionService.send_whatsapp_message(msg_text)
+                except Exception as e:
+                    print(f"[Zabbix WhatsApp Auto-Resolve Error] {e}")
 
         return {
             "alerts": filtered_alerts,
@@ -153,6 +235,17 @@ def list_zabbix_alerts(
     except Exception as e:
         print(f"[Zabbix Router Erro] {e}")
         return {"alerts": [], "count": 0, "error": str(e)}
+
+@router.get("/alerts")
+def list_zabbix_alerts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Endpoint para retornar alertas do Zabbix.
+    Ele chama a função de sincronização que também gera chamados.
+    """
+    return sync_active_zabbix_alerts(db)
 
 
 @router.get("/hosts")
@@ -165,6 +258,141 @@ def get_hosts(
         return {"hosts": hosts, "count": len(hosts)}
     except Exception as e:
         return {"hosts": [], "count": 0, "error": str(e)}
+
+
+def _format_bps(bps_str: str) -> str:
+    try:
+        b = float(bps_str)
+        if b >= 1000000000:
+            return f"{b/1000000000:.2f} Gbps"
+        if b >= 1000000:
+            return f"{b/1000000:.2f} Mbps"
+        if b >= 1000:
+            return f"{b/1000:.2f} Kbps"
+        return f"{b:.0f} bps"
+    except (ValueError, TypeError):
+        return bps_str
+
+
+@router.get("/assets/{asset_id}/discover-items")
+def discover_asset_zabbix_items(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Retorna a lista completa de itens do Zabbix para este ativo (para importar)."""
+    try:
+        asset = db.query(Asset).filter(Asset.id == asset_id).first()
+        if not asset or not asset.ip_address:
+            return {"status": "error", "message": "Ativo não encontrado ou sem IP."}
+
+        hosts = ZabbixService._call_api("host.get", {
+            "output": ["hostid"],
+            "filter": {"ip": [asset.ip_address]}
+        })
+        if not hosts or not hosts.get("result"):
+            return {"status": "error", "message": "Host não encontrado no Zabbix"}
+
+        host_id = hosts["result"][0]["hostid"]
+        
+        # Puxa todos os itens (limitando a 500 para evitar excesso, ordenando pelo nome)
+        items_res = ZabbixService._call_api("item.get", {
+            "output": ["itemid", "name", "units", "value_type", "key_"],
+            "hostids": host_id,
+            "selectTags": "extend",
+            "sortfield": "name",
+            "limit": 500
+        })
+        
+        return {"status": "success", "items": items_res.get("result", [])}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/assets/{asset_id}/network-interfaces")
+def get_asset_network_interfaces(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Busca o detalhamento de interfaces (tráfego e links up/down) do equipamento lendo o mapeamento customizado."""
+    try:
+        asset = db.query(Asset).filter(Asset.id == asset_id).first()
+        if not asset:
+            raise HTTPException(status_code=404, detail="Ativo não encontrado")
+
+        if not asset.zabbix_items:
+            # Fallback opcional ou retorna vazio
+            return {"status": "success", "asset_name": asset.name, "interfaces": []}
+
+        # Extrai os IDs para buscar do Zabbix
+        mapped_items = [i for i in asset.zabbix_items if i.is_active]
+        item_ids = [str(i.zabbix_item_id) for i in mapped_items]
+        
+        if not item_ids:
+            return {"status": "success", "asset_name": asset.name, "interfaces": []}
+
+        # Busca valores em tempo real apenas dos itens mapeados
+        res = ZabbixService._call_api("item.get", {
+            "output": ["itemid", "lastvalue"],
+            "itemids": item_ids
+        })
+        
+        live_data = {str(item["itemid"]): item.get("lastvalue", "") for item in res.get("result", [])}
+
+        interfaces_map = {}
+
+        # Constrói o mapa baseado nas configurações (AssetZabbixItem)
+        for config in mapped_items:
+            iface = config.interface_name or "Geral"
+            val = live_data.get(str(config.zabbix_item_id), "")
+            
+            if iface not in interfaces_map:
+                interfaces_map[iface] = {
+                    "interface_name": iface,
+                    "description": "",
+                    "bits_received": "0 bps",
+                    "bits_sent": "0 bps",
+                    "status": "unknown",
+                    "is_sdwan": False,
+                    "raw_items": {}
+                }
+
+            # Preenche baseado no tipo de monitor configurado
+            mtype = config.monitor_type
+            if mtype == "TRAFFIC_IN":
+                interfaces_map[iface]["bits_received"] = _format_bps(val)
+                interfaces_map[iface]["description"] = config.name
+            elif mtype == "TRAFFIC_OUT":
+                interfaces_map[iface]["bits_sent"] = _format_bps(val)
+            elif mtype in ["STATUS_UPDOWN", "SDWAN_STATUS"]:
+                interfaces_map[iface]["is_sdwan"] = (mtype == "SDWAN_STATUS")
+                # Interpret logic
+                if val == "0" or "alive" in str(val).lower():
+                    interfaces_map[iface]["status"] = "up" if mtype == "SDWAN_STATUS" else "unknown"
+                elif val == "1" or "dead" in str(val).lower():
+                    interfaces_map[iface]["status"] = "down" if mtype == "SDWAN_STATUS" else "up"
+                elif val == "2" or "down" in str(val).lower():
+                    interfaces_map[iface]["status"] = "down"
+                else:
+                     interfaces_map[iface]["status"] = "up" if "up" in str(val).lower() or val=="1" else "down"
+
+            # Popula as métricas cruas formatadas para visualização dinâmica
+            formatted_val = str(val)
+            if mtype in ["TRAFFIC_IN", "TRAFFIC_OUT"]:
+                formatted_val = _format_bps(val)
+            elif mtype in ["STATUS_UPDOWN", "SDWAN_STATUS"]:
+                formatted_val = interfaces_map[iface]["status"].upper()
+                
+            interfaces_map[iface]["raw_items"][config.name] = formatted_val
+
+        return {
+            "status": "success",
+            "asset_name": asset.name,
+            "interfaces": list(interfaces_map.values())
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @router.post("/alerts/{event_id}/create-ticket")

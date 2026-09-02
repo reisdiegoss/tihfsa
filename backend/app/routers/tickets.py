@@ -10,7 +10,7 @@ Endpoints:
 - POST   /tickets/{id}/validate → Gestor aprova/rejeita
 - POST   /tickets/{id}/interactions → Adicionar comentário
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -25,6 +25,7 @@ from app.schemas.ticket import (
     TicketResponse, TicketDetail, InteractionCreate, InteractionResponse,
 )
 from app.services.ticket_service import TicketService
+from app.services.evolution_service import EvolutionService
 
 router = APIRouter(prefix="/api/v1/tickets", tags=["Helpdesk"])
 
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/api/v1/tickets", tags=["Helpdesk"])
 @router.post("/", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     data: TicketCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -60,6 +62,13 @@ def create_ticket(
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
+    
+    # Notificação Evolution API
+    icon = "🚨" if "NOC Auto-Alerta" in ticket.title else "🎫"
+    msg_type = "ATENÇÃO: ATIVO OFFLINE" if "NOC Auto-Alerta" in ticket.title else "Novo Chamado Aberto"
+    msg_text = f"{icon} *[{msg_type}]*\n\n*Título:* {ticket.title}\n*Prioridade:* {ticket.priority.value}\n*Status:* {ticket.status.value}\n\n*Descrição:* {ticket.description}"
+    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+    
     return ticket
 
 
@@ -251,6 +260,7 @@ def get_ticket(
 def update_ticket(
     ticket_id: int,
     data: TicketUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: User = Depends(require_technician),
 ):
@@ -269,6 +279,11 @@ def update_ticket(
 
     db.commit()
     db.refresh(ticket)
+    
+    if "status" in update_data:
+        msg_text = f"🔄 *[Chamado Atualizado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Novo Status:* {ticket.status.value}"
+        background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+        
     return ticket
 
 
@@ -276,6 +291,7 @@ def update_ticket(
 def solve_ticket(
     ticket_id: int,
     data: TicketSolve,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_technician),
 ):
@@ -290,13 +306,19 @@ def solve_ticket(
     if ticket.status == TicketStatus.CLOSED:
         raise HTTPException(status_code=400, detail="Chamado já está fechado")
 
-    return TicketService.solve_ticket(db, ticket, current_user, data.solution_message)
+    ticket = TicketService.solve_ticket(db, ticket, current_user, data.solution_message)
+    
+    msg_text = f"✅ *[Chamado Resolvido - Aguardando Validação]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Técnico:* {current_user.display_name}\n\n*Solução:* {data.solution_message}"
+    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+    
+    return ticket
 
 
 @router.post("/{ticket_id}/validate", response_model=TicketResponse)
 def validate_ticket(
     ticket_id: int,
     data: TicketValidate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
@@ -307,9 +329,18 @@ def validate_ticket(
         raise HTTPException(status_code=400, detail="Token de validação é obrigatório")
 
     try:
-        return TicketService.validate_ticket(
+        ticket = TicketService.validate_ticket(
             db, ticket_id, data.token, data.action, data.rejection_reason
         )
+        
+        if data.action == "approve":
+            msg_text = f"✅ *[Chamado Fechado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Status:* Fechado com Sucesso"
+        else:
+            msg_text = f"❌ *[Solução Rejeitada]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Motivo:* {data.rejection_reason or 'Não informado'}"
+            
+        background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+        
+        return ticket
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -318,6 +349,7 @@ def validate_ticket(
 def add_interaction(
     ticket_id: int,
     data: InteractionCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -338,6 +370,10 @@ def add_interaction(
 
     u_name = current_user.display_name
     u_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+
+    # Notificação Evolution API
+    msg_text = f"💬 *[Novo Comentário no Chamado #{ticket.id}]*\n\n*Título:* {ticket.title}\n*Por:* {u_name}\n\n*Mensagem:* {interaction.message}"
+    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
 
     return InteractionResponse(
         id=interaction.id,

@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { 
   Search, Monitor, HardDrive, Wifi, Phone, Plus, Server, 
   CheckCircle, AlertTriangle, AlertCircle, RefreshCw, CloudDownload, 
-  X, Edit3, Trash2, Tag, Cpu, MapPin, Hash, ShieldAlert, Layers
+  X, Edit3, Trash2, Tag, Cpu, MapPin, Hash, ShieldAlert, Layers, Activity
 } from "lucide-react";
 import api from "../../api/client";
+import ZabbixItemsConfigModal from "../../components/ZabbixItemsConfigModal";
 
 // Componente de Conectividade ICMP (Ping)
 function IcmpConnectivityBadge({ asset }) {
@@ -102,7 +103,281 @@ function ZabbixAlertBadge({ asset }) {
   );
 }
 
+
+// Modal de Importação em Lote UniFi
+function UnifiSyncModal({ isOpen, onClose, onImported }) {
+  const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [categoriesList, setCategoriesList] = useState([]);
+  const [selectedDeviceIps, setSelectedDeviceIps] = useState(new Set());
+  const [globalCategoryId, setGlobalCategoryId] = useState("");
+  const [typeFilter, setTypeFilter] = useState("Todos");
+  const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+
+  useEffect(() => {
+    if (isOpen) {
+      setLoading(true);
+      Promise.all([
+        api.get("/integrations/unifi/devices"),
+        api.get("/categories/"),
+        api.get("/assets/")
+      ])
+        .then(([unifiRes, catsRes, assetsRes]) => {
+          setCategoriesList(catsRes.data);
+          
+          const existingIps = new Set(assetsRes.data.map(a => a.ip_address).filter(Boolean));
+          
+          const rawDevices = unifiRes.data.devices || [];
+          const processedDevices = rawDevices.map(d => ({
+            ...d,
+            already_exists: existingIps.has(d.ip)
+          }));
+          
+          setDevices(processedDevices);
+        })
+        .catch(err => console.error("Erro ao carregar dispositivos UniFi:", err))
+        .finally(() => setLoading(false));
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const toggleDeviceSelection = (ip) => {
+    setSelectedDeviceIps(prev => {
+      const next = new Set(prev);
+      if (next.has(ip)) next.delete(ip);
+      else next.add(ip);
+      return next;
+    });
+  };
+
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const filteredDevices = typeFilter === "Todos" 
+    ? devices 
+    : devices.filter(d => (typeFilter === "uap" ? d.type === "uap" : d.type !== "uap"));
+
+  const sortedDevices = [...filteredDevices].sort((a, b) => {
+    const aVal = sortConfig.key === 'name' ? (a.name || a.hostname || "") : (a.ip || "");
+    const bVal = sortConfig.key === 'name' ? (b.name || b.hostname || "") : (b.ip || "");
+    
+    if (sortConfig.key === 'ip') {
+       const aParts = aVal.split('.').map(Number);
+       const bParts = bVal.split('.').map(Number);
+       if (aParts.length === 4 && bParts.length === 4) {
+          for (let i = 0; i < 4; i++) {
+             if (aParts[i] !== bParts[i]) {
+                return sortConfig.direction === 'asc' ? aParts[i] - bParts[i] : bParts[i] - aParts[i];
+             }
+          }
+          return 0;
+       }
+    }
+
+    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const toggleSelectAll = () => {
+    const importable = sortedDevices.filter(d => !d.already_exists && d.ip);
+    
+    // Check if ALL importable in the CURRENT filter are selected
+    const allSelected = importable.length > 0 && importable.every(d => selectedDeviceIps.has(d.ip));
+    
+    setSelectedDeviceIps(prev => {
+      const next = new Set(prev);
+      importable.forEach(d => {
+        if (allSelected) next.delete(d.ip);
+        else next.add(d.ip);
+      });
+      return next;
+    });
+  };
+
+  const handleImport = async () => {
+    if (selectedDeviceIps.size === 0) {
+      return alert("Selecione pelo menos um dispositivo para importar.");
+    }
+
+    const payload = [];
+    devices.forEach(d => {
+      if (selectedDeviceIps.has(d.ip) && !d.already_exists) {
+        payload.push({
+          name: d.name || d.hostname || `UniFi-${d.ip}`,
+          type: d.type === "uap" ? "Access Point" : "Switch",
+          ip_address: d.ip,
+          mac_address: d.mac || null,
+          category_id: globalCategoryId ? Number(globalCategoryId) : null
+        });
+      }
+    });
+
+    setImporting(true);
+    try {
+      await api.post("/assets/unifi/import", payload);
+      onImported();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao importar dispositivos UniFi.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="bg-blue-600 p-6 text-white flex justify-between items-center shrink-0">
+          <div>
+            <h2 className="text-xl font-extrabold flex items-center gap-2">
+              <span className="text-2xl">📡</span> Sincronização em Lote: UniFi Controladora
+            </h2>
+            <p className="text-blue-100 text-sm mt-1">Importe APs e Switches diretamente para o CMDB.</p>
+          </div>
+          <button onClick={onClose} className="p-2 bg-blue-700/50 hover:bg-blue-700 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+              <RefreshCw size={40} className="animate-spin mb-4 text-blue-500" />
+              <p className="font-medium">Comunicando com a controladora UniFi...</p>
+            </div>
+          ) : devices.length === 0 ? (
+            <div className="text-center py-12 text-slate-500 bg-white rounded-2xl border border-slate-200">
+              <p>Nenhum dispositivo encontrado na controladora configurada.</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                <div className="flex-1">
+                  <label className="block text-slate-700 font-bold mb-1 text-sm">Filtrar por Tipo:</label>
+                  <select 
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="Todos">Todos os Equipamentos</option>
+                    <option value="uap">Apenas Antenas (AP)</option>
+                    <option value="usw">Apenas Switches</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-slate-700 font-bold mb-1 text-sm">Categoria Global (Opcional):</label>
+                  <select 
+                    value={globalCategoryId}
+                    onChange={(e) => setGlobalCategoryId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">-- Nenhuma Categoria --</option>
+                    {categoriesList.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col justify-end">
+                  <button 
+                    onClick={toggleSelectAll}
+                    className="mt-6 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors"
+                  >
+                    Selecionar Todos (Filtrados)
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-100/50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 font-bold text-slate-600 w-12 text-center"></th>
+                      <th 
+                        className="px-4 py-3 font-bold text-slate-600 cursor-pointer hover:bg-slate-200/50 transition-colors"
+                        onClick={() => requestSort('name')}
+                      >
+                        Dispositivo {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th 
+                        className="px-4 py-3 font-bold text-slate-600 cursor-pointer hover:bg-slate-200/50 transition-colors"
+                        onClick={() => requestSort('ip')}
+                      >
+                        IP {sortConfig.key === 'ip' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th className="px-4 py-3 font-bold text-slate-600">Tipo</th>
+                      <th className="px-4 py-3 font-bold text-slate-600">Status no CMDB</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {sortedDevices.map((d, i) => {
+                      const isSelected = selectedDeviceIps.has(d.ip);
+                      return (
+                        <tr key={i} className={`hover:bg-slate-50 transition-colors ${d.already_exists ? 'opacity-60 bg-slate-50/50' : ''}`}>
+                          <td className="px-4 py-3 text-center">
+                            <input 
+                              type="checkbox"
+                              disabled={d.already_exists || !d.ip}
+                              checked={isSelected}
+                              onChange={() => toggleDeviceSelection(d.ip)}
+                              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-800">{d.name || d.hostname || "Sem Nome"}</td>
+                          <td className="px-4 py-3 font-mono text-slate-600">{d.ip || "Sem IP"}</td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {d.type === "uap" ? (
+                              <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md text-xs"><Wifi size={12}/> AP</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-slate-700 bg-slate-200 px-2 py-0.5 rounded-md text-xs"><Server size={12}/> Switch</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {d.already_exists ? (
+                              <span className="text-emerald-600 text-xs font-bold flex items-center gap-1"><CheckCircle size={14}/> Já cadastrado</span>
+                            ) : !d.ip ? (
+                              <span className="text-red-500 text-xs font-bold">Sem IP (Ignorado)</span>
+                            ) : (
+                              <span className="text-blue-500 text-xs font-bold">Novo</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 shrink-0 rounded-b-3xl">
+          <button onClick={onClose} className="px-6 py-2.5 rounded-xl text-slate-600 font-bold hover:bg-slate-200 transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleImport}
+            disabled={loading || importing || selectedDeviceIps.size === 0}
+            className="flex items-center gap-2 bg-blue-600 text-white px-8 py-2.5 rounded-xl font-extrabold hover:bg-blue-700 transition-all shadow-md disabled:opacity-50"
+          >
+            {importing ? <RefreshCw size={18} className="animate-spin" /> : <CloudDownload size={18} />}
+            {importing ? "Importando..." : `Importar Selecionados (${selectedDeviceIps.size})`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Modal de Cadastrar / Editar Ativo (CMDB)
+
 function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, locationsList, assetTypesConfig = [] }) {
   const [formData, setFormData] = useState({
     name: "",
@@ -767,10 +1042,22 @@ export default function Assets() {
   const [selectedLocation, setSelectedLocation] = useState("Todas");
   const [selectedStatus, setSelectedStatus] = useState("Todos");
   
-  // Modais
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isUnifiSyncModalOpen, setIsUnifiSyncModalOpen] = useState(false);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [assetToEdit, setAssetToEdit] = useState(null);
+  
+  const [isZabbixConfigModalOpen, setIsZabbixConfigModalOpen] = useState(false);
+  const [assetForZabbixConfig, setAssetForZabbixConfig] = useState(null);
+
+  const openZabbixConfigModal = (asset) => {
+    if (!asset.ip_address) {
+      return alert("É necessário que o ativo possua um IP para configurar o mapeamento do Zabbix.");
+    }
+    setAssetForZabbixConfig(asset);
+    setIsZabbixConfigModalOpen(true);
+  };
+
 
   const fetchAssets = () => {
     setLoading(true);
@@ -907,6 +1194,12 @@ export default function Assets() {
             className="flex items-center gap-2 bg-slate-900 text-white px-5 py-3 rounded-2xl text-xs font-extrabold shadow-md hover:bg-slate-800 transition-all cursor-pointer"
           >
             <CloudDownload size={18} className="text-blue-400" /> Importar do Zabbix
+          </button>
+          <button
+            onClick={() => setIsUnifiSyncModalOpen(true)}
+            className="flex items-center gap-2 bg-blue-900 text-white px-5 py-3 rounded-2xl text-xs font-extrabold shadow-md hover:bg-blue-800 transition-all cursor-pointer"
+          >
+            <CloudDownload size={18} className="text-blue-400" /> Importar da UniFi
           </button>
           <button
             onClick={openNewAssetModal}
@@ -1091,6 +1384,13 @@ export default function Assets() {
 
                     <div className="flex items-center gap-1 shrink-0">
                       <button
+                        onClick={() => openZabbixConfigModal(asset)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
+                        title="Configurar Itens Zabbix"
+                      >
+                        <Activity size={15} />
+                      </button>
+                      <button
                         onClick={() => openEditAssetModal(asset)}
                         className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
                         title="Editar Equipamento"
@@ -1182,7 +1482,7 @@ export default function Assets() {
                     <th className="px-4 py-4">Responsável</th>
                     <th className="px-4 py-4">Conectividade</th>
                     <th className="px-4 py-4">Alertas NOC</th>
-                    <th className="px-5 py-4 text-right pr-6 w-28">Ações</th>
+                    <th className="px-5 py-4 text-right pr-6 w-28 sticky right-0 bg-slate-50/95 backdrop-blur-sm shadow-[-10px_0_15px_-10px_rgba(0,0,0,0.05)] z-10">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-semibold">
@@ -1248,8 +1548,15 @@ export default function Assets() {
                       <td className="px-4 py-3.5">
                         <ZabbixAlertBadge asset={asset} />
                       </td>
-                      <td className="px-5 py-3.5 text-right pr-6 w-28 whitespace-nowrap">
+                      <td className="px-5 py-3.5 text-right pr-6 w-32 whitespace-nowrap sticky right-0 bg-white group-hover:bg-slate-50/50 shadow-[-10px_0_15px_-10px_rgba(0,0,0,0.03)] z-10">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openZabbixConfigModal(asset)}
+                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer"
+                            title="Configurar Itens Zabbix"
+                          >
+                            <Activity size={16} />
+                          </button>
                           <button
                             onClick={() => openEditAssetModal(asset)}
                             className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
@@ -1297,6 +1604,21 @@ export default function Assets() {
           setIsSyncModalOpen(false);
           fetchAssets();
         }}
+      />
+      <UnifiSyncModal
+        isOpen={isUnifiSyncModalOpen}
+        onClose={() => setIsUnifiSyncModalOpen(false)}
+        onImported={() => {
+          setIsUnifiSyncModalOpen(false);
+          fetchAssets();
+        }}
+      />
+
+      {/* Modal de Configuração de Itens Zabbix */}
+      <ZabbixItemsConfigModal
+        isOpen={isZabbixConfigModalOpen}
+        onClose={() => setIsZabbixConfigModalOpen(false)}
+        asset={assetForZabbixConfig}
       />
 
     </div>

@@ -16,6 +16,7 @@ class NetworkMap(Base):
     description = Column(Text, nullable=True)
     is_default = Column(Boolean, default=False, nullable=False)
     location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    background_image_url = Column(String(2000), nullable=True)
 
     # JSON com estrutura dos nós: [{id, asset_id, label, icon_type, x, y}]
     nodes_data = Column(JSON, default=list, nullable=False)

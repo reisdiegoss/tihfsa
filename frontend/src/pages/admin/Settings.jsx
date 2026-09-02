@@ -83,6 +83,152 @@ export default function Settings() {
 
   const [errorMsg, setErrorMsg] = useState(null);
 
+  // Integrations States
+  const [evolutionConfig, setEvolutionConfig] = useState({
+    api_url: "",
+    instance_name: "",
+    api_key: "",
+    ti_group_jid: "",
+    is_active: false
+  });
+  const [loadingEvolution, setLoadingEvolution] = useState(false);
+  const [savingEvolution, setSavingEvolution] = useState(false);
+  const [testMessage, setTestMessage] = useState("");
+  const [testingEvolution, setTestingEvolution] = useState(false);
+  
+  const [fetchedGroups, setFetchedGroups] = useState([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+
+  // UniFi Integrations States
+  const [unifiConfig, setUnifiConfig] = useState({
+    api_url: "",
+    username: "",
+    password: "",
+    site_id: "default",
+    is_active: false
+  });
+  const [loadingUnifi, setLoadingUnifi] = useState(false);
+  const [savingUnifi, setSavingUnifi] = useState(false);
+  const [testingUnifi, setTestingUnifi] = useState(false);
+
+  const fetchEvolutionConfig = async () => {
+    setLoadingEvolution(true);
+    try {
+      const { data } = await api.get("/integrations/evolution");
+      setEvolutionConfig(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingEvolution(false);
+    }
+  };
+
+  const fetchUnifiConfig = async () => {
+    setLoadingUnifi(true);
+    try {
+      const { data } = await api.get("/integrations/unifi");
+      setUnifiConfig(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingUnifi(false);
+    }
+  };
+
+  const handleSaveEvolution = async () => {
+    setSavingEvolution(true);
+    try {
+      await api.post("/integrations/evolution", evolutionConfig);
+      alert("Configurações salvas com sucesso!");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao salvar integrações.");
+    } finally {
+      setSavingEvolution(false);
+    }
+  };
+
+  
+  const handleTestUnifi = async () => {
+    setTestingUnifi(true);
+    try {
+      // Salvar primeiro para garantir que a API teste os dados mais recentes
+      await api.post("/integrations/unifi", unifiConfig);
+      
+      const { data } = await api.get("/integrations/unifi/test");
+      if (data.success) {
+        alert("Sucesso: " + data.message);
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Falha ao testar conexão com o UniFi.");
+    } finally {
+      setTestingUnifi(false);
+    }
+  };
+
+  const handleSaveUnifi = async () => {
+    setSavingUnifi(true);
+    try {
+      await api.post("/integrations/unifi", unifiConfig);
+      alert("Configurações do UniFi salvas com sucesso!");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao salvar UniFi.");
+    } finally {
+      setSavingUnifi(false);
+    }
+  };
+
+  const handleTestEvolution = async () => {
+    if (!testMessage) return alert("Digite uma mensagem de teste");
+    setTestingEvolution(true);
+    try {
+      await api.post("/integrations/evolution/test", { text: testMessage });
+      alert("Teste enviado. Verifique o WhatsApp!");
+      setTestMessage("");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao enviar teste.");
+    } finally {
+      setTestingEvolution(false);
+    }
+  };
+
+  const handleFetchEvolutionGroups = async () => {
+    if (!evolutionConfig.api_url || !evolutionConfig.instance_name || !evolutionConfig.api_key) {
+      return alert("Preencha a URL, Instância e API Key para buscar os grupos.");
+    }
+    setLoadingGroups(true);
+    setFetchedGroups([]);
+    try {
+      const { data } = await api.post("/integrations/evolution/groups", evolutionConfig);
+      setFetchedGroups(data);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao buscar grupos da Evolution API.");
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+
+  const toggleGroupSelection = (jid) => {
+    const currentList = evolutionConfig.ti_group_jid ? evolutionConfig.ti_group_jid.split(",").map(j => j.trim()).filter(Boolean) : [];
+    if (currentList.includes(jid)) {
+      setEvolutionConfig({ ...evolutionConfig, ti_group_jid: currentList.filter(j => j !== jid).join(",") });
+    } else {
+      currentList.push(jid);
+      setEvolutionConfig({ ...evolutionConfig, ti_group_jid: currentList.join(",") });
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "integrations") {
+      fetchEvolutionConfig();
+      fetchUnifiConfig();
+    }
+  }, [activeTab]);
+
   const fetchSystemUsers = async () => {
     setLoadingSystemUsers(true);
     try {
@@ -632,6 +778,28 @@ export default function Settings() {
           }`}
         >
           <AlertCircle size={16} /> Tipos de Problema
+        </button>
+
+        <button
+          onClick={() => setActiveTab("categories")}
+          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
+            activeTab === "categories"
+              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
+          }`}
+        >
+          <Tag size={16} /> Categorias
+        </button>
+
+        <button
+          onClick={() => setActiveTab("integrations")}
+          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
+            activeTab === "integrations"
+              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
+          }`}
+        >
+          <Phone size={16} /> Integrações
         </button>
 
         <button
@@ -1876,6 +2044,251 @@ export default function Settings() {
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* ABA: Integrações (WhatsApp/Evolution) */}
+      {activeTab === "integrations" && (
+        <div className="bg-white rounded-3xl shadow-xs border border-slate-200 overflow-hidden animate-fade-in p-6">
+          <div className="mb-6 pb-5 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <Phone className="text-blue-600" size={20} /> Integração WhatsApp (Evolution API)
+              </h2>
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                Configure as credenciais para envio de alertas automáticos e notificações de chamados no grupo de TI.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+              <span className="text-xs font-extrabold text-slate-700">Ativar Integração</span>
+              <input
+                type="checkbox"
+                checked={evolutionConfig.is_active}
+                onChange={(e) => setEvolutionConfig({ ...evolutionConfig, is_active: e.target.checked })}
+                className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+            <div>
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                URL da API
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: http://192.168.0.10:8080"
+                value={evolutionConfig.api_url || ""}
+                onChange={(e) => setEvolutionConfig({ ...evolutionConfig, api_url: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                Nome da Instância
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: noc-bot"
+                value={evolutionConfig.instance_name || ""}
+                onChange={(e) => setEvolutionConfig({ ...evolutionConfig, instance_name: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                Global API Key / API Key da Instância
+              </label>
+              <input
+                type="password"
+                placeholder="Ex: 429683C4C977415CBCE1C1A5DF... "
+                value={evolutionConfig.api_key || ""}
+                onChange={(e) => setEvolutionConfig({ ...evolutionConfig, api_key: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                Grupos de Destino (TI)
+              </label>
+              
+              <div className="flex items-center gap-3 mb-3">
+                <button
+                  onClick={handleFetchEvolutionGroups}
+                  disabled={loadingGroups || !evolutionConfig.api_url || !evolutionConfig.instance_name || !evolutionConfig.api_key}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-extrabold transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {loadingGroups ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+                  Validar Conexão e Carregar Grupos
+                </button>
+              </div>
+
+              {fetchedGroups.length > 0 ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 max-h-60 overflow-y-auto">
+                  <p className="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider">
+                    Selecione os grupos que receberão as notificações:
+                  </p>
+                  <div className="space-y-2">
+                    {fetchedGroups.map((g) => {
+                      const isSelected = (evolutionConfig.ti_group_jid || "").includes(g.id);
+                      return (
+                        <label key={g.id} className={`flex items-center gap-3 p-2 rounded-lg border transition-colors cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleGroupSelection(g.id)}
+                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                          />
+                          <div className="flex flex-col">
+                            <span className={`text-xs font-bold ${isSelected ? 'text-blue-800' : 'text-slate-700'}`}>{g.subject}</span>
+                            <span className="text-[10px] text-slate-400">{g.id}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                  <input
+                    type="text"
+                    placeholder="IDs selecionados aparecerão aqui ou digite manualmente separados por vírgula"
+                    value={evolutionConfig.ti_group_jid || ""}
+                    onChange={(e) => setEvolutionConfig({ ...evolutionConfig, ti_group_jid: e.target.value })}
+                    className="w-full bg-transparent text-sm font-bold text-slate-800 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-2 font-semibold">
+                    Dica: Clique no botão acima para listar e selecionar visualmente os grupos em vez de digitar os IDs.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-slate-100 pt-6">
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                placeholder="Mensagem de teste..."
+                value={testMessage}
+                onChange={(e) => setTestMessage(e.target.value)}
+                className="w-64 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-slate-300"
+              />
+              <button
+                onClick={handleTestEvolution}
+                disabled={testingEvolution || !evolutionConfig.api_url}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-extrabold transition-colors disabled:opacity-50"
+              >
+                {testingEvolution ? "Enviando..." : "Testar Disparo"}
+              </button>
+            </div>
+
+            <button
+              onClick={handleSaveEvolution}
+              disabled={savingEvolution}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-extrabold shadow-md shadow-blue-600/20 transition-colors flex items-center gap-2"
+            >
+              {savingEvolution ? <RefreshCw size={16} className="animate-spin" /> : <Check size={16} />}
+              Salvar Configurações
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ABA: Integrações (UniFi) */}
+      {activeTab === "integrations" && (
+        <div className="bg-white rounded-3xl shadow-xs border border-slate-200 overflow-hidden animate-fade-in p-6 mt-6">
+          <div className="mb-6 pb-5 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <Wifi className="text-blue-600" size={20} /> Integração UniFi Controller (Métricas Preventivas)
+              </h2>
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                Configure a conexão direta com a controladora UniFi para enriquecer o painel NOC e antecipar paradas (Preventiva).
+              </p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+              <span className="text-xs font-extrabold text-slate-700">Ativar Integração</span>
+              <input
+                type="checkbox"
+                checked={unifiConfig.is_active}
+                onChange={(e) => setUnifiConfig({ ...unifiConfig, is_active: e.target.checked })}
+                className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+            <div>
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                URL Base (IP da VM/Controladora)
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: https://192.168.0.2:8443"
+                value={unifiConfig.api_url || ""}
+                onChange={(e) => setUnifiConfig({ ...unifiConfig, api_url: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                ID do Site
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: default"
+                value={unifiConfig.site_id || ""}
+                onChange={(e) => setUnifiConfig({ ...unifiConfig, site_id: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                Usuário (Local)
+              </label>
+              <input
+                type="text"
+                placeholder="Admin local de leitura"
+                value={unifiConfig.username || ""}
+                onChange={(e) => setUnifiConfig({ ...unifiConfig, username: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                Senha
+              </label>
+              <input
+                type="password"
+                placeholder="Senha do usuário local"
+                value={unifiConfig.password || ""}
+                onChange={(e) => setUnifiConfig({ ...unifiConfig, password: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end border-t border-slate-100 pt-6 gap-3">
+
+            <button
+              onClick={handleTestUnifi}
+              disabled={testingUnifi || savingUnifi}
+              className="flex items-center gap-2 px-6 py-3 bg-slate-800 text-slate-300 font-extrabold text-sm rounded-xl hover:bg-slate-700 hover:text-white transition-colors shadow-lg shadow-slate-900/20"
+            >
+              {testingUnifi ? <RefreshCw size={16} className="animate-spin" /> : <Wifi size={16} />}
+              Testar Conexão
+            </button>
+
+            <button
+              onClick={handleSaveUnifi}
+              disabled={savingUnifi}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-extrabold shadow-md shadow-blue-600/20 transition-colors flex items-center gap-2"
+            >
+              {savingUnifi ? <RefreshCw size={16} className="animate-spin" /> : <Check size={16} />}
+              Salvar Configurações UniFi
+            </button>
+          </div>
         </div>
       )}
 

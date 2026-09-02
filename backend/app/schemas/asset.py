@@ -16,6 +16,22 @@ class AssetBase(BaseModel):
     specs: dict | None = None
 
 
+class AssetZabbixItemBase(BaseModel):
+    zabbix_item_id: str
+    name: str
+    interface_name: str | None = None
+    monitor_type: str = "CUSTOM"
+    is_active: bool = True
+
+class AssetZabbixItemCreate(AssetZabbixItemBase):
+    pass
+
+class AssetZabbixItemResponse(AssetZabbixItemBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    asset_id: int
+
+
 class AssetCreate(AssetBase):
     assigned_user_id: int | None = None
     subcategory_id: int | None = None
@@ -60,3 +76,4 @@ class AssetResponse(AssetBase):
     monitoring_protocol: str | None = "icmp"
     snmp_status: str | None = "not_configured"
     created_at: datetime
+    zabbix_items: list[AssetZabbixItemResponse] = []

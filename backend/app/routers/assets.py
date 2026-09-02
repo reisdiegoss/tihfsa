@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth.dependencies import get_current_user, require_technician
 from app.models.user import User
-from app.models.asset import Asset
-from app.schemas.asset import AssetCreate, AssetUpdate, AssetResponse
+from app.models.asset import Asset, AssetZabbixItem
+from app.schemas.asset import AssetCreate, AssetUpdate, AssetResponse, AssetZabbixItemCreate, AssetZabbixItemResponse
+from app.auth.dependencies import require_admin
 
 router = APIRouter(prefix="/api/v1/assets", tags=["Ativos (CMDB)"])
 
@@ -36,6 +37,18 @@ def _format_asset_response(asset: Asset) -> dict:
         "location_id": asset.location_id,
         "location_name": asset.location.name if asset.location else None,
         "created_at": asset.created_at,
+        "zabbix_items": [
+            {
+                "id": zi.id,
+                "asset_id": zi.asset_id,
+                "zabbix_item_id": zi.zabbix_item_id,
+                "name": zi.name,
+                "interface_name": zi.interface_name,
+                "monitor_type": zi.monitor_type,
+                "is_active": zi.is_active
+            }
+            for zi in asset.zabbix_items
+        ] if getattr(asset, "zabbix_items", None) else []
     }
 
 
@@ -116,9 +129,13 @@ def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session 
                 h_name = (h.get("name") or h.get("host") or "").strip().lower()
                 h_ip = (h.get("ip") or "").strip()
                 if h_ip:
-                    problems_by_ip[h_ip] = trig
+                    if h_ip not in problems_by_ip:
+                        problems_by_ip[h_ip] = []
+                    problems_by_ip[h_ip].append(trig)
                 if h_name:
-                    problems_by_name[h_name] = trig
+                    if h_name not in problems_by_name:
+                        problems_by_name[h_name] = []
+                    problems_by_name[h_name].append(trig)
 
         for a in formatted_assets:
             ip = (a.get("ip_address") or "").strip()
@@ -134,7 +151,7 @@ def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session 
                 a["snmp_status"] = "not_configured"
                 continue
 
-            prob = problems_by_ip.get(ip) or problems_by_name.get(name)
+            probs = problems_by_ip.get(ip) or problems_by_name.get(name) or []
             host_match = zabbix_by_ip.get(ip) or zabbix_by_name.get(name)
 
             # 1. Determinar Status de Conectividade ICMP (Ping)
@@ -143,10 +160,12 @@ def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session 
                 # Zabbix host availability == "2" indica indisponível
                 if str(host_match.get("available")) == "2":
                     is_down = True
-                elif prob:
-                    p_title = (prob.get("description") or prob.get("name") or "").lower()
-                    if any(w in p_title for w in ["unavailable", "ping", "down", "unreachable", "sem resposta", "indisponivel", "offline"]):
-                        is_down = True
+                elif probs:
+                    for prob in probs:
+                        p_title = (prob.get("description") or prob.get("name") or "").lower()
+                        if any(w in p_title for w in ["unavailable", "ping", "down", "unreachable", "sem resposta", "indisponivel", "offline"]):
+                            is_down = True
+                            break
 
                 a["icmp_status"] = "offline" if is_down else "online"
             elif ip:
@@ -155,10 +174,18 @@ def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session 
                 a["icmp_status"] = "no_ip"
 
             # 2. Determinar Alertas e Problemas do Zabbix NOC
-            if prob:
+            if probs:
+                # Pega o primeiro problema ou o de maior severidade/o que causou a queda
+                main_prob = probs[0]
+                for prob in probs:
+                    p_title = (prob.get("description") or prob.get("name") or "").lower()
+                    if any(w in p_title for w in ["unavailable", "ping", "down", "unreachable", "sem resposta", "indisponivel", "offline"]):
+                        main_prob = prob
+                        break
+                        
                 a["zabbix_status"] = "problem"
-                a["zabbix_alert_title"] = prob.get("description") or prob.get("name") or "Alerta Ativo no Zabbix"
-                a["zabbix_severity"] = str(prob.get("priority") or prob.get("severity") or "High")
+                a["zabbix_alert_title"] = main_prob.get("description") or main_prob.get("name") or "Alerta Ativo no Zabbix"
+                a["zabbix_severity"] = str(main_prob.get("priority") or main_prob.get("severity") or "High")
             elif host_match:
                 a["zabbix_status"] = "ok"
                 a["zabbix_alert_title"] = None
@@ -275,6 +302,61 @@ def get_asset(
     if not asset:
         raise HTTPException(status_code=404, detail="Ativo não encontrado")
     return _format_asset_response(asset)
+
+
+@router.post("/{asset_id}/zabbix-items", response_model=list[AssetZabbixItemResponse])
+def configure_asset_zabbix_items(
+    asset_id: int,
+    items: list[AssetZabbixItemCreate],
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Substitui os itens do Zabbix monitorados para um ativo específico."""
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Ativo não encontrado")
+
+    # Deleta os atuais
+    db.query(AssetZabbixItem).filter(AssetZabbixItem.asset_id == asset_id).delete()
+    
+    # Adiciona os novos
+    new_items = []
+    for item in items:
+        db_item = AssetZabbixItem(
+            asset_id=asset_id,
+            zabbix_item_id=item.zabbix_item_id,
+            name=item.name,
+            interface_name=item.interface_name,
+            monitor_type=item.monitor_type,
+            is_active=item.is_active
+        )
+        db.add(db_item)
+        new_items.append(db_item)
+        
+    db.commit()
+    
+    # Reload e return
+    return db.query(AssetZabbixItem).filter(AssetZabbixItem.asset_id == asset_id).all()
+
+
+@router.delete("/{asset_id}/zabbix-items/{item_id}")
+def delete_asset_zabbix_item(
+    asset_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Remove um item Zabbix monitorado do ativo."""
+    item = db.query(AssetZabbixItem).filter(
+        AssetZabbixItem.id == item_id, 
+        AssetZabbixItem.asset_id == asset_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+        
+    db.delete(item)
+    db.commit()
+    return {"status": "success"}
 
 
 def _sanitize_asset_data(data_dict: dict) -> dict:
@@ -647,6 +729,31 @@ def import_zabbix_hosts(
                 
         asset = Asset(**host_data.model_dump())
         asset.description = "Importado via Zabbix Auto-Discovery"
+        db.add(asset)
+        imported_assets.append(asset)
+        
+    if imported_assets:
+        db.commit()
+        
+    return {"status": "success", "imported_count": len(imported_assets)}
+
+
+@router.post("/unifi/import")
+def import_unifi_devices(
+    devices_to_import: list[AssetCreate],
+    db: Session = Depends(get_db),
+    _: User = Depends(require_technician)
+):
+    """Importa massivamente dispositivos UniFi como novos ativos."""
+    imported_assets = []
+    for device_data in devices_to_import:
+        if device_data.ip_address:
+            exists = db.query(Asset).filter(Asset.ip_address == device_data.ip_address).first()
+            if exists:
+                continue
+                
+        asset = Asset(**device_data.model_dump())
+        asset.description = "Importado via UniFi Bulk Sync"
         db.add(asset)
         imported_assets.append(asset)
         

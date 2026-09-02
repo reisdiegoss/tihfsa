@@ -10,12 +10,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+import asyncio
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
-    attachments, departments, ad_import, locations, asset_types, network_maps
+    attachments, departments, ad_import, locations, asset_types, network_maps, integrations
 )
 import app.models.network_map  # noqa: F401
 
@@ -146,14 +147,38 @@ def _seed_default_asset_types():
         db.close()
 
 
+async def zabbix_poller_task():
+    """Tarefa em segundo plano que pesquisa alertas do Zabbix continuamente."""
+    from app.routers.zabbix import sync_active_zabbix_alerts
+    while True:
+        try:
+            await asyncio.sleep(60) # Checa a cada 60 segundos
+            db = SessionLocal()
+            try:
+                # Rodar função sincrona em thread pool para não bloquear o event loop
+                await asyncio.to_thread(sync_active_zabbix_alerts, db)
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[Zabbix Poller] Erro: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: cria tabelas no banco se não existirem."""
+    """Startup: cria tabelas no banco se não existirem e inicia tarefas em background."""
     import app.models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _seed_default_asset_types()
+    
+    # Iniciar o background poller do Zabbix
+    poller_task = asyncio.create_task(zabbix_poller_task())
+    
     print(f"[{settings.app_name}] Backend iniciado. Tabelas e Tipos de Equipamento prontos.")
     yield
+    
+    # Cancelar tarefas ao encerrar o servidor
+    poller_task.cancel()
     print(f"[{settings.app_name}] Backend encerrado.")
 
 
@@ -194,6 +219,8 @@ app.include_router(ad_import.router)
 app.include_router(locations.router)
 app.include_router(asset_types.router)
 app.include_router(network_maps.router)
+app.include_router(integrations.router)
+app.include_router(integrations.router_unifi)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
