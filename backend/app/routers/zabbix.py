@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth.dependencies import get_current_user, require_technician
+from app.auth.dependencies import get_current_user, get_optional_user, require_technician
 from app.models.user import User, UserRole
 from app.models.asset import Asset
 from app.models.ticket import Ticket, TicketStatus, TicketPriority
@@ -313,7 +313,7 @@ def discover_asset_zabbix_items(
 def get_asset_network_interfaces(
     asset_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User | None = Depends(get_optional_user),
 ):
     """Busca o detalhamento de interfaces (tráfego e links up/down) do equipamento lendo o mapeamento customizado."""
     try:

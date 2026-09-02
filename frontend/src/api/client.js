@@ -26,7 +26,9 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem("tihfsa_token");
       localStorage.removeItem("tihfsa_user");
-      if (window.location.pathname !== "/login") {
+      // Não redireciona para login se estiver navegando em rotas públicas (como o painel NOC de TV)
+      const isPublicPath = window.location.pathname.startsWith("/noc");
+      if (window.location.pathname !== "/login" && !isPublicPath) {
         window.location.href = "/login";
       }
     }

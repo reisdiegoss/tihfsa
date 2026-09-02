@@ -13,6 +13,28 @@ from app.auth.jwt_handler import decode_token
 from app.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+def get_optional_user(
+    token: str | None = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Extrai o usuário logado se o token estiver presente, senão retorna None sem erro 401."""
+    if not token:
+        return None
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    try:
+        user = db.query(User).filter(User.id == int(user_id)).first()
+        return user if (user and user.is_active) else None
+    except Exception:
+        return None
+
 
 
 def get_current_user(

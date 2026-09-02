@@ -254,6 +254,13 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         if (res.data.pan_x !== undefined && res.data.pan_y !== undefined) {
           setPan({ x: res.data.pan_x, y: res.data.pan_y });
         }
+        if (res.data.assets_data && res.data.assets_data.length > 0) {
+          setAssetsList((prev) => {
+            const map = new Map(prev.map(a => [a.id, a]));
+            res.data.assets_data.forEach(a => map.set(a.id, a));
+            return Array.from(map.values());
+          });
+        }
         setHasUnsavedChanges(false);
         if (onMapLoaded) onMapLoaded(res.data);
       })

@@ -64,16 +64,23 @@ def get_network_map_enriched(
         from app.models.asset import Asset
         from app.routers.assets import _format_asset_response, _enrich_assets_with_zabbix_status
 
-        asset_ids = list({
+        asset_ids_set = {
             int(node["asset_id"]) for node in resp["nodes_data"]
             if node.get("asset_id") and str(node.get("asset_id")).isdigit()
-        })
+        }
+        for node in resp["nodes_data"]:
+            for cid in node.get("child_asset_ids", []):
+                if str(cid).isdigit():
+                    asset_ids_set.add(int(cid))
+
+        asset_ids = list(asset_ids_set)
 
         if asset_ids:
             assets = db.query(Asset).filter(Asset.id.in_(asset_ids)).all()
             formatted_assets = [_format_asset_response(a) for a in assets]
             enriched_assets = _enrich_assets_with_zabbix_status(formatted_assets, db=db)
             assets_by_id = {a["id"]: a for a in enriched_assets}
+            resp["assets_data"] = enriched_assets
 
             # Acoplar o status em tempo real a cada nó do mapa
             for node in resp["nodes_data"]:

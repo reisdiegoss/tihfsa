@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.auth.dependencies import get_current_user, require_technician
+from app.auth.dependencies import get_current_user, get_optional_user, require_technician
 from app.models.user import User
 from app.models.location import Location
 from app.models.asset import Asset
@@ -20,7 +20,7 @@ def list_locations(
     active_only: bool = True,
     search: str | None = Query(None),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User | None = Depends(get_optional_user),
 ):
     """Lista todas as localizações com contagem de ativos cadastrados."""
     query = db.query(Location)

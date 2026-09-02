@@ -5,11 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth.dependencies import get_current_user, require_technician
+from app.auth.dependencies import get_current_user, get_optional_user, require_technician, require_admin
 from app.models.user import User
 from app.models.asset import Asset, AssetZabbixItem
 from app.schemas.asset import AssetCreate, AssetUpdate, AssetResponse, AssetZabbixItemCreate, AssetZabbixItemResponse
-from app.auth.dependencies import require_admin
 
 router = APIRouter(prefix="/api/v1/assets", tags=["Ativos (CMDB)"])
 
@@ -255,7 +254,7 @@ def list_assets(
     is_active: bool = True,
     search: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User | None = Depends(get_optional_user),
 ):
     """Lista todos os ativos com filtros e status do Zabbix em tempo real."""
     query = db.query(Asset).filter(Asset.is_active == is_active)

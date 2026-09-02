@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.database import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_optional_user
 from app.models.user import User, UserRole
 from app.models.integration_config import EvolutionConfig, UnifiConfig
 from app.services.evolution_service import EvolutionService
@@ -192,8 +192,8 @@ def save_unifi_config(
     return {"message": "Configurações do UniFi Controller salvas com sucesso!"}
 
 @router_unifi.get("/devices")
-def fetch_unifi_devices(current_user: User = Depends(get_current_user)):
-    # Any authenticated user (including the TV unlocked user) can view metrics
+def fetch_unifi_devices(_: User | None = Depends(get_optional_user)):
+    # Any user or public TV monitor can view telemetry metrics
     devices = UnifiService.get_devices()
     return {"devices": devices}
 
