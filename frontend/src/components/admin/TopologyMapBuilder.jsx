@@ -395,24 +395,44 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       .finally(() => setSaving(false));
   };
 
-  // Ajustar o diagrama para caber perfeitamente na tela do usuário/TV
+  // Ajustar o diagrama para caber perfeitamente na tela do usuário/TV (incluindo telas 4K)
   const handleFitToScreen = () => {
     if (mapData.nodes_data.length === 0) return;
-    const minX = Math.min(...mapData.nodes_data.map(n => n.x));
-    const maxX = Math.max(...mapData.nodes_data.map(n => n.x + 160));
-    const minY = Math.min(...mapData.nodes_data.map(n => n.y));
-    const maxY = Math.max(...mapData.nodes_data.map(n => n.y + 110));
+    
+    // Calcular limites reais considerando a largura e altura de cada tipo de nó (especialmente Racks)
+    const bounds = mapData.nodes_data.map(n => {
+      const isRack = n.icon_type === 'Rack' || n.icon_type === 'Zone';
+      const nodeW = isRack ? 260 : 160;
+      const childCount = n.child_asset_ids?.length || 0;
+      const nodeH = isRack ? Math.max(160, 100 + childCount * 48) : 130;
+      return {
+        minX: n.x,
+        maxX: n.x + nodeW,
+        minY: n.y,
+        maxY: n.y + nodeH
+      };
+    });
 
-    const mapWidth = maxX - minX;
-    const mapHeight = maxY - minY;
+    const minX = Math.min(...bounds.map(b => b.minX));
+    const maxX = Math.max(...bounds.map(b => b.maxX));
+    const minY = Math.min(...bounds.map(b => b.minY));
+    const maxY = Math.max(...bounds.map(b => b.maxY));
+
+    const mapWidth = Math.max(maxX - minX, 100);
+    const mapHeight = Math.max(maxY - minY, 100);
 
     const container = containerRef.current;
-    const cWidth = container ? container.clientWidth : 1200;
-    const cHeight = container ? container.clientHeight : 750;
+    const cWidth = container ? container.clientWidth : (window.innerWidth || 1920);
+    const cHeight = container ? container.clientHeight : (window.innerHeight - 130 || 900);
 
-    const scaleX = (cWidth - 120) / mapWidth;
-    const scaleY = (cHeight - 120) / mapHeight;
-    const newZoom = Math.min(1.2, Math.max(0.2, Math.min(scaleX, scaleY)));
+    const padding = 60;
+    const availableW = Math.max(cWidth - padding * 2, 200);
+    const availableH = Math.max(cHeight - padding * 2, 200);
+
+    const scaleX = availableW / mapWidth;
+    const scaleY = availableH / mapHeight;
+    // Permite zoom de até 4.5x em telas grandes como TVs 4K
+    const newZoom = Math.min(4.5, Math.max(0.2, Math.min(scaleX, scaleY)));
 
     const newPanX = (cWidth - mapWidth * newZoom) / 2 - minX * newZoom;
     const newPanY = (cHeight - mapHeight * newZoom) / 2 - minY * newZoom;
@@ -939,7 +959,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const handleWheel = (e) => {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.1 : -0.1;
-    setZoom((prev) => parseFloat(Math.min(2.5, Math.max(0.2, prev + delta)).toFixed(2)));
+    setZoom((prev) => parseFloat(Math.min(5.0, Math.max(0.2, prev + delta)).toFixed(2)));
   };
 
   const handleCanvasMouseDown = (e) => {
@@ -1035,7 +1055,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 flex-1 flex flex-col w-full h-full min-h-0">
       
       {/* Dynamic Header & Controls (Visível apenas na Administração) */}
       {!isPublicView && (
@@ -1178,7 +1198,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         onMouseDown={handleCanvasMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        className={`bg-slate-950 border border-slate-900 rounded-3xl min-h-[750px] h-[750px] relative overflow-hidden shadow-2xl select-none ${
+        className={`bg-slate-950 border border-slate-900 rounded-3xl relative overflow-hidden shadow-2xl select-none flex-1 w-full ${
+          isPublicView 
+            ? "h-[calc(100vh-130px)] min-h-[600px]" 
+            : "h-[calc(100vh-230px)] min-h-[720px]"
+        } ${
           isPanMode ? "cursor-grab active:cursor-grabbing" : ""
         }`}
       >
@@ -1187,7 +1211,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         <div className="absolute bottom-4 right-4 z-40 bg-slate-900/90 border border-slate-800 rounded-2xl p-1.5 backdrop-blur-md shadow-2xl flex items-center gap-1.5 text-slate-300 text-xs">
           
           <button
-            onClick={() => setZoom(prev => parseFloat(Math.min(2.5, prev + 0.15).toFixed(2)))}
+            onClick={() => setZoom(prev => parseFloat(Math.min(5.0, prev + 0.15).toFixed(2)))}
             className="p-2 hover:bg-slate-800 rounded-xl transition-all font-bold cursor-pointer text-slate-200"
             title="Aumentar Zoom (+)"
           >
@@ -1222,6 +1246,20 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             title="Ajustar automaticamente todos os equipamentos para caber na tela"
           >
             <Maximize2 size={13} /> Fit Tela
+          </button>
+
+          <button
+            onClick={() => {
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen?.();
+              } else {
+                document.exitFullscreen?.();
+              }
+            }}
+            className="p-2 hover:bg-slate-800 rounded-xl transition-all font-bold cursor-pointer text-slate-300 hover:text-white"
+            title="Alternar Tela Cheia (F11)"
+          >
+            <Maximize2 size={16} />
           </button>
 
           {!isPublicView && (

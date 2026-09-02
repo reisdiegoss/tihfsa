@@ -260,7 +260,11 @@ export default function PublicNocPanel() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-4 md:p-6 lg:p-8 flex flex-col space-y-6">
+    <div className={`bg-slate-950 text-slate-100 font-sans flex flex-col ${
+      viewMode === "map"
+        ? "h-screen w-full p-3 md:p-4 space-y-3 overflow-hidden"
+        : "min-h-screen p-4 md:p-6 lg:p-8 space-y-6"
+    }`}>
       
       {/* Top Header / TV Control Bar */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-2xl backdrop-blur-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5">
@@ -421,18 +425,20 @@ export default function PublicNocPanel() {
 
       {/* Exibição do Mapa de Topologia em Tela Cheia para TV */}
       {viewMode === "map" ? (
-        <TopologyMapBuilder 
-          isPublicView={!isUnlocked} 
-          mapId={currentMapId ? parseInt(currentMapId, 10) : (mapId ? parseInt(mapId, 10) : undefined)} 
-          onMapLoaded={(loadedMap) => {
-            if (loadedMap?.id) {
-              const idStr = String(loadedMap.id);
-              if (idStr !== currentMapId) {
-                setCurrentMapId(idStr);
+        <div className="flex-1 w-full h-full min-h-0 flex flex-col">
+          <TopologyMapBuilder 
+            isPublicView={!isUnlocked} 
+            mapId={currentMapId ? parseInt(currentMapId, 10) : (mapId ? parseInt(mapId, 10) : undefined)} 
+            onMapLoaded={(loadedMap) => {
+              if (loadedMap?.id) {
+                const idStr = String(loadedMap.id);
+                if (idStr !== currentMapId) {
+                  setCurrentMapId(idStr);
+                }
               }
-            }
-          }}
-        />
+            }}
+          />
+        </div>
       ) : (
         <>
           {/* Counter Metric Cards */}
