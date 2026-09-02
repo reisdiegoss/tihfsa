@@ -8,6 +8,37 @@ import {
 import api from "../../api/client";
 import TopologyMapBuilder from "../../components/admin/TopologyMapBuilder";
 
+// Helper de cópia para área de transferência (com suporte a HTTP e HTTPS)
+const copyToClipboard = async (text) => {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.warn("navigator.clipboard falhou, tentando fallback...", err);
+    }
+  }
+
+  // Fallback para HTTP não seguro (IP local / LAN)
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    if (successful) return true;
+  } catch (err) {
+    console.error("document.execCommand falhou:", err);
+  }
+
+  return false;
+};
+
 export default function PublicNocPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -18,6 +49,9 @@ export default function PublicNocPanel() {
   const viewMode = searchParams.get("view") || "grid"; // 'grid', 'compact', 'map'
   const mapId = searchParams.get("map_id") || "";
   const refreshIntervalSec = parseInt(searchParams.get("refresh") || "15", 10);
+
+  const [mapsList, setMapsList] = useState([]);
+  const [currentMapId, setCurrentMapId] = useState(mapId || "");
 
   const [data, setData] = useState({
     assets: [],
@@ -110,6 +144,25 @@ export default function PublicNocPanel() {
       .finally(() => setLoading(false));
   };
 
+  // Carregar mapas disponíveis para seleção de diagrama na TV
+  useEffect(() => {
+    api.get("/network-maps")
+      .then((res) => {
+        const list = res.data || [];
+        setMapsList(list);
+        if (!mapId && list.length > 0) {
+          setCurrentMapId(String(list[0].id));
+        }
+      })
+      .catch((err) => console.error("Erro ao carregar lista de mapas:", err));
+  }, []);
+
+  useEffect(() => {
+    if (mapId) {
+      setCurrentMapId(mapId);
+    }
+  }, [mapId]);
+
   useEffect(() => {
     fetchData();
   }, [locationId, assetType, statusFilter]);
@@ -136,21 +189,48 @@ export default function PublicNocPanel() {
     } else {
       newParams.set(key, value);
     }
+    if (key === "view" && value === "map" && currentMapId) {
+      newParams.set("map_id", currentMapId);
+    }
     setSearchParams(newParams);
   };
 
-  const handleCopyShareableUrl = () => {
+  // Selecionar diagrama específico para a TV
+  const handleMapChange = (newMapId) => {
+    setCurrentMapId(newMapId);
+    const newParams = new URLSearchParams(searchParams);
+    if (newMapId) {
+      newParams.set("map_id", newMapId);
+    } else {
+      newParams.delete("map_id");
+    }
+    setSearchParams(newParams);
+  };
+
+  const handleCopyShareableUrl = async () => {
     const params = new URLSearchParams();
     if (locationId) params.set("location_id", locationId);
     if (assetType && assetType !== "Todos") params.set("type", assetType);
     if (statusFilter && statusFilter !== "Todos") params.set("status", statusFilter);
     if (viewMode) params.set("view", viewMode);
-    if (mapId) params.set("map_id", mapId);
+
+    // Se estiver visualizando o fluxograma, garante que o ID do mapa atual seja incluído
+    const effectiveMapId = currentMapId || mapId;
+    if (effectiveMapId && viewMode === "map") {
+      params.set("map_id", effectiveMapId);
+    }
+
     params.set("refresh", String(refreshIntervalSec));
     const fullUrl = `${window.location.origin}/noc?${params.toString()}`;
-    navigator.clipboard.writeText(fullUrl);
-    setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2500);
+
+    const ok = await copyToClipboard(fullUrl);
+    if (ok) {
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2500);
+    } else {
+      // Se a cópia automática falhar por restrições de permissão do navegador, abre prompt
+      window.prompt("Copie a URL abaixo para abrir na TV:", fullUrl);
+    }
   };
 
   const handleRunLivePing = (asset) => {
@@ -300,6 +380,25 @@ export default function PublicNocPanel() {
             </button>
           </div>
 
+          {/* Seletor de Diagrama para TV (Visível quando em modo Fluxograma) */}
+          {viewMode === "map" && mapsList.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-slate-950 border border-emerald-500/40 rounded-xl px-2.5 py-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+              <Network size={13} className="text-emerald-400 shrink-0" />
+              <select
+                value={currentMapId || ""}
+                onChange={(e) => handleMapChange(e.target.value)}
+                className="bg-transparent text-xs font-black text-emerald-300 outline-none cursor-pointer max-w-[200px] truncate"
+                title="Selecione qual diagrama de rede exibir na TV"
+              >
+                {mapsList.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-slate-900 text-white font-bold">
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Botão Copiar URL Configurada para TV */}
           <button
             onClick={handleCopyShareableUrl}
@@ -322,7 +421,18 @@ export default function PublicNocPanel() {
 
       {/* Exibição do Mapa de Topologia em Tela Cheia para TV */}
       {viewMode === "map" ? (
-        <TopologyMapBuilder isPublicView={!isUnlocked} mapId={mapId ? parseInt(mapId, 10) : undefined} />
+        <TopologyMapBuilder 
+          isPublicView={!isUnlocked} 
+          mapId={currentMapId ? parseInt(currentMapId, 10) : (mapId ? parseInt(mapId, 10) : undefined)} 
+          onMapLoaded={(loadedMap) => {
+            if (loadedMap?.id) {
+              const idStr = String(loadedMap.id);
+              if (idStr !== currentMapId) {
+                setCurrentMapId(idStr);
+              }
+            }
+          }}
+        />
       ) : (
         <>
           {/* Counter Metric Cards */}

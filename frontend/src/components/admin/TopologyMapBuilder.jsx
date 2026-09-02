@@ -343,6 +343,15 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   }, []);
 
   useEffect(() => {
+    if (mapId) {
+      const parsed = parseInt(mapId, 10);
+      if (!isNaN(parsed) && parsed !== selectedMapId) {
+        setSelectedMapId(parsed);
+      }
+    }
+  }, [mapId]);
+
+  useEffect(() => {
     if (selectedMapId) {
       fetchMapDetails(selectedMapId);
       // Refresh de status Zabbix em segundo plano a cada 20s (sem resetar posições ou arrasto do usuário)
