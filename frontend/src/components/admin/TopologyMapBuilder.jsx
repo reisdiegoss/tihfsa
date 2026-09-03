@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Server, HardDrive, Wifi, Phone, Shield, Cloud, Monitor, Activity, Zap,
   Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2,
-  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2
+  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX
 } from "lucide-react";
 import api from "../../api/client";
 const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
@@ -179,6 +179,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     icon_type: "Switch", // 'Switch', 'AccessPoint', 'Phone', 'Server', 'Firewall', 'Cloud', 'Rack', 'Zone'
     width: "",
     height: "",
+    sound_alert_offline: false,
     x: 400,
     y: 300,
     zabbix_selected_metrics: [],
@@ -195,6 +196,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     icon_type: "Switch",
     width: "",
     height: "",
+    sound_alert_offline: false,
     zabbix_selected_metrics: [],
     display_options: { ...DEFAULT_DISPLAY_OPTIONS },
     rack_display_options: { ...DEFAULT_DISPLAY_OPTIONS },
@@ -236,6 +238,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const audioCtxRef = useRef(null);
 
   // Carregar lista de mapas e ativos
   const fetchMaps = () => {
@@ -852,6 +856,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       y: Math.round(centerY),
       width: newNodeForm.width ? parseInt(newNodeForm.width, 10) : null,
       height: newNodeForm.height ? parseInt(newNodeForm.height, 10) : null,
+      sound_alert_offline: !!newNodeForm.sound_alert_offline,
       icmp_status: selectedAsset ? selectedAsset.icmp_status : "online",
       zabbix_status: selectedAsset ? selectedAsset.zabbix_status : "ok",
       zabbix_alert_title: selectedAsset ? selectedAsset.zabbix_alert_title : null,
@@ -876,6 +881,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       icon_type: "Switch", 
       width: "", 
       height: "", 
+      sound_alert_offline: false,
       x: 400, 
       y: 300, 
       zabbix_selected_metrics: [],
@@ -892,6 +898,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     if (!node) return;
     
     const existingOpts = node.display_options || node.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+    const linkedAsset = node.asset_id ? assetsList.find(a => String(a.id) === String(node.asset_id)) : null;
 
     setEditNodeForm({
       id: node.id,
@@ -901,6 +908,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       ip_address: node.ip_address || "",
       width: node.width !== undefined && node.width !== null ? String(node.width) : "",
       height: node.height !== undefined && node.height !== null ? String(node.height) : "",
+      sound_alert_offline: node.sound_alert_offline !== undefined ? !!node.sound_alert_offline : (linkedAsset ? !!linkedAsset.sound_alert_offline : false),
       zabbix_selected_metrics: node.zabbix_selected_metrics || [],
       child_asset_ids: node.child_asset_ids || [],
       display_options: existingOpts,
@@ -949,6 +957,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             child_asset_ids: editNodeForm.child_asset_ids || [],
             width: editNodeForm.width ? parseInt(editNodeForm.width, 10) : null,
             height: editNodeForm.height ? parseInt(editNodeForm.height, 10) : null,
+            sound_alert_offline: !!editNodeForm.sound_alert_offline,
             display_options: displayOpts,
             rack_display_options: displayOpts,
             label: editNodeForm.label || (selectedAsset ? selectedAsset.name : n.label),
@@ -1114,6 +1123,109 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }
     return false;
   };
+
+  // Verifica se o nó específico possui alerta sonoro e está offline
+  const getIsNodeSoundAlertTriggered = (node) => {
+    const linkedAsset = node.asset_id ? assetsList.find(a => String(a.id) === String(node.asset_id)) : null;
+    const nodeAlertEnabled = node.sound_alert_offline ?? linkedAsset?.sound_alert_offline ?? false;
+    
+    // Status do próprio nó
+    const isThisNodeOffline = node.icmp_status === "offline" || (node.ip_address && unifiMetrics.some(um => um.ip === node.ip_address && um.state === 0));
+    if (nodeAlertEnabled && isThisNodeOffline) return true;
+
+    // Se for Rack ou Zone, checa os dispositivos contidos nele
+    if (node.child_asset_ids && node.child_asset_ids.length > 0) {
+      for (const cid of node.child_asset_ids) {
+        const childAsset = assetsList.find(a => String(a.id) === String(cid));
+        if (childAsset && childAsset.sound_alert_offline) {
+          const isChildOffline = childAsset.icmp_status === "offline" || (childAsset.ip_address && unifiMetrics.some(um => um.ip === childAsset.ip_address && um.state === 0));
+          if (isChildOffline) return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  // Síntese de áudio suave para NOC (Web Audio API: tom D5 -> A5 sutil com decaimento exponencial)
+  const playGentleNocChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioCtx();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      const now = ctx.currentTime;
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0.18, now);
+      masterGain.connect(ctx.destination);
+
+      // Tom 1: 587.33 Hz (D5) - toque macio inicial (80ms)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, now);
+      gain1.gain.setValueAtTime(0.01, now);
+      gain1.gain.exponentialRampToValueAtTime(0.18, now + 0.03);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc1.connect(gain1);
+      gain1.connect(masterGain);
+      osc1.start(now);
+      osc1.stop(now + 0.13);
+
+      // Tom 2: 880 Hz (A5) - sino suave de atenção NOC (250ms)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(880, now + 0.08);
+      gain2.gain.setValueAtTime(0.01, now + 0.08);
+      gain2.gain.exponentialRampToValueAtTime(0.22, now + 0.11);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+      osc2.connect(gain2);
+      gain2.connect(masterGain);
+      osc2.start(now + 0.08);
+      osc2.stop(now + 0.36);
+    } catch (err) {
+      console.warn("[NOC Sound Alert]", err);
+    }
+  };
+
+  // Desbloqueia AudioContext no primeiro clique/interação na janela (política de autoplay do browser)
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    };
+    window.addEventListener('click', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, []);
+
+  // Alerta sonoro intercalado a cada 2 segundos quando houver equipamento com alerta offline
+  useEffect(() => {
+    if (isAudioMuted) return;
+
+    const interval = setInterval(() => {
+      const hasTriggered = (mapData.nodes_data || []).some(n => getIsNodeSoundAlertTriggered(n));
+      if (hasTriggered) {
+        playGentleNocChime();
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [mapData.nodes_data, assetsList, unifiMetrics, isAudioMuted]);
+
+  const hasAnySoundAlertTriggered = (mapData.nodes_data || []).some(n => getIsNodeSoundAlertTriggered(n));
 
   return (
     <div className="space-y-4 flex-1 flex flex-col w-full h-full min-h-0">
@@ -1334,6 +1446,48 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               <Hand size={14} /> Mover Tela
             </button>
           )}
+
+          {/* Sound Alert Toggle / Indicator */}
+          <div className="h-4 w-px bg-slate-800 mx-1" />
+          <button
+            onClick={() => {
+              if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+                audioCtxRef.current.resume().catch(() => {});
+              }
+              const nextMuted = !isAudioMuted;
+              setIsAudioMuted(nextMuted);
+              if (!nextMuted) {
+                playGentleNocChime();
+              }
+            }}
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+              hasAnySoundAlertTriggered
+                ? (isAudioMuted ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-red-500/30 text-red-300 border border-red-500/50 animate-pulse")
+                : (isAudioMuted ? "bg-slate-800/80 text-slate-500 border border-slate-700" : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700")
+            }`}
+            title={
+              isAudioMuted 
+                ? "Alerta sonoro mutado. Clique para reativar o áudio." 
+                : hasAnySoundAlertTriggered 
+                ? "Dispositivo offline emitindo som a cada 2s! Clique para silenciar." 
+                : "Alerta sonoro ativado para dispositivos offline (2s). Clique para silenciar/testar."
+            }
+          >
+            {isAudioMuted ? (
+              <VolumeX size={14} className="text-slate-400" />
+            ) : hasAnySoundAlertTriggered ? (
+              <Volume2 size={14} className="text-red-400 animate-bounce" />
+            ) : (
+              <Volume2 size={14} className="text-emerald-400" />
+            )}
+            <span className="hidden sm:inline text-[11px]">
+              {isAudioMuted 
+                ? "Mudo" 
+                : hasAnySoundAlertTriggered 
+                ? "Alarme 2s!" 
+                : "Som (2s)"}
+            </span>
+          </button>
         </div>
 
         {loading ? (
@@ -1483,9 +1637,21 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         {renderNodeIcon(node.icon_type, false, isOffline)}
                       </div>
 
-                      <span className={`w-2.5 h-2.5 rounded-full ${
-                        isOffline ? "bg-red-500 animate-ping" : "bg-emerald-500 animate-pulse"
-                      }`} />
+                      <div className="flex items-center gap-1.5">
+                        {!!(node.sound_alert_offline ?? (node.asset_id && assetsList.find(a => String(a.id) === String(node.asset_id))?.sound_alert_offline)) && (
+                          <span 
+                            title={isOffline ? "Alerta Sonoro Disparado (intercalado 2s)!" : "Alerta sonoro ativo para quando este dispositivo ficar offline"}
+                            className={`p-1 rounded-md transition-all ${
+                              isOffline ? "bg-red-500/30 text-red-300 animate-pulse ring-1 ring-red-500/50" : "text-slate-500 hover:text-slate-400"
+                            }`}
+                          >
+                            <Bell size={12} />
+                          </span>
+                        )}
+                        <span className={`w-2.5 h-2.5 rounded-full ${
+                          isOffline ? "bg-red-500 animate-ping" : "bg-emerald-500 animate-pulse"
+                        }`} />
+                      </div>
                     </div>
 
                     {/* Node Label & Subtext */}
@@ -1642,6 +1808,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       ...prev,
                       asset_id: assetId,
                       label: selected ? selected.name : prev.label,
+                      sound_alert_offline: selected ? !!selected.sound_alert_offline : prev.sound_alert_offline,
                       zabbix_selected_metrics: []
                     }));
                     setAvailableZabbixItems([]);
@@ -1806,6 +1973,29 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Alerta Sonoro Quando Offline (2s) */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-1.5 rounded-lg ${newNodeForm.sound_alert_offline ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-900 text-slate-500'}`}>
+                    <Bell size={16} />
+                  </div>
+                  <div>
+                    <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer" onClick={() => setNewNodeForm(prev => ({ ...prev, sound_alert_offline: !prev.sound_alert_offline }))}>
+                      Alerta Sonoro se Offline (2s)
+                    </label>
+                    <p className="text-[10px] text-slate-400">
+                      Toca sinal suave intercalado a cada 2 segundos quando o equipamento ficar offline.
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={!!newNodeForm.sound_alert_offline}
+                  onChange={(e) => setNewNodeForm(prev => ({ ...prev, sound_alert_offline: e.target.checked }))}
+                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                />
               </div>
 
               {/* Opções de Exibição / Métricas UniFi (Para Rack ou Dispositivo Avulso) */}
@@ -2002,6 +2192,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       ...prev,
                       asset_id: assetId,
                       label: selected ? selected.name : prev.label,
+                      sound_alert_offline: selected ? !!selected.sound_alert_offline : prev.sound_alert_offline,
                       zabbix_selected_metrics: []
                     }));
                     setAvailableZabbixMetrics([]);
@@ -2164,6 +2355,29 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   </div>
                 </div>
               )}
+
+              {/* Alerta Sonoro Quando Offline (2s) */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-1.5 rounded-lg ${editNodeForm.sound_alert_offline ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-900 text-slate-500'}`}>
+                    <Bell size={16} />
+                  </div>
+                  <div>
+                    <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer" onClick={() => setEditNodeForm(prev => ({ ...prev, sound_alert_offline: !prev.sound_alert_offline }))}>
+                      Alerta Sonoro se Offline (2s)
+                    </label>
+                    <p className="text-[10px] text-slate-400">
+                      Toca sinal suave intercalado a cada 2 segundos quando o equipamento ficar offline.
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={!!editNodeForm.sound_alert_offline}
+                  onChange={(e) => setEditNodeForm(prev => ({ ...prev, sound_alert_offline: e.target.checked }))}
+                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                />
+              </div>
 
               {/* Opções de Exibição / Métricas UniFi (Para Rack ou Dispositivo Avulso) */}
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">

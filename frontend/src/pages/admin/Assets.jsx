@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   Search, Monitor, HardDrive, Wifi, Phone, Plus, Server, 
   CheckCircle, AlertTriangle, AlertCircle, RefreshCw, CloudDownload, 
-  X, Edit3, Trash2, Tag, Cpu, MapPin, Hash, ShieldAlert, Layers, Activity
+  X, Edit3, Trash2, Tag, Cpu, MapPin, Hash, ShieldAlert, Layers, Activity, Bell, Volume2
 } from "lucide-react";
 import api from "../../api/client";
 import ZabbixItemsConfigModal from "../../components/ZabbixItemsConfigModal";
@@ -391,6 +391,7 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
     assigned_user_id: "",
     location_id: "",
     description: "",
+    sound_alert_offline: false,
     specs: {},
   });
   const [saving, setSaving] = useState(false);
@@ -409,6 +410,7 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
         assigned_user_id: assetToEdit.assigned_user_id ? String(assetToEdit.assigned_user_id) : "",
         location_id: assetToEdit.location_id ? String(assetToEdit.location_id) : "",
         description: assetToEdit.description || "",
+        sound_alert_offline: !!assetToEdit.sound_alert_offline,
         specs: assetToEdit.specs || {},
       });
     } else {
@@ -424,6 +426,7 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
         assigned_user_id: "",
         location_id: "",
         description: "",
+        sound_alert_offline: false,
         specs: {},
       });
     }
@@ -448,6 +451,7 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
       description: formData.description?.trim() || null,
       assigned_user_id: formData.assigned_user_id ? Number(formData.assigned_user_id) : null,
       location_id: formData.location_id ? Number(formData.location_id) : null,
+      sound_alert_offline: !!formData.sound_alert_offline,
       specs: formData.specs || {},
     };
 
@@ -629,6 +633,32 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
                 rows={2}
                 placeholder="Detalhes sobre a garantia, ponto de rede ou características adicionais..."
                 value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-blue-500 font-medium"
+              />
+            </div>
+
+            {/* Alerta Sonoro Quando Offline (Fluxograma / NOC) */}
+            <div className="sm:col-span-2 bg-amber-50/80 border border-amber-200 rounded-2xl p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                  <Bell size={20} />
+                </div>
+                <div>
+                  <label htmlFor="asset_sound_alert" className="block text-slate-900 font-black text-xs cursor-pointer">
+                    Alerta Sonoro quando Offline (Fluxograma / NOC)
+                  </label>
+                  <p className="text-[11px] text-slate-600 font-medium">
+                    Quando este dispositivo estiver inserido na topologia e ficar offline, emitirá um aviso sonoro suave intercalado a cada 2 segundos.
+                  </p>
+                </div>
+              </div>
+              <input
+                id="asset_sound_alert"
+                type="checkbox"
+                checked={!!formData.sound_alert_offline}
+                onChange={(e) => setFormData({ ...formData, sound_alert_offline: e.target.checked })}
+                className="w-5 h-5 accent-amber-600 rounded cursor-pointer"
               />
             </div>
 

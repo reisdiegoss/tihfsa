@@ -169,6 +169,13 @@ async def lifespan(app: FastAPI):
     """Startup: cria tabelas no banco se não existirem e inicia tarefas em background."""
     import app.models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE assets ADD COLUMN IF NOT EXISTS sound_alert_offline BOOLEAN DEFAULT FALSE NOT NULL;"))
+            conn.commit()
+    except Exception as e:
+        print(f"[DB Auto-Migration sound_alert_offline Error] {e}")
     _seed_default_asset_types()
     
     # Iniciar o background poller do Zabbix

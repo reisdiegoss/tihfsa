@@ -60,6 +60,7 @@ class Asset(Base):
     specs = Column(JSON, nullable=True)  # Configurações extras em JSON
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    sound_alert_offline = Column(Boolean, default=False, nullable=False)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

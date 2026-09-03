@@ -27,6 +27,7 @@ def _format_asset_response(asset: Asset) -> dict:
         "asset_tag": asset.asset_tag,
         "description": asset.description,
         "specs": asset.specs,
+        "sound_alert_offline": getattr(asset, "sound_alert_offline", False),
         "is_active": asset.is_active,
         "assigned_user_id": asset.assigned_user_id,
         "assigned_user_name": asset.assigned_user.display_name if asset.assigned_user else None,

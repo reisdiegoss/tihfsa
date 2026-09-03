@@ -72,4 +72,8 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Diagramas de Topologia Interativos**: Suporte completo a nós de infraestrutura (Switches, Racks, Access Points, Servidores, Firewalls, Roteadores).
 - **Dimensionamento Personalizado de Cards**: Suporte a ajuste de largura e altura (pixels manuais ou presets: Padrão, Médio, Largo, Extra Largo), além de alça interativa de redimensionamento direto no canvas. Quebra de texto inteligente para manter nomes longos legíveis sem corte.
 - **Opções de Exibição Granulares**: Seleção precisa do que exibir em cada card (tanto dentro do Rack quanto em equipamentos avulsos fora do rack), incluindo exibição de IP e métricas UniFi detalhadas (CPU, RAM, Uptime, Firmware, WiFi Experience, Clientes conectados, Utilização de Canais, LAN Experience e Taxas RX/TX).
+- **Alerta Sonoro Inteligente para Dispositivos Offline (Intercalado a cada 2s)**:
+  - Pode ser ativado no cadastro/edição do equipamento (CMDB) e/ou no nó da topologia.
+  - Emite aviso sonoro suave e não irritante (tom dual D5/A5 com decaimento harmônico via Web Audio API) intercalado a cada 2 segundos enquanto o dispositivo estiver offline ou inacessível.
+  - Indicador visual com ícone de sino nos cards e botão na barra flutuante para silenciar (Mudo), reativar ou testar o som a qualquer momento.
 - **Modo TV Pública (/noc)**: Acesso sem autenticação de login para telas NOC/monitores de parede, com suporte a Fullscreen nativo, Fit Tela inteligente e escala para monitores 4K.

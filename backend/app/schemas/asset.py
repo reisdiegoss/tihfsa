@@ -14,6 +14,7 @@ class AssetBase(BaseModel):
     asset_tag: str | None = None
     description: str | None = None
     specs: dict | None = None
+    sound_alert_offline: bool = False
 
 
 class AssetZabbixItemBase(BaseModel):
@@ -50,6 +51,7 @@ class AssetUpdate(BaseModel):
     asset_tag: str | None = None
     description: str | None = None
     specs: dict | None = None
+    sound_alert_offline: bool | None = None
     assigned_user_id: int | None = None
     subcategory_id: int | None = None
     category_id: int | None = None
