@@ -132,6 +132,11 @@ export default function PublicNocPanel() {
     if (assetType && assetType !== "Todos") params.append("type", assetType);
     if (statusFilter && statusFilter !== "Todos") params.append("status", statusFilter);
 
+    // Atualiza também a lista de mapas caso algum tenha sido renomeado ou criado
+    api.get("/network-maps")
+      .then((res) => setMapsList(res.data || []))
+      .catch(() => {});
+
     api.get(`/zabbix/public-noc?${params.toString()}`)
       .then((res) => {
         setData(res.data || {});
@@ -429,6 +434,7 @@ export default function PublicNocPanel() {
           <TopologyMapBuilder 
             isPublicView={!isUnlocked} 
             mapId={currentMapId ? parseInt(currentMapId, 10) : (mapId ? parseInt(mapId, 10) : undefined)} 
+            refreshTrigger={lastUpdate}
             onMapLoaded={(loadedMap) => {
               if (loadedMap?.id) {
                 const idStr = String(loadedMap.id);

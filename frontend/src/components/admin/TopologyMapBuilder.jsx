@@ -142,7 +142,7 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
   );
 };
 
-export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapLoaded }) {
+export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapLoaded, refreshTrigger }) {
   const [mapData, setMapData] = useState({
     id: null,
     name: "Topologia Geral de Rede TIHFSA",
@@ -264,34 +264,53 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       .catch(console.error);
   };
 
-  // Carga COMPLETA inicial do mapa (posições + conexões + zoom + pan)
-  const fetchMapDetails = (id) => {
+  // Carga do mapa (isFirstLoad = false não ativa tela cheia de loading para não piscar a TV)
+  const fetchMapDetails = (id, isFirstLoad = true) => {
     if (!id) return;
-    setLoading(true);
+    if (isFirstLoad) setLoading(true);
     api.get(`/network-maps/${id}`)
       .then((res) => {
-        setMapData(res.data);
-        if (res.data.zoom_level) setZoom(res.data.zoom_level);
-        if (res.data.pan_x !== undefined && res.data.pan_y !== undefined) {
-          setPan({ x: res.data.pan_x, y: res.data.pan_y });
+        const latest = res.data;
+        if (!latest) return;
+        setMapData(latest);
+        if (isFirstLoad) {
+          if (latest.zoom_level) setZoom(latest.zoom_level);
+          if (latest.pan_x !== undefined && latest.pan_y !== undefined) {
+            setPan({ x: latest.pan_x, y: latest.pan_y });
+          }
         }
-        if (res.data.assets_data && res.data.assets_data.length > 0) {
+        if (latest.assets_data && latest.assets_data.length > 0) {
           setAssetsList((prev) => {
             const map = new Map(prev.map(a => [a.id, a]));
-            res.data.assets_data.forEach(a => map.set(a.id, a));
+            latest.assets_data.forEach(a => map.set(a.id, a));
             return Array.from(map.values());
           });
         }
         setHasUnsavedChanges(false);
-        if (onMapLoaded) onMapLoaded(res.data);
+        if (onMapLoaded) onMapLoaded(latest);
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (isFirstLoad) setLoading(false);
+      });
   };
 
-  // Refresh periódico EM SEGUNDO PLANO (atualiza apenas status ICMP/Zabbix sem resetar posições ou edições do usuário)
+  // Refresh periódico EM SEGUNDO PLANO
   const refreshMapStatuses = (id) => {
-    if (!id || draggingNodeId || isPanning) return;
+    if (!id || draggingNodeId || isPanning || resizingNodeId) return;
+
+    // Se NÃO há alterações pendentes locais (ex: tela da TV ou monitor sem edição ativa),
+    // puxa a versão completa do fluxograma silenciosamente.
+    // Isso garante que se um nó for adicionado, movido, excluído ou editado em outro PC,
+    // a TV atualiza automaticamente no countdown sem precisar de F5 ou acesso remoto!
+    if (!hasUnsavedChanges) {
+      fetchMapDetails(id, false);
+      fetchLiveMetrics(id);
+      return;
+    }
+
+    // Se o usuário estiver no meio de uma edição neste computador,
+    // atualiza apenas os status de ICMP/Zabbix para não perder seu trabalho em andamento
     api.get(`/network-maps/${id}`)
       .then((res) => {
         const latestMap = res.data;
@@ -381,12 +400,20 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   useEffect(() => {
     if (selectedMapId) {
-      fetchMapDetails(selectedMapId);
-      // Refresh de status Zabbix em segundo plano a cada 20s (sem resetar posições ou arrasto do usuário)
-      const interval = setInterval(() => refreshMapStatuses(selectedMapId), 20000);
+      fetchMapDetails(selectedMapId, true);
+      // Refresh automático em segundo plano a cada 15s (sem resetar posições ou arrasto do usuário)
+      const interval = setInterval(() => refreshMapStatuses(selectedMapId), 15000);
       return () => clearInterval(interval);
     }
   }, [selectedMapId]);
+
+  // Disparo de sincronização externa (acionado pelo countdown da tela pública/TV ou botão atualizar)
+  useEffect(() => {
+    if (refreshTrigger && selectedMapId && !draggingNodeId && !isPanning && !resizingNodeId && !hasUnsavedChanges) {
+      fetchMapDetails(selectedMapId, false);
+      fetchLiveMetrics(selectedMapId);
+    }
+  }, [refreshTrigger]);
 
   // Salvar mapa atual no backend (incluindo zoom e posição pan)
   const handleSaveMap = () => {
