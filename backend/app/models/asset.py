@@ -87,7 +87,8 @@ class Asset(Base):
     zabbix_items = relationship("AssetZabbixItem", back_populates="asset", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Asset {self.id}: {self.name} ({self.type.value})>"
+        type_str = self.type.value if hasattr(self.type, "value") else str(self.type)
+        return f"<Asset {self.id}: {self.name} ({type_str})>"
 
 
 class AssetZabbixItem(Base):

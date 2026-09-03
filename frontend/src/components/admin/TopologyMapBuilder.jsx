@@ -166,15 +166,24 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [isNewMapModalOpen, setIsNewMapModalOpen] = useState(false);
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
 
+  const DEFAULT_DISPLAY_OPTIONS = {
+    show_ip: true,
+    unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx']
+  };
+
   const [newNodeForm, setNewNodeForm] = useState({
     asset_id: "",
     child_asset_ids: [],
     label: "",
     ip_address: "",
-    icon_type: "Switch", // 'Switch', 'AccessPoint', 'Phone', 'Server', 'Firewall', 'Cloud'
+    icon_type: "Switch", // 'Switch', 'AccessPoint', 'Phone', 'Server', 'Firewall', 'Cloud', 'Rack', 'Zone'
+    width: "",
+    height: "",
     x: 400,
     y: 300,
     zabbix_selected_metrics: [],
+    display_options: { ...DEFAULT_DISPLAY_OPTIONS },
+    rack_display_options: { ...DEFAULT_DISPLAY_OPTIONS },
   });
   
   const [editNodeForm, setEditNodeForm] = useState({
@@ -184,7 +193,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     label: "",
     ip_address: "",
     icon_type: "Switch",
+    width: "",
+    height: "",
     zabbix_selected_metrics: [],
+    display_options: { ...DEFAULT_DISPLAY_OPTIONS },
+    rack_display_options: { ...DEFAULT_DISPLAY_OPTIONS },
   });
   const [availableZabbixItems, setAvailableZabbixItems] = useState([]);
   const [selectedZabbixInterface, setSelectedZabbixInterface] = useState("");
@@ -209,6 +222,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [isPanMode, setIsPanMode] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Redimensionamento interativo de cards
+  const [resizingNodeId, setResizingNodeId] = useState(null);
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, w: 0, h: 0 });
 
   // Métricas ao vivo do Zabbix para exibir DENTRO dos cards
   const [liveMetrics, setLiveMetrics] = useState({});
@@ -824,6 +841,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     const centerX = (-pan.x + cWidth / 2) / zoom - 60;
     const centerY = (-pan.y + cHeight / 2) / zoom - 45;
 
+    const displayOpts = newNodeForm.display_options || newNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+
     const newNode = {
       id: `node_${Date.now()}`,
       asset_id: selectedAsset ? selectedAsset.id : null,
@@ -831,13 +850,16 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       icon_type: newNodeForm.icon_type,
       x: Math.round(centerX),
       y: Math.round(centerY),
+      width: newNodeForm.width ? parseInt(newNodeForm.width, 10) : null,
+      height: newNodeForm.height ? parseInt(newNodeForm.height, 10) : null,
       icmp_status: selectedAsset ? selectedAsset.icmp_status : "online",
       zabbix_status: selectedAsset ? selectedAsset.zabbix_status : "ok",
       zabbix_alert_title: selectedAsset ? selectedAsset.zabbix_alert_title : null,
       ip_address: newNodeForm.ip_address || (selectedAsset ? selectedAsset.ip_address : ""),
       zabbix_selected_metrics: [...newNodeForm.zabbix_selected_metrics],
       child_asset_ids: newNodeForm.child_asset_ids || [],
-      rack_display_options: newNodeForm.rack_display_options || { show_ip: true, unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'] }
+      display_options: displayOpts,
+      rack_display_options: displayOpts
     };
 
     setMapData((prev) => ({
@@ -846,8 +868,20 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }));
 
     setIsAddNodeModalOpen(false);
-    setNewNodeForm({ asset_id: "",
-    child_asset_ids: [], label: "", ip_address: "", icon_type: "Switch", x: 400, y: 300, zabbix_selected_metrics: [] });
+    setNewNodeForm({ 
+      asset_id: "", 
+      child_asset_ids: [], 
+      label: "", 
+      ip_address: "", 
+      icon_type: "Switch", 
+      width: "", 
+      height: "", 
+      x: 400, 
+      y: 300, 
+      zabbix_selected_metrics: [],
+      display_options: { ...DEFAULT_DISPLAY_OPTIONS },
+      rack_display_options: { ...DEFAULT_DISPLAY_OPTIONS }
+    });
     setAvailableZabbixItems([]);
     setSelectedZabbixInterface("");
   };
@@ -857,14 +891,20 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     const node = mapData.nodes_data.find(n => n.id === nodeId);
     if (!node) return;
     
+    const existingOpts = node.display_options || node.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+
     setEditNodeForm({
       id: node.id,
       asset_id: node.asset_id ? String(node.asset_id) : "",
       label: node.label,
       icon_type: node.icon_type,
+      ip_address: node.ip_address || "",
+      width: node.width !== undefined && node.width !== null ? String(node.width) : "",
+      height: node.height !== undefined && node.height !== null ? String(node.height) : "",
       zabbix_selected_metrics: node.zabbix_selected_metrics || [],
       child_asset_ids: node.child_asset_ids || [],
-      rack_display_options: node.rack_display_options || { show_ip: true, unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'] }
+      display_options: existingOpts,
+      rack_display_options: existingOpts
     });
     setAvailableZabbixItems([]);
     setSelectedZabbixInterface("");
@@ -896,6 +936,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   // Salvar Edição do Nó
   const handleSaveEditNode = () => {
     const selectedAsset = assetsList.find(a => String(a.id) === editNodeForm.asset_id);
+    const displayOpts = editNodeForm.display_options || editNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
     
     setHasUnsavedChanges(true);
     setMapData(prev => ({
@@ -906,7 +947,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             ...n,
             asset_id: selectedAsset ? selectedAsset.id : null,
             child_asset_ids: editNodeForm.child_asset_ids || [],
-            rack_display_options: editNodeForm.rack_display_options || { show_ip: true, unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'] },
+            width: editNodeForm.width ? parseInt(editNodeForm.width, 10) : null,
+            height: editNodeForm.height ? parseInt(editNodeForm.height, 10) : null,
+            display_options: displayOpts,
+            rack_display_options: displayOpts,
             label: editNodeForm.label || (selectedAsset ? selectedAsset.name : n.label),
             icon_type: editNodeForm.icon_type,
             ip_address: editNodeForm.ip_address || (selectedAsset ? selectedAsset.ip_address : n.ip_address),
@@ -985,6 +1029,22 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   };
 
   const handleMouseMove = (e) => {
+    if (resizingNodeId) {
+      const diffX = Math.round((e.clientX - resizeStart.x) / zoom);
+      const diffY = Math.round((e.clientY - resizeStart.y) / zoom);
+      const newW = Math.max(160, Math.min(900, resizeStart.w + diffX));
+      const newH = resizeStart.h ? Math.max(80, Math.min(1400, resizeStart.h + diffY)) : (diffY > 15 ? Math.max(80, diffY + 120) : null);
+
+      setHasUnsavedChanges(true);
+      setMapData((prev) => ({
+        ...prev,
+        nodes_data: prev.nodes_data.map((n) => 
+          n.id === resizingNodeId ? { ...n, width: newW, height: newH } : n
+        ),
+      }));
+      return;
+    }
+
     if (isPanning) {
       setPan({
         x: e.clientX - panStart.x,
@@ -1010,6 +1070,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const handleMouseUp = () => {
     setDraggingNodeId(null);
     setIsPanning(false);
+    setResizingNodeId(null);
   };
 
   // Renderizar Ícones dos Equipamentos no Nó
@@ -1313,9 +1374,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 if (!sourceNode || !targetNode) return null;
 
                 // Coordenadas centrais
-                const x1 = sourceNode.x + 60;
+                const sourceWidth = sourceNode.width || (sourceNode.icon_type === 'Rack' || sourceNode.icon_type === 'Zone' ? 280 : 220);
+                const targetWidth = targetNode.width || (targetNode.icon_type === 'Rack' || targetNode.icon_type === 'Zone' ? 280 : 220);
+                const x1 = sourceNode.x + Math.round(sourceWidth / 2);
                 const y1 = sourceNode.y + 45;
-                const x2 = targetNode.x + 60;
+                const x2 = targetNode.x + Math.round(targetWidth / 2);
                 const y2 = targetNode.y + 45;
 
                 const isSourceOffline = sourceNode.icmp_status === "offline";
@@ -1376,6 +1439,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               {mapData.nodes_data.map((node) => {
                 const isOffline = getIsNodeOffline(node);
                 const isSelected = selectedNodeId === node.id;
+                const nodeWidth = node.width || (node.icon_type === 'Rack' || node.icon_type === 'Zone' ? 280 : 220);
+                const nodeHeight = node.height || null;
 
                 return (
                   <div
@@ -1386,17 +1451,22 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         openEditNodeModal(node.id);
                       }
                     }}
-                    style={{ left: `${node.x}px`, top: `${node.y}px` }}
+                    style={{ 
+                      left: `${node.x}px`, 
+                      top: `${node.y}px`,
+                      width: `${nodeWidth}px`,
+                      minHeight: nodeHeight ? `${nodeHeight}px` : undefined,
+                    }}
                     className={`absolute transition-all duration-150 cursor-grab active:cursor-grabbing shadow-xl ${
                       node.icon_type === 'Zone' 
-                        ? "w-56 p-4 border-4 border-dashed rounded-3xl z-30 backdrop-blur-md " + (
+                        ? "p-4 border-4 border-dashed rounded-3xl z-30 backdrop-blur-md " + (
                           isOffline ? "border-red-500 bg-red-950/80 animate-bounce" : "border-slate-500 bg-slate-800/80"
                         )
                         : node.icon_type === 'Rack' 
-                        ? "w-56 p-4 border-2 rounded-xl z-30 backdrop-blur-md " + (
+                        ? "p-4 border-2 rounded-xl z-30 backdrop-blur-md " + (
                           isOffline ? "border-red-500 bg-red-950/80 animate-bounce" : "border-slate-400 bg-slate-900/90 shadow-xl"
                         )
-                        : "w-36 p-3 rounded-2xl border z-30 backdrop-blur-md " + (
+                        : "p-3 rounded-2xl border z-30 backdrop-blur-md " + (
                           isOffline
                             ? "bg-red-950/80 border-red-500 text-white ring-4 ring-red-500/20 animate-bounce"
                             : isSelected
@@ -1420,11 +1490,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
                     {/* Node Label & Subtext */}
                     <div>
-                      <p className="font-extrabold text-xs text-white truncate" title={node.label}>
+                      <p className="font-extrabold text-xs text-white break-words line-clamp-2" title={node.label}>
                         {node.label}
                       </p>
                       
-                      {node.ip_address && (
+                      {node.ip_address && (node.display_options?.show_ip ?? node.rack_display_options?.show_ip ?? true) && (
                         <p className="text-[10px] font-mono text-slate-400 font-bold truncate">
                           {node.ip_address}
                         </p>
@@ -1441,15 +1511,15 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                               const childUnifiDev = child.ip_address ? unifiMetrics.find(um => um.ip === child.ip_address) : null;
                               const childOffline = child.icmp_status === "offline" || (childUnifiDev && childUnifiDev.state === 0);
                               
-                              const showIp = node.rack_display_options?.show_ip ?? true;
-                              const unifiMetricsSelected = node.rack_display_options?.unifi_metrics ?? ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'];
+                              const showIp = node.display_options?.show_ip ?? node.rack_display_options?.show_ip ?? true;
+                              const unifiMetricsSelected = node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'];
                               
                               return (
                                 <div key={cid} className={`flex flex-col gap-1.5 px-2 py-1.5 rounded-lg text-[10px] ${childOffline ? 'bg-red-900/40 border border-red-500/30' : 'bg-slate-800/60'}`}>
                                   <div className="flex items-center gap-1.5">
                                     <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${childOffline ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
-                                    <span className="font-bold text-white truncate flex-1">{child.name}</span>
-                                    {showIp && <span className="font-mono text-slate-500 text-[9px]">{child.ip_address || ''}</span>}
+                                    <span className="font-bold text-white break-words line-clamp-2 flex-1" title={child.name}>{child.name}</span>
+                                    {showIp && <span className="font-mono text-slate-400 text-[9px] shrink-0">{child.ip_address || ''}</span>}
                                   </div>
                                   {childUnifiDev && <UnifiMetricsBlock unifiDev={childUnifiDev} selectedMetrics={unifiMetricsSelected} />}
                                 </div>
@@ -1513,7 +1583,29 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
                     {/* Renderização das Métricas UniFi */}
                     {unifiMetrics.length > 0 && node.ip_address && (
-                      <UnifiMetricsBlock unifiDev={unifiMetrics.find(u => u.ip === node.ip_address)} selectedMetrics={null} />
+                      <UnifiMetricsBlock 
+                        unifiDev={unifiMetrics.find(u => u.ip === node.ip_address)} 
+                        selectedMetrics={node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx']} 
+                      />
+                    )}
+
+                    {/* Alça Interativa de Redimensionamento (Bottom-Right Resize Handle) */}
+                    {isSelected && !isPublicView && (
+                      <div
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          setResizingNodeId(node.id);
+                          const curW = node.width || (node.icon_type === 'Rack' || node.icon_type === 'Zone' ? 280 : 220);
+                          const curH = node.height || 0;
+                          setResizeStart({ x: e.clientX, y: e.clientY, w: curW, h: curH });
+                        }}
+                        className="absolute -bottom-1 -right-1 w-5 h-5 bg-blue-600 hover:bg-blue-500 text-white rounded-full flex items-center justify-center cursor-se-resize shadow-md z-40 border border-white/40 transition-transform hover:scale-125"
+                        title="Arraste para redimensionar largura e altura deste card"
+                      >
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <path d="M21 15v6m0 0h-6m6 0l-7-7" />
+                        </svg>
+                      </div>
                     )}
 
                   </div>
@@ -1646,6 +1738,156 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 </div>
               )}
 
+              {/* Dimensões do Card (Largura e Altura) */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                    <Maximize2 size={13} className="text-blue-400" />
+                    Dimensões do Card (Largura / Altura):
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {newNodeForm.width ? `${newNodeForm.width}px` : "Largura Auto"} × {newNodeForm.height ? `${newNodeForm.height}px` : "Altura Auto"}
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>Largura:</span>
+                    <div className="flex items-center gap-1 font-mono">
+                      <input
+                        type="number"
+                        min="140"
+                        max="800"
+                        placeholder={newNodeForm.icon_type === 'Rack' || newNodeForm.icon_type === 'Zone' ? "280 (Padrão)" : "220 (Padrão)"}
+                        value={newNodeForm.width}
+                        onChange={(e) => setNewNodeForm(prev => ({ ...prev, width: e.target.value }))}
+                        className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-center font-bold text-white text-xs outline-none focus:border-blue-500"
+                      />
+                      <span className="text-slate-500 text-[10px]">px</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {[
+                      { label: "Padrão", w: "" },
+                      { label: "Médio (280px)", w: "280" },
+                      { label: "Largo (340px)", w: "340" },
+                      { label: "Extra Largo (420px)", w: "420" }
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setNewNodeForm(prev => ({ ...prev, width: preset.w }))}
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                          newNodeForm.width === preset.w 
+                            ? "bg-blue-600 text-white font-bold" 
+                            : "bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-900">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Altura Mínima (opcional):</span>
+                    <div className="flex items-center gap-1 font-mono">
+                      <input
+                        type="number"
+                        min="60"
+                        max="1500"
+                        placeholder="Auto"
+                        value={newNodeForm.height}
+                        onChange={(e) => setNewNodeForm(prev => ({ ...prev, height: e.target.value }))}
+                        className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-center font-bold text-white text-xs outline-none focus:border-blue-500"
+                      />
+                      <span className="text-slate-500 text-[10px]">px</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Opções de Exibição / Métricas UniFi (Para Rack ou Dispositivo Avulso) */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                <label className="block text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                  <Activity size={14} className="text-emerald-400" />
+                  {newNodeForm.icon_type === 'Rack' || newNodeForm.icon_type === 'Zone' 
+                    ? "Opções de Exibição dos Itens no Rack:" 
+                    : "Opções de Exibição do Dispositivo:"}
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                    <input 
+                      type="checkbox" 
+                      className="w-3.5 h-3.5 accent-blue-500 rounded"
+                      checked={newNodeForm.display_options?.show_ip ?? newNodeForm.rack_display_options?.show_ip ?? true}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setNewNodeForm(prev => ({
+                          ...prev,
+                          display_options: {
+                            ...(prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS),
+                            show_ip: val
+                          },
+                          rack_display_options: {
+                            ...(prev.rack_display_options || prev.display_options || DEFAULT_DISPLAY_OPTIONS),
+                            show_ip: val
+                          }
+                        }));
+                      }}
+                    />
+                    Mostrar Endereço IP
+                  </label>
+
+                  <div className="border-t border-slate-800 mt-2 pt-2">
+                    <label className="block text-slate-400 font-bold mb-2 text-xs">Métricas UniFi (Detalhes Avançados):</label>
+                    <div className="grid grid-cols-2 gap-2 pl-2">
+                      {[
+                        { id: 'cpu', label: 'CPU' },
+                        { id: 'ram', label: 'RAM' },
+                        { id: 'uptime', label: 'Uptime' },
+                        { id: 'fw', label: 'Firmware' },
+                        { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
+                        { id: 'clients', label: 'Clientes (AP)' },
+                        { id: 'channel_utilization', label: 'Uso de Canal (AP)' },
+                        { id: 'lan_experience', label: 'LAN Exp. (SW)' },
+                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
+                      ].map(metric => {
+                        const currentOpts = newNodeForm.display_options || newNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+                        const isMetricChecked = (currentOpts.unifi_metrics || []).includes(metric.id);
+                        return (
+                          <label key={metric.id} className="flex items-center gap-2 cursor-pointer text-[10px] text-slate-400 hover:text-slate-200">
+                            <input 
+                              type="checkbox" 
+                              className="w-3 h-3 accent-blue-500 rounded"
+                              checked={isMetricChecked}
+                              onChange={(e) => {
+                                const currMetrics = currentOpts.unifi_metrics || [];
+                                const newMetrics = e.target.checked
+                                  ? [...currMetrics, metric.id]
+                                  : currMetrics.filter(m => m !== metric.id);
+                                setNewNodeForm(prev => ({
+                                  ...prev,
+                                  display_options: {
+                                    ...(prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS),
+                                    unifi_metrics: newMetrics
+                                  },
+                                  rack_display_options: {
+                                    ...(prev.rack_display_options || prev.display_options || DEFAULT_DISPLAY_OPTIONS),
+                                    unifi_metrics: newMetrics
+                                  }
+                                }));
+                              }}
+                            />
+                            {metric.label}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               {availableZabbixItems.length > 0 && (
                 <div className="pt-2 border-t border-slate-800">
@@ -1786,8 +2028,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 <input
                   type="text"
                   placeholder="Ex: 192.168.1.10"
-                  value={newNodeForm.ip_address}
-                  onChange={(e) => setNewNodeForm(prev => ({ ...prev, ip_address: e.target.value }))}
+                  value={editNodeForm.ip_address || ""}
+                  onChange={(e) => setEditNodeForm(prev => ({ ...prev, ip_address: e.target.value }))}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
                 />
               </div>
@@ -1821,6 +2063,76 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 </select>
               </div>
 
+              {/* Dimensões do Card (Largura e Altura) */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                    <Maximize2 size={13} className="text-blue-400" />
+                    Dimensões do Card (Largura / Altura):
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {editNodeForm.width ? `${editNodeForm.width}px` : "Largura Auto"} × {editNodeForm.height ? `${editNodeForm.height}px` : "Altura Auto"}
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <span>Largura:</span>
+                    <div className="flex items-center gap-1 font-mono">
+                      <input
+                        type="number"
+                        min="140"
+                        max="800"
+                        placeholder={editNodeForm.icon_type === 'Rack' || editNodeForm.icon_type === 'Zone' ? "280 (Padrão)" : "220 (Padrão)"}
+                        value={editNodeForm.width}
+                        onChange={(e) => setEditNodeForm(prev => ({ ...prev, width: e.target.value }))}
+                        className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-center font-bold text-white text-xs outline-none focus:border-blue-500"
+                      />
+                      <span className="text-slate-500 text-[10px]">px</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {[
+                      { label: "Padrão", w: "" },
+                      { label: "Médio (280px)", w: "280" },
+                      { label: "Largo (340px)", w: "340" },
+                      { label: "Extra Largo (420px)", w: "420" }
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setEditNodeForm(prev => ({ ...prev, width: preset.w }))}
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                          editNodeForm.width === preset.w 
+                            ? "bg-blue-600 text-white font-bold" 
+                            : "bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-900">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Altura Mínima (opcional):</span>
+                    <div className="flex items-center gap-1 font-mono">
+                      <input
+                        type="number"
+                        min="60"
+                        max="1500"
+                        placeholder="Auto"
+                        value={editNodeForm.height}
+                        onChange={(e) => setEditNodeForm(prev => ({ ...prev, height: e.target.value }))}
+                        className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-center font-bold text-white text-xs outline-none focus:border-blue-500"
+                      />
+                      <span className="text-slate-500 text-[10px]">px</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Seleção de Filhos para Racks e Zonas */}
               {(editNodeForm.icon_type === 'Rack' || editNodeForm.icon_type === 'Zone') && (
                 <div className="mt-3">
@@ -1850,73 +2162,89 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       );
                     })}
                   </div>
-
-                  {editNodeForm.child_asset_ids && editNodeForm.child_asset_ids.length > 0 && (
-                    <div className="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl">
-                      <label className="block text-slate-400 font-bold mb-2 text-xs">Exibição dos Filhos no Mapa:</label>
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                          <input 
-                            type="checkbox" 
-                            className="w-3.5 h-3.5 accent-blue-500 rounded"
-                            checked={editNodeForm.rack_display_options?.show_ip ?? true}
-                            onChange={(e) => {
-                              setEditNodeForm(prev => ({
-                                ...prev,
-                                rack_display_options: {
-                                  ...prev.rack_display_options,
-                                  show_ip: e.target.checked
-                                }
-                              }));
-                            }}
-                          />
-                          Mostrar Endereço IP
-                        </label>
-
-                        <div className="border-t border-slate-800 mt-2 pt-2">
-                          <label className="block text-slate-400 font-bold mb-2 text-xs">Métricas UniFi (Detalhes Avançados):</label>
-                          <div className="grid grid-cols-2 gap-2 pl-2">
-                            {[
-                              { id: 'cpu', label: 'CPU' },
-                              { id: 'ram', label: 'RAM' },
-                              { id: 'uptime', label: 'Uptime' },
-                              { id: 'fw', label: 'Firmware' },
-                              { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
-                              { id: 'clients', label: 'Clientes (AP)' },
-                              { id: 'channel_utilization', label: 'Uso de Canal (AP)' },
-                              { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                              { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
-                            ].map(metric => (
-                              <label key={metric.id} className="flex items-center gap-2 cursor-pointer text-[10px] text-slate-400 hover:text-slate-200">
-                                <input 
-                                  type="checkbox" 
-                                  className="w-3 h-3 accent-blue-500 rounded"
-                                  checked={(editNodeForm.rack_display_options?.unifi_metrics || []).includes(metric.id)}
-                                  onChange={(e) => {
-                                    setEditNodeForm(prev => {
-                                      const currentMetrics = prev.rack_display_options?.unifi_metrics || [];
-                                      return {
-                                        ...prev,
-                                        rack_display_options: {
-                                          ...prev.rack_display_options,
-                                          unifi_metrics: e.target.checked 
-                                            ? [...currentMetrics, metric.id]
-                                            : currentMetrics.filter(m => m !== metric.id)
-                                        }
-                                      };
-                                    });
-                                  }}
-                                />
-                                {metric.label}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
+
+              {/* Opções de Exibição / Métricas UniFi (Para Rack ou Dispositivo Avulso) */}
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                <label className="block text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                  <Activity size={14} className="text-emerald-400" />
+                  {editNodeForm.icon_type === 'Rack' || editNodeForm.icon_type === 'Zone' 
+                    ? "Opções de Exibição dos Itens no Rack:" 
+                    : "Opções de Exibição do Dispositivo:"}
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                    <input 
+                      type="checkbox" 
+                      className="w-3.5 h-3.5 accent-blue-500 rounded"
+                      checked={editNodeForm.display_options?.show_ip ?? editNodeForm.rack_display_options?.show_ip ?? true}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setEditNodeForm(prev => ({
+                          ...prev,
+                          display_options: {
+                            ...(prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS),
+                            show_ip: val
+                          },
+                          rack_display_options: {
+                            ...(prev.rack_display_options || prev.display_options || DEFAULT_DISPLAY_OPTIONS),
+                            show_ip: val
+                          }
+                        }));
+                      }}
+                    />
+                    Mostrar Endereço IP
+                  </label>
+
+                  <div className="border-t border-slate-800 mt-2 pt-2">
+                    <label className="block text-slate-400 font-bold mb-2 text-xs">Métricas UniFi (Detalhes Avançados):</label>
+                    <div className="grid grid-cols-2 gap-2 pl-2">
+                      {[
+                        { id: 'cpu', label: 'CPU' },
+                        { id: 'ram', label: 'RAM' },
+                        { id: 'uptime', label: 'Uptime' },
+                        { id: 'fw', label: 'Firmware' },
+                        { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
+                        { id: 'clients', label: 'Clientes (AP)' },
+                        { id: 'channel_utilization', label: 'Uso de Canal (AP)' },
+                        { id: 'lan_experience', label: 'LAN Exp. (SW)' },
+                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
+                      ].map(metric => {
+                        const currentOpts = editNodeForm.display_options || editNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+                        const isMetricChecked = (currentOpts.unifi_metrics || []).includes(metric.id);
+                        return (
+                          <label key={metric.id} className="flex items-center gap-2 cursor-pointer text-[10px] text-slate-400 hover:text-slate-200">
+                            <input 
+                              type="checkbox" 
+                              className="w-3 h-3 accent-blue-500 rounded"
+                              checked={isMetricChecked}
+                              onChange={(e) => {
+                                const currMetrics = currentOpts.unifi_metrics || [];
+                                const newMetrics = e.target.checked
+                                  ? [...currMetrics, metric.id]
+                                  : currMetrics.filter(m => m !== metric.id);
+                                setEditNodeForm(prev => ({
+                                  ...prev,
+                                  display_options: {
+                                    ...(prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS),
+                                    unifi_metrics: newMetrics
+                                  },
+                                  rack_display_options: {
+                                    ...(prev.rack_display_options || prev.display_options || DEFAULT_DISPLAY_OPTIONS),
+                                    unifi_metrics: newMetrics
+                                  }
+                                }));
+                              }}
+                            />
+                            {metric.label}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
 
 

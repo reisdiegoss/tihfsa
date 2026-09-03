@@ -743,18 +743,34 @@ def import_unifi_devices(
     db: Session = Depends(get_db),
     _: User = Depends(require_technician)
 ):
-    """Importa massivamente dispositivos UniFi como novos ativos."""
+    """Importa massivamente dispositivos UniFi como novos ativos ou atualiza e reativa existentes."""
     imported_assets = []
     for device_data in devices_to_import:
+        existing = None
         if device_data.ip_address:
-            exists = db.query(Asset).filter(Asset.ip_address == device_data.ip_address).first()
-            if exists:
-                continue
-                
-        asset = Asset(**device_data.model_dump())
-        asset.description = "Importado via UniFi Bulk Sync"
-        db.add(asset)
-        imported_assets.append(asset)
+            existing = db.query(Asset).filter(Asset.ip_address == device_data.ip_address).first()
+        if not existing and device_data.mac_address:
+            existing = db.query(Asset).filter(Asset.mac_address == device_data.mac_address).first()
+
+        if existing:
+            # Reativa e atualiza os dados do ativo existente
+            existing.is_active = True
+            if device_data.name:
+                existing.name = device_data.name
+            if device_data.type:
+                existing.type = device_data.type
+            if device_data.mac_address:
+                existing.mac_address = device_data.mac_address
+            if device_data.category_id:
+                existing.category_id = device_data.category_id
+            existing.description = "Sincronizado via UniFi Bulk Sync"
+            imported_assets.append(existing)
+        else:
+            asset = Asset(**device_data.model_dump())
+            asset.description = "Importado via UniFi Bulk Sync"
+            asset.is_active = True
+            db.add(asset)
+            imported_assets.append(asset)
         
     if imported_assets:
         db.commit()
