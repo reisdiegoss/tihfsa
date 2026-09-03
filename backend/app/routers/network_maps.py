@@ -81,6 +81,10 @@ def list_network_maps(
     for m in maps:
         map_offline_count = 0
         for node in (m.nodes_data or []):
+            # No fluxograma, apenas nós com alerta ativado (sound_alert_offline) contam como alerta crítico
+            if not node.get("sound_alert_offline"):
+                continue
+
             node_offline = False
             a_id = node.get("asset_id")
             if a_id and str(a_id).isdigit() and assets_status.get(int(a_id)):

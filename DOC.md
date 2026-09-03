@@ -98,11 +98,15 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Carrossel Inteligente de Fluxogramas (TV NOC)**:
   - Permite criar uma playlist com múltiplos diagramas de rede para rotação contínua em loop em televisores e video walls.
   - **Tempo e Ordem Personalizáveis**: Cada fluxograma tem seu próprio tempo de exibição em segundos (mínimo de 5s) e ordem configurada em um modal interativo com botões de subir/descer e checkbox de ativação.
-  - **Priorização Automática de Incidentes**:
-    - Se todos os diagramas estiverem 100% saudáveis, o carrossel percorre toda a playlist normalmente.
+    - **Critério Preciso de Incidentes**: Apenas nós com alerta crítico configurado no fluxograma (`sound_alert_offline: true`) são considerados para congelar ou priorizar o carrossel, evitando bloqueios indevidos por equipamentos sem monitoramento.
+    - Se todos os diagramas estiverem saudáveis, o carrossel percorre toda a playlist continuamente no tempo estipulado.
     - Se houver um alerta/incidente em **um único diagrama**, o carrossel **trava imediatamente** nesse mapa com um banner de alerta pulsante, garantindo que o problema seja visto pela equipe de TI.
     - Se houver alertas em **dois ou mais diagramas**, o carrossel entra em **Modo Prioritário**, alternando exclusivamente entre os mapas que possuem incidentes e ignorando os mapas normais.
     - Assim que todos os incidentes forem normalizados, o carrossel retoma o ciclo completo de todos os mapas.
+  - **Interface Limpa para TV (Bloqueio de Controles)**:
+    - No modo bloqueado da TV (`isUnlocked === false`), toda a linha superior com filtros (Localização, Tipo, Status), seletor de mapa, botões de visualização e engrenagem de configuração fica totalmente oculta.
+    - **Apenas o botão Play/Pause do carrossel** (com status e contagem regressiva) permanece visível na TV para controle rápido.
+    - Todos os controles e configurações são exibidos apenas quando o operador clica no cadeado e digita a senha de admin para desbloquear o painel.
   - **Pausa Automática na Edição**: Caso o operador destrave o painel da TV para editar equipamentos (`isUnlocked`), o carrossel pausa automaticamente para não atrapalhar o manuseio.
   - **Suporte a Link de Inicialização Direta**: Ao clicar em "Copiar URL TV", se o carrossel estiver ativo, a URL gerada já inclui `&carousel=true`, iniciando a rotação automaticamente na TV.
 

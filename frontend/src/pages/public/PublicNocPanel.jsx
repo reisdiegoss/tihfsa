@@ -263,6 +263,15 @@ export default function PublicNocPanel() {
   // Lista efetiva: se houver 1 ou mais mapas com alertas, apenas eles rodam!
   const effectivePlaylist = mapsWithAlerts.length > 0 ? mapsWithAlerts : carouselMaps;
 
+  const currentMapIdRef = useRef(currentMapId);
+  const effectivePlaylistRef = useRef(effectivePlaylist);
+  useEffect(() => {
+    currentMapIdRef.current = currentMapId;
+  }, [currentMapId]);
+  useEffect(() => {
+    effectivePlaylistRef.current = effectivePlaylist;
+  }, [effectivePlaylist]);
+
   // Se o carrossel estiver ativo e surgir um incidente em outro mapa, pula imediatamente para ele
   useEffect(() => {
     if (!isCarouselRunning || isUnlocked || viewMode !== "map") return;
@@ -276,13 +285,17 @@ export default function PublicNocPanel() {
     }
   }, [isCarouselRunning, isUnlocked, viewMode, mapsWithAlerts, currentMapId]);
 
-  // Atualiza tempo de contagem regressiva ao selecionar ou trocar mapa
+  // Atualiza tempo de contagem regressiva SOMENTE quando o mapa atual realmente mudar
+  const prevMapIdRef = useRef(currentMapId);
   useEffect(() => {
-    const cur = (mapsList || []).find(m => String(m.id) === String(currentMapId));
-    if (cur) {
-      setCarouselCountdown(cur.carousel_seconds || 20);
+    if (prevMapIdRef.current !== currentMapId) {
+      prevMapIdRef.current = currentMapId;
+      const cur = (mapsList || []).find(m => String(m.id) === String(currentMapId));
+      if (cur) {
+        setCarouselCountdown(cur.carousel_seconds || 20);
+      }
     }
-  }, [currentMapId, mapsList]);
+  }, [currentMapId]);
 
   // Timer do Carrossel Inteligente (com Priorização e Travamento em Incidentes)
   useEffect(() => {
@@ -291,7 +304,7 @@ export default function PublicNocPanel() {
 
     // Regra de Ouro: Se tem exatamente 1 mapa com alerta, FICA TRAVADO nele!
     if (mapsWithAlerts.length === 1) {
-      return; // Permanece congelado
+      return; // Permanece congelado no mapa problemático
     }
 
     // Se tem apenas 1 mapa na playlist e nenhum alerta, não precisa alternar
@@ -300,12 +313,16 @@ export default function PublicNocPanel() {
     const timer = setInterval(() => {
       setCarouselCountdown((prev) => {
         if (prev <= 1) {
-          const curIdx = effectivePlaylist.findIndex(m => String(m.id) === String(currentMapId));
-          const nextIdx = curIdx >= 0 ? (curIdx + 1) % effectivePlaylist.length : 0;
-          const nextMap = effectivePlaylist[nextIdx];
-          if (nextMap) {
-            handleMapChange(String(nextMap.id));
-            return nextMap.carousel_seconds || 20;
+          const playlist = effectivePlaylistRef.current;
+          if (playlist && playlist.length > 1) {
+            const curId = currentMapIdRef.current;
+            const curIdx = playlist.findIndex(m => String(m.id) === String(curId));
+            const nextIdx = curIdx >= 0 ? (curIdx + 1) % playlist.length : 0;
+            const nextMap = playlist[nextIdx];
+            if (nextMap && String(nextMap.id) !== String(curId)) {
+              handleMapChange(String(nextMap.id));
+              return nextMap.carousel_seconds || 20;
+            }
           }
           return 20;
         }
@@ -314,7 +331,7 @@ export default function PublicNocPanel() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isCarouselRunning, isUnlocked, viewMode, effectivePlaylist, mapsWithAlerts.length, currentMapId]);
+  }, [isCarouselRunning, isUnlocked, viewMode, effectivePlaylist.length, mapsWithAlerts.length]);
 
   const openCarouselSettings = () => {
     const items = (mapsList || []).map(m => ({
@@ -467,147 +484,160 @@ export default function PublicNocPanel() {
         </div>
 
         {/* Toolbar & Multi-Window URL Filters */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           
-          {/* Filtro por Localização */}
-          <select
-            value={locationId}
-            onChange={(e) => handleFilterChange("location_id", e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-300 outline-none focus:border-blue-500 cursor-pointer"
-          >
-            <option value="">Todas as Localizações</option>
-            {(data.locations || []).map((l) => (
-              <option key={l.id} value={l.id}>{l.name}</option>
-            ))}
-          </select>
+          {/* Controles visíveis SOMENTE com o cadeado DESBLOQUEADO (Modo de Edição / Admin) */}
+          {isUnlocked && (
+            <>
+              {/* Filtro por Localização */}
+              <select
+                value={locationId}
+                onChange={(e) => handleFilterChange("location_id", e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-300 outline-none focus:border-blue-500 cursor-pointer"
+              >
+                <option value="">Todas as Localizações</option>
+                {(data.locations || []).map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
 
-          {/* Filtro por Tipo */}
-          <select
-            value={assetType}
-            onChange={(e) => handleFilterChange("type", e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-300 outline-none focus:border-blue-500 cursor-pointer"
-          >
-            <option value="Todos">Todos os Tipos</option>
-            {(data.asset_types || []).map((t) => (
-              <option key={t.id} value={t.name}>{t.name}</option>
-            ))}
-          </select>
+              {/* Filtro por Tipo */}
+              <select
+                value={assetType}
+                onChange={(e) => handleFilterChange("type", e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-300 outline-none focus:border-blue-500 cursor-pointer"
+              >
+                <option value="Todos">Todos os Tipos</option>
+                {(data.asset_types || []).map((t) => (
+                  <option key={t.id} value={t.name}>{t.name}</option>
+                ))}
+              </select>
 
-          {/* Filtro por Status */}
-          <select
-            value={statusFilter}
-            onChange={(e) => handleFilterChange("status", e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-300 outline-none focus:border-blue-500 cursor-pointer"
-          >
-            <option value="Todos">Todos os Status</option>
-            <option value="icmp_online">🟢 Conectividade Ping Online</option>
-            <option value="icmp_offline">🔴 Conectividade Ping Offline</option>
-            <option value="zabbix_problem">🔴 Alertas NOC Ativos</option>
-            <option value="zabbix_ok">🟢 Sem Alertas NOC</option>
-          </select>
+              {/* Filtro por Status */}
+              <select
+                value={statusFilter}
+                onChange={(e) => handleFilterChange("status", e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-extrabold text-slate-300 outline-none focus:border-blue-500 cursor-pointer"
+              >
+                <option value="Todos">Todos os Status</option>
+                <option value="icmp_online">🟢 Conectividade Ping Online</option>
+                <option value="icmp_offline">🔴 Conectividade Ping Offline</option>
+                <option value="zabbix_problem">🔴 Alertas NOC Ativos</option>
+                <option value="zabbix_ok">🟢 Sem Alertas NOC</option>
+              </select>
 
-          {/* Modo de Visualização */}
-          <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
-            <button
-              onClick={() => handleFilterChange("view", "grid")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                viewMode === "grid" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Mosaico Cards
-            </button>
-            <button
-              onClick={() => handleFilterChange("view", "compact")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                viewMode === "compact" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Lista
-            </button>
-            <button
-              onClick={() => handleFilterChange("view", "map")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
-                viewMode === "map" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Network size={13} /> Fluxograma
-            </button>
-          </div>
-
-          {/* Seletor de Diagrama para TV e Controles de Carrossel (Visível quando em modo Fluxograma) */}
-          {viewMode === "map" && mapsList.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="flex items-center gap-1.5 bg-slate-950 border border-emerald-500/40 rounded-xl px-2.5 py-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
-                <Network size={13} className="text-emerald-400 shrink-0" />
-                <select
-                  value={currentMapId || ""}
-                  onChange={(e) => handleMapChange(e.target.value)}
-                  className="bg-transparent text-xs font-black text-emerald-300 outline-none cursor-pointer max-w-[180px] truncate"
-                  title="Selecione qual diagrama de rede exibir na TV"
+              {/* Modo de Visualização */}
+              <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
+                <button
+                  onClick={() => handleFilterChange("view", "grid")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                    viewMode === "grid" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
                 >
-                  {mapsList.map((m) => (
-                    <option key={m.id} value={m.id} className="bg-slate-900 text-white font-bold">
-                      {m.name} {m.has_alerts ? `⚠️ (${m.offline_count})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  Mosaico Cards
+                </button>
+                <button
+                  onClick={() => handleFilterChange("view", "compact")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                    viewMode === "compact" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Lista
+                </button>
+                <button
+                  onClick={() => handleFilterChange("view", "map")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
+                    viewMode === "map" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Network size={13} /> Fluxograma
+                </button>
               </div>
 
-              {/* Botão Play / Pause Carrossel com Indicador Inteligente */}
-              <button
-                type="button"
-                onClick={() => setIsCarouselRunning(!isCarouselRunning)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer border ${
-                  isCarouselRunning
-                    ? (mapsWithAlerts.length === 1
-                        ? "bg-red-500/20 text-red-300 border-red-500/50 hover:bg-red-500/30 ring-1 ring-red-500/40"
-                        : mapsWithAlerts.length > 1
-                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-500/40"
-                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30 ring-1 ring-emerald-500/40")
-                    : "bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-white"
-                }`}
-                title={isCarouselRunning ? "Pausar rotação automática de fluxogramas" : "Iniciar rotação automática de fluxogramas"}
-              >
-                {isCarouselRunning ? (
-                  <>
-                    <Pause size={13} className="text-amber-400" />
-                    <span>
-                      {mapsWithAlerts.length === 1
-                        ? "🚨 Travado no Alerta"
-                        : mapsWithAlerts.length > 1
-                        ? `🚨 Alertas (${mapsWithAlerts.length}) • ${carouselCountdown}s`
-                        : `Carrossel • ${carouselCountdown}s`}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Play size={13} className="text-emerald-400" />
-                    <span>Carrossel</span>
-                  </>
-                )}
-              </button>
+              {/* Seletor de Diagrama para TV (Apenas quando Desbloqueado) */}
+              {viewMode === "map" && mapsList.length > 0 && (
+                <div className="flex items-center gap-1.5 bg-slate-950 border border-emerald-500/40 rounded-xl px-2.5 py-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+                  <Network size={13} className="text-emerald-400 shrink-0" />
+                  <select
+                    value={currentMapId || ""}
+                    onChange={(e) => handleMapChange(e.target.value)}
+                    className="bg-transparent text-xs font-black text-emerald-300 outline-none cursor-pointer max-w-[180px] truncate"
+                    title="Selecione qual diagrama de rede exibir na TV"
+                  >
+                    {mapsList.map((m) => (
+                      <option key={m.id} value={m.id} className="bg-slate-900 text-white font-bold">
+                        {m.name} {m.has_alerts ? `⚠️ (${m.offline_count})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-              {/* Botão Configurar Playlist */}
+              {/* Botão Configurar Playlist do Carrossel (Apenas quando Desbloqueado) */}
+              {viewMode === "map" && (
+                <button
+                  type="button"
+                  onClick={openCarouselSettings}
+                  className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
+                  title="Configurar Playlist do Carrossel (Ordem, Tempos e Diagramas)"
+                >
+                  <Settings size={14} />
+                </button>
+              )}
+
+              {/* Botão Copiar URL Configurada para TV (Apenas quando Desbloqueado) */}
               <button
-                type="button"
-                onClick={openCarouselSettings}
-                className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
-                title="Configurar Playlist do Carrossel (Ordem, Tempos e Diagramas)"
+                onClick={handleCopyShareableUrl}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] cursor-pointer"
+                title="Copiar URL formatada com estes filtros para abrir no navegador da TV"
               >
-                <Settings size={14} />
+                {copiedUrl ? <Check size={14} /> : <Copy size={14} />}
+                <span>{copiedUrl ? "URL Copiada!" : "Copiar URL TV"}</span>
               </button>
-            </div>
+            </>
           )}
 
-          {/* Botão Copiar URL Configurada para TV */}
-          <button
-            onClick={handleCopyShareableUrl}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] cursor-pointer"
-            title="Copiar URL formatada com estes filtros para abrir no navegador da TV"
-          >
-            {copiedUrl ? <Check size={14} /> : <Copy size={14} />}
-            <span>{copiedUrl ? "URL Copiada!" : "Copiar URL TV"}</span>
-          </button>
+          {/* Botão Play / Pause Carrossel (SEMPRE VISÍVEL em modo Fluxograma, mesmo bloqueado!) */}
+          {viewMode === "map" && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!isCarouselRunning && carouselCountdown <= 0) {
+                  const cur = (mapsList || []).find(m => String(m.id) === String(currentMapId));
+                  setCarouselCountdown(cur?.carousel_seconds || 20);
+                }
+                setIsCarouselRunning(!isCarouselRunning);
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer border shadow-md ${
+                isCarouselRunning
+                  ? (mapsWithAlerts.length === 1
+                      ? "bg-red-500/20 text-red-300 border-red-500/50 hover:bg-red-500/30 ring-1 ring-red-500/40 animate-pulse"
+                      : mapsWithAlerts.length > 1
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-500/40"
+                      : "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30 ring-1 ring-emerald-500/40")
+                  : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white"
+              }`}
+              title={isCarouselRunning ? "Pausar rotação automática de fluxogramas" : "Iniciar rotação automática de fluxogramas"}
+            >
+              {isCarouselRunning ? (
+                <>
+                  <Pause size={14} className="text-amber-400" />
+                  <span>
+                    {mapsWithAlerts.length === 1
+                      ? "🚨 Travado no Alerta"
+                      : mapsWithAlerts.length > 1
+                      ? `🚨 Alertas (${mapsWithAlerts.length}) • ${carouselCountdown}s`
+                      : `Carrossel • ${carouselCountdown}s`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Play size={14} className="text-emerald-400" />
+                  <span>Iniciar Carrossel</span>
+                </>
+              )}
+            </button>
+          )}
 
           <button
             onClick={fetchData}
