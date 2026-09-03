@@ -173,9 +173,12 @@ async def lifespan(app: FastAPI):
         from sqlalchemy import text
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE assets ADD COLUMN IF NOT EXISTS sound_alert_offline BOOLEAN DEFAULT FALSE NOT NULL;"))
+            conn.execute(text("ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS in_carousel BOOLEAN DEFAULT TRUE NOT NULL;"))
+            conn.execute(text("ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS carousel_order INTEGER DEFAULT 0 NOT NULL;"))
+            conn.execute(text("ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS carousel_seconds INTEGER DEFAULT 20 NOT NULL;"))
             conn.commit()
     except Exception as e:
-        print(f"[DB Auto-Migration sound_alert_offline Error] {e}")
+        print(f"[DB Auto-Migration Error] {e}")
     _seed_default_asset_types()
     
     # Iniciar o background poller do Zabbix

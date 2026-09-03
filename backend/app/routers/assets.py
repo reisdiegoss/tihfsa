@@ -174,6 +174,7 @@ def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session 
                 a["icmp_status"] = "no_ip"
 
             # 2. Determinar Alertas e Problemas do Zabbix NOC
+            main_prob = None
             if probs:
                 # Pega o primeiro problema ou o de maior severidade/o que causou a queda
                 main_prob = probs[0]
@@ -219,8 +220,8 @@ def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session 
                     monitoring_protocol = "icmp"
                     snmp_status = "not_configured"
 
-            if prob:
-                p_title = (prob.get("description") or prob.get("name") or "").lower()
+            if main_prob:
+                p_title = (main_prob.get("description") or main_prob.get("name") or "").lower()
                 if any(w in p_title for w in ["snmp", "ubiquiti", "airos", "oid", "switch", "interface wifi"]):
                     monitoring_protocol = "snmp"
                     if snmp_status == "not_configured":

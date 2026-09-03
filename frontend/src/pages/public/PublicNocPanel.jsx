@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { 
   Activity, Server, Wifi, Cpu, AlertCircle, CheckCircle, 
   RefreshCw, MapPin, Tag, Copy, Check, Tv, Maximize2, Terminal, X, Search, Network,
-  Lock, Unlock, Key
+  Lock, Unlock, Key, Play, Pause, Settings, ArrowUp, ArrowDown, ShieldAlert, Save
 } from "lucide-react";
 import api from "../../api/client";
 import TopologyMapBuilder from "../../components/admin/TopologyMapBuilder";
@@ -79,6 +79,14 @@ export default function PublicNocPanel() {
   const [countdown, setCountdown] = useState(refreshIntervalSec);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Estado do Carrossel de Fluxogramas (TV NOC)
+  const isCarouselInitial = searchParams.get("carousel") === "true";
+  const [isCarouselRunning, setIsCarouselRunning] = useState(isCarouselInitial);
+  const [carouselCountdown, setCarouselCountdown] = useState(20);
+  const [carouselSettingsOpen, setCarouselSettingsOpen] = useState(false);
+  const [carouselSaving, setCarouselSaving] = useState(false);
+  const [carouselItemsConfig, setCarouselItemsConfig] = useState([]);
 
   // Modal de Diagnóstico Ping ao Vivo
   const [pingModal, setPingModal] = useState({ open: false, asset: null, loading: false, result: null });
@@ -249,6 +257,103 @@ export default function PublicNocPanel() {
     setSearchParams(newParams);
   };
 
+  // Playlist do Carrossel de Fluxogramas (TV NOC)
+  const carouselMaps = (mapsList || []).filter(m => m.in_carousel !== false);
+  const mapsWithAlerts = carouselMaps.filter(m => m.has_alerts);
+  // Lista efetiva: se houver 1 ou mais mapas com alertas, apenas eles rodam!
+  const effectivePlaylist = mapsWithAlerts.length > 0 ? mapsWithAlerts : carouselMaps;
+
+  // Se o carrossel estiver ativo e surgir um incidente em outro mapa, pula imediatamente para ele
+  useEffect(() => {
+    if (!isCarouselRunning || isUnlocked || viewMode !== "map") return;
+
+    if (mapsWithAlerts.length > 0) {
+      const currentHasAlert = mapsWithAlerts.some(m => String(m.id) === String(currentMapId));
+      if (!currentHasAlert && mapsWithAlerts[0]) {
+        handleMapChange(String(mapsWithAlerts[0].id));
+        setCarouselCountdown(mapsWithAlerts[0].carousel_seconds || 20);
+      }
+    }
+  }, [isCarouselRunning, isUnlocked, viewMode, mapsWithAlerts, currentMapId]);
+
+  // Atualiza tempo de contagem regressiva ao selecionar ou trocar mapa
+  useEffect(() => {
+    const cur = (mapsList || []).find(m => String(m.id) === String(currentMapId));
+    if (cur) {
+      setCarouselCountdown(cur.carousel_seconds || 20);
+    }
+  }, [currentMapId, mapsList]);
+
+  // Timer do Carrossel Inteligente (com Priorização e Travamento em Incidentes)
+  useEffect(() => {
+    if (!isCarouselRunning || isUnlocked || viewMode !== "map") return;
+    if (effectivePlaylist.length === 0) return;
+
+    // Regra de Ouro: Se tem exatamente 1 mapa com alerta, FICA TRAVADO nele!
+    if (mapsWithAlerts.length === 1) {
+      return; // Permanece congelado
+    }
+
+    // Se tem apenas 1 mapa na playlist e nenhum alerta, não precisa alternar
+    if (effectivePlaylist.length <= 1) return;
+
+    const timer = setInterval(() => {
+      setCarouselCountdown((prev) => {
+        if (prev <= 1) {
+          const curIdx = effectivePlaylist.findIndex(m => String(m.id) === String(currentMapId));
+          const nextIdx = curIdx >= 0 ? (curIdx + 1) % effectivePlaylist.length : 0;
+          const nextMap = effectivePlaylist[nextIdx];
+          if (nextMap) {
+            handleMapChange(String(nextMap.id));
+            return nextMap.carousel_seconds || 20;
+          }
+          return 20;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isCarouselRunning, isUnlocked, viewMode, effectivePlaylist, mapsWithAlerts.length, currentMapId]);
+
+  const openCarouselSettings = () => {
+    const items = (mapsList || []).map(m => ({
+      id: m.id,
+      name: m.name,
+      in_carousel: m.in_carousel !== false,
+      carousel_order: m.carousel_order || 0,
+      carousel_seconds: m.carousel_seconds || 20,
+      has_alerts: m.has_alerts,
+      offline_count: m.offline_count,
+    })).sort((a, b) => (a.carousel_order - b.carousel_order));
+    setCarouselItemsConfig(items);
+    setCarouselSettingsOpen(true);
+  };
+
+  const handleSaveCarouselSettings = async () => {
+    setCarouselSaving(true);
+    try {
+      const payload = {
+        items: carouselItemsConfig.map((item, index) => ({
+          id: item.id,
+          in_carousel: !!item.in_carousel,
+          carousel_order: index + 1,
+          carousel_seconds: Math.max(5, parseInt(item.carousel_seconds, 10) || 20),
+        }))
+      };
+      const res = await api.put("/network-maps/carousel/batch", payload);
+      if (res.data) {
+        setMapsList(res.data);
+      }
+      setCarouselSettingsOpen(false);
+    } catch (err) {
+      console.error("Erro ao salvar playlist do carrossel:", err);
+      alert("Erro ao salvar configurações do carrossel.");
+    } finally {
+      setCarouselSaving(false);
+    }
+  };
+
   const handleCopyShareableUrl = async () => {
     const params = new URLSearchParams();
     if (locationId) params.set("location_id", locationId);
@@ -260,6 +365,10 @@ export default function PublicNocPanel() {
     const effectiveMapId = currentMapId || mapId;
     if (effectiveMapId && viewMode === "map") {
       params.set("map_id", effectiveMapId);
+    }
+
+    if (isCarouselRunning) {
+      params.set("carousel", "true");
     }
 
     params.set("refresh", String(refreshIntervalSec));
@@ -425,22 +534,68 @@ export default function PublicNocPanel() {
             </button>
           </div>
 
-          {/* Seletor de Diagrama para TV (Visível quando em modo Fluxograma) */}
+          {/* Seletor de Diagrama para TV e Controles de Carrossel (Visível quando em modo Fluxograma) */}
           {viewMode === "map" && mapsList.length > 0 && (
-            <div className="flex items-center gap-1.5 bg-slate-950 border border-emerald-500/40 rounded-xl px-2.5 py-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
-              <Network size={13} className="text-emerald-400 shrink-0" />
-              <select
-                value={currentMapId || ""}
-                onChange={(e) => handleMapChange(e.target.value)}
-                className="bg-transparent text-xs font-black text-emerald-300 outline-none cursor-pointer max-w-[200px] truncate"
-                title="Selecione qual diagrama de rede exibir na TV"
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex items-center gap-1.5 bg-slate-950 border border-emerald-500/40 rounded-xl px-2.5 py-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+                <Network size={13} className="text-emerald-400 shrink-0" />
+                <select
+                  value={currentMapId || ""}
+                  onChange={(e) => handleMapChange(e.target.value)}
+                  className="bg-transparent text-xs font-black text-emerald-300 outline-none cursor-pointer max-w-[180px] truncate"
+                  title="Selecione qual diagrama de rede exibir na TV"
+                >
+                  {mapsList.map((m) => (
+                    <option key={m.id} value={m.id} className="bg-slate-900 text-white font-bold">
+                      {m.name} {m.has_alerts ? `⚠️ (${m.offline_count})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Botão Play / Pause Carrossel com Indicador Inteligente */}
+              <button
+                type="button"
+                onClick={() => setIsCarouselRunning(!isCarouselRunning)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer border ${
+                  isCarouselRunning
+                    ? (mapsWithAlerts.length === 1
+                        ? "bg-red-500/20 text-red-300 border-red-500/50 hover:bg-red-500/30 ring-1 ring-red-500/40"
+                        : mapsWithAlerts.length > 1
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-500/40"
+                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30 ring-1 ring-emerald-500/40")
+                    : "bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-white"
+                }`}
+                title={isCarouselRunning ? "Pausar rotação automática de fluxogramas" : "Iniciar rotação automática de fluxogramas"}
               >
-                {mapsList.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-slate-900 text-white font-bold">
-                    {m.name}
-                  </option>
-                ))}
-              </select>
+                {isCarouselRunning ? (
+                  <>
+                    <Pause size={13} className="text-amber-400" />
+                    <span>
+                      {mapsWithAlerts.length === 1
+                        ? "🚨 Travado no Alerta"
+                        : mapsWithAlerts.length > 1
+                        ? `🚨 Alertas (${mapsWithAlerts.length}) • ${carouselCountdown}s`
+                        : `Carrossel • ${carouselCountdown}s`}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Play size={13} className="text-emerald-400" />
+                    <span>Carrossel</span>
+                  </>
+                )}
+              </button>
+
+              {/* Botão Configurar Playlist */}
+              <button
+                type="button"
+                onClick={openCarouselSettings}
+                className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
+                title="Configurar Playlist do Carrossel (Ordem, Tempos e Diagramas)"
+              >
+                <Settings size={14} />
+              </button>
             </div>
           )}
 
@@ -467,6 +622,55 @@ export default function PublicNocPanel() {
       {/* Exibição do Mapa de Topologia em Tela Cheia para TV */}
       {viewMode === "map" ? (
         <div className="flex-1 w-full h-full min-h-0 flex flex-col">
+          {/* Banner Informativo do Carrossel de Fluxogramas */}
+          {isCarouselRunning && (
+            <div className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center justify-between shadow-xl mb-2.5 transition-all ${
+              mapsWithAlerts.length === 1
+                ? "bg-red-950/80 border border-red-500/80 text-white animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.2)]"
+                : mapsWithAlerts.length > 1
+                ? "bg-amber-950/80 border border-amber-500/80 text-amber-200 shadow-[0_0_20px_rgba(245,158,11,0.2)]"
+                : "bg-slate-900/90 border border-emerald-500/40 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+            }`}>
+              <div className="flex items-center gap-2.5">
+                {mapsWithAlerts.length === 1 ? (
+                  <>
+                    <ShieldAlert size={16} className="text-red-400 shrink-0" />
+                    <span>
+                      <strong className="text-red-300 uppercase tracking-wider">🚨 Carrossel Travado:</strong> Incidente ativo no mapa <strong>"{mapsList.find(m => String(m.id) === String(currentMapId))?.name}"</strong>. A rotação está congelada neste diagrama até a normalização.
+                    </span>
+                  </>
+                ) : mapsWithAlerts.length > 1 ? (
+                  <>
+                    <ShieldAlert size={16} className="text-amber-400 shrink-0" />
+                    <span>
+                      <strong className="text-amber-300 uppercase tracking-wider">🚨 Modo Prioritário de Incidentes:</strong> Existem <strong>{mapsWithAlerts.length} mapas com alertas</strong>. O carrossel está alternando apenas entre eles.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={15} className="text-emerald-400 shrink-0" />
+                    <span>
+                      <strong>Carrossel Ativo:</strong> Todos os fluxogramas operando normalmente ({effectivePlaylist.length} diagramas na sequência).
+                    </span>
+                  </>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 font-mono text-[11px] shrink-0">
+                {mapsWithAlerts.length !== 1 && (
+                  <span>Próximo mapa em: <strong className="text-white text-xs">{carouselCountdown}s</strong></span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsCarouselRunning(false)}
+                  className="px-2.5 py-1 rounded-lg bg-black/40 hover:bg-black/60 text-slate-300 hover:text-white text-[10px] font-bold border border-white/10 cursor-pointer"
+                >
+                  Pausar
+                </button>
+              </div>
+            </div>
+          )}
+
           <TopologyMapBuilder 
             isPublicView={!isUnlocked} 
             mapId={currentMapId ? parseInt(currentMapId, 10) : (mapId ? parseInt(mapId, 10) : undefined)} 
@@ -783,7 +987,7 @@ export default function PublicNocPanel() {
             </div>
 
             <p className="text-sm text-slate-400 mb-4">
-              O modo de edição permite arrastar e modificar o mapa diretamente na TV. O painel bloqueará automaticamente após 3 minutos de inatividade.
+              O modo de edição permite arrastar e modificar o mapa diretamente na TV. O painel bloqueará automaticamente após 15 minutos de inatividade.
             </p>
 
             <form onSubmit={handleUnlockSubmit} className="space-y-4">
@@ -824,6 +1028,160 @@ export default function PublicNocPanel() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Configuração da Playlist do Carrossel */}
+      {carouselSettingsOpen && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                  <Settings size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Playlist do Carrossel de Fluxogramas</h3>
+                  <p className="text-xs text-slate-400">Configure quais diagramas rodarão na TV e o tempo de cada um</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setCarouselSettingsOpen(false)} 
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Marque os fluxogramas que farão parte do loop na TV, use as setas para definir a ordem da fila e estipule os segundos de permanência na tela. Se houver queda/alerta em um diagrama, ele travará automaticamente.
+            </p>
+
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+              {carouselItemsConfig.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 text-xs">
+                  Nenhum diagrama de rede encontrado.
+                </div>
+              ) : (
+                carouselItemsConfig.map((item, idx) => (
+                  <div 
+                    key={item.id} 
+                    className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                      item.in_carousel 
+                        ? "bg-slate-950 border-slate-800" 
+                        : "bg-slate-950/40 border-slate-900 opacity-50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Botões de Reordenação */}
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => {
+                            if (idx === 0) return;
+                            const copy = [...carouselItemsConfig];
+                            const temp = copy[idx - 1];
+                            copy[idx - 1] = copy[idx];
+                            copy[idx] = temp;
+                            setCarouselItemsConfig(copy);
+                          }}
+                          className="p-1 hover:bg-slate-800 disabled:opacity-20 text-slate-400 hover:text-white rounded cursor-pointer disabled:cursor-default"
+                          title="Mover para cima"
+                        >
+                          <ArrowUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === carouselItemsConfig.length - 1}
+                          onClick={() => {
+                            if (idx === carouselItemsConfig.length - 1) return;
+                            const copy = [...carouselItemsConfig];
+                            const temp = copy[idx + 1];
+                            copy[idx + 1] = copy[idx];
+                            copy[idx] = temp;
+                            setCarouselItemsConfig(copy);
+                          }}
+                          className="p-1 hover:bg-slate-800 disabled:opacity-20 text-slate-400 hover:text-white rounded cursor-pointer disabled:cursor-default"
+                          title="Mover para baixo"
+                        >
+                          <ArrowDown size={12} />
+                        </button>
+                      </div>
+
+                      {/* Checkbox Ativo no Carrossel */}
+                      <input 
+                        type="checkbox"
+                        checked={item.in_carousel}
+                        onChange={(e) => {
+                          const copy = [...carouselItemsConfig];
+                          copy[idx].in_carousel = e.target.checked;
+                          setCarouselItemsConfig(copy);
+                        }}
+                        className="w-4 h-4 accent-emerald-500 rounded cursor-pointer shrink-0"
+                      />
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-white truncate">{item.name}</span>
+                          {item.has_alerts && (
+                            <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-[10px] font-bold shrink-0">
+                              ⚠️ {item.offline_count} offline
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-semibold text-slate-500">Posição #{idx + 1} na rotação</span>
+                      </div>
+                    </div>
+
+                    {/* Configuração de Segundos */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs text-slate-400 font-semibold">Exibir por:</span>
+                      <input 
+                        type="number"
+                        min="5"
+                        max="600"
+                        value={item.carousel_seconds}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          const copy = [...carouselItemsConfig];
+                          copy[idx].carousel_seconds = isNaN(val) ? 5 : val;
+                          setCarouselItemsConfig(copy);
+                        }}
+                        className="w-16 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1 text-center font-mono font-bold text-white text-xs outline-none focus:border-emerald-500"
+                      />
+                      <span className="text-xs text-slate-500">seg</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+              <div className="text-[11px] text-slate-500">
+                Total de fluxogramas na rotação: <strong className="text-emerald-400">{carouselItemsConfig.filter(i => i.in_carousel).length}</strong>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCarouselSettingsOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCarouselSettings}
+                  disabled={carouselSaving}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs cursor-pointer shadow-lg disabled:opacity-50 flex items-center gap-1.5 transition-all"
+                >
+                  <Save size={14} className={carouselSaving ? "animate-spin" : ""} />
+                  <span>{carouselSaving ? "Salvando..." : "Salvar Playlist"}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

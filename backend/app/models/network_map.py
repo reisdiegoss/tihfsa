@@ -27,7 +27,10 @@ class NetworkMap(Base):
     # Nível de Zoom e Panorâmica salvos do canvas
     zoom_level = Column(JSON, default=1.0, nullable=True)
     pan_x = Column(Integer, default=0, nullable=True)
-    pan_y = Column(Integer, default=0, nullable=True)
+    # Configurações do Carrossel de Fluxogramas (TV NOC)
+    in_carousel = Column(Boolean, default=True, nullable=False)
+    carousel_order = Column(Integer, default=0, nullable=False)
+    carousel_seconds = Column(Integer, default=20, nullable=False)
 
     created_at = Column(
         DateTime(timezone=True),

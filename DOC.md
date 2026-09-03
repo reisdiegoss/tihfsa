@@ -95,3 +95,14 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
   - Cada TV ou monitor agora salva automaticamente seu enquadramento personalizado (nível de zoom e coordenadas de posicionamento `pan.x` e `pan.y`) nos Cookies e no LocalStorage do navegador com validade de 1 ano.
   - Ao ajustar o zoom, clicar em "Fit Tela" ou arrastar o diagrama na TV, as preferências daquele monitor são memorizadas automaticamente após 400ms.
   - Ao fechar o navegador da TV, desligar a TV ou reiniciar a máquina, o fluxograma reabre exatamente na escala, resolução e posicionamento definidos para aquela tela.
+- **Carrossel Inteligente de Fluxogramas (TV NOC)**:
+  - Permite criar uma playlist com múltiplos diagramas de rede para rotação contínua em loop em televisores e video walls.
+  - **Tempo e Ordem Personalizáveis**: Cada fluxograma tem seu próprio tempo de exibição em segundos (mínimo de 5s) e ordem configurada em um modal interativo com botões de subir/descer e checkbox de ativação.
+  - **Priorização Automática de Incidentes**:
+    - Se todos os diagramas estiverem 100% saudáveis, o carrossel percorre toda a playlist normalmente.
+    - Se houver um alerta/incidente em **um único diagrama**, o carrossel **trava imediatamente** nesse mapa com um banner de alerta pulsante, garantindo que o problema seja visto pela equipe de TI.
+    - Se houver alertas em **dois ou mais diagramas**, o carrossel entra em **Modo Prioritário**, alternando exclusivamente entre os mapas que possuem incidentes e ignorando os mapas normais.
+    - Assim que todos os incidentes forem normalizados, o carrossel retoma o ciclo completo de todos os mapas.
+  - **Pausa Automática na Edição**: Caso o operador destrave o painel da TV para editar equipamentos (`isUnlocked`), o carrossel pausa automaticamente para não atrapalhar o manuseio.
+  - **Suporte a Link de Inicialização Direta**: Ao clicar em "Copiar URL TV", se o carrossel estiver ativo, a URL gerada já inclui `&carousel=true`, iniciando a rotação automaticamente na TV.
+
