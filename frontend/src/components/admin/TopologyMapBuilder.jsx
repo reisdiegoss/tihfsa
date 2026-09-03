@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Server, HardDrive, Wifi, Phone, Shield, Cloud, Monitor, Activity, Zap,
   Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2,
-  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX
+  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy
 } from "lucide-react";
 import api from "../../api/client";
 const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
@@ -199,6 +199,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [isEditNodeModalOpen, setIsEditNodeModalOpen] = useState(false);
   const [isAddEdgeModalOpen, setIsAddEdgeModalOpen] = useState(false);
   const [isNewMapModalOpen, setIsNewMapModalOpen] = useState(false);
+  const [isCloneMapModalOpen, setIsCloneMapModalOpen] = useState(false);
+  const [cloneMapForm, setCloneMapForm] = useState({ name: "", description: "" });
+  const [cloningMap, setCloningMap] = useState(false);
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
 
   const DEFAULT_DISPLAY_OPTIONS = {
@@ -928,6 +931,38 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       .catch(console.error);
   };
 
+  // Duplicar / Clonar Fluxograma
+  const openCloneModal = () => {
+    if (!mapData.id) return;
+    setCloneMapForm({
+      name: `${mapData.name} (Cópia)`,
+      description: mapData.description || "",
+    });
+    setIsCloneMapModalOpen(true);
+  };
+
+  const handleCloneMap = () => {
+    if (!mapData.id || !cloneMapForm.name.trim()) return;
+    setCloningMap(true);
+    api.post(`/network-maps/${mapData.id}/clone`, {
+      name: cloneMapForm.name.trim(),
+      description: cloneMapForm.description.trim() || undefined,
+    })
+      .then((res) => {
+        setIsCloneMapModalOpen(false);
+        fetchMaps();
+        setSelectedMapId(res.data.id);
+        if (onMapLoaded) onMapLoaded(res.data);
+      })
+      .catch((err) => {
+        console.error("Erro ao clonar fluxograma:", err);
+        alert(err.response?.data?.detail || "Erro ao clonar o fluxograma.");
+      })
+      .finally(() => {
+        setCloningMap(false);
+      });
+  };
+
   // Adicionar Nó ao Mapa
   const handleAddNode = async () => {
     const selectedAsset = assetsList.find(a => String(a.id) === String(newNodeForm.asset_id));
@@ -1409,9 +1444,18 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 <button
                   onClick={() => setIsNewMapModalOpen(true)}
                   className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-all cursor-pointer"
-                  title="Criar Novo Mapa de Topologia"
+                  title="Criar Novo Mapa de Topologia em Branco"
                 >
                   <Plus size={14} />
+                </button>
+                <button
+                  onClick={openCloneModal}
+                  disabled={!mapData.id}
+                  className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 hover:border-blue-500/50 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                  title="Duplicar / Clonar este fluxograma (preserva racks, switches e conexões com novo nome)"
+                >
+                  <Copy size={13} />
+                  <span>Clonar</span>
                 </button>
               </div>
               <p className="text-[11px] font-semibold text-slate-400 mt-1">
@@ -2848,6 +2892,69 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             <div className="pt-3 flex items-center justify-end gap-2">
               <button onClick={() => setIsNewMapModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold">Cancelar</button>
               <button onClick={handleCreateNewMap} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black">Criar Mapa</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Duplicar / Clonar Fluxograma */}
+      {isCloneMapModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Copy size={18} className="text-blue-400" /> Duplicar / Clonar Fluxograma
+              </h3>
+              <button onClick={() => setIsCloneMapModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-400 text-xs">
+                Cria uma cópia idêntica deste fluxograma preservando todos os racks, switches, nós, posições e conexões para facilitar a montagem de novos ambientes sem retrabalho.
+              </p>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nome do Novo Fluxograma:</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Rede 2º Andar, Topologia Switches..."
+                  value={cloneMapForm.name}
+                  onChange={(e) => setCloneMapForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Descrição (opcional):</label>
+                <input
+                  type="text"
+                  placeholder="Descrição do novo diagrama..."
+                  value={cloneMapForm.description}
+                  onChange={(e) => setCloneMapForm(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-2">
+              <button 
+                type="button" 
+                onClick={() => setIsCloneMapModalOpen(false)} 
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold cursor-pointer hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                onClick={handleCloneMap} 
+                disabled={cloningMap || !cloneMapForm.name.trim()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {cloningMap ? "Clonando..." : "Duplicar Fluxograma"}
+              </button>
             </div>
           </div>
         </div>

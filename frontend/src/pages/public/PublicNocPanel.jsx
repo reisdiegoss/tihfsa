@@ -87,6 +87,9 @@ export default function PublicNocPanel() {
   const [carouselSettingsOpen, setCarouselSettingsOpen] = useState(false);
   const [carouselSaving, setCarouselSaving] = useState(false);
   const [carouselItemsConfig, setCarouselItemsConfig] = useState([]);
+  const [cloneModalOpen, setCloneModalOpen] = useState(false);
+  const [cloneForm, setCloneForm] = useState({ name: "", description: "" });
+  const [cloningMap, setCloningMap] = useState(false);
 
   // Modal de Diagnóstico Ping ao Vivo
   const [pingModal, setPingModal] = useState({ open: false, asset: null, loading: false, result: null });
@@ -371,6 +374,36 @@ export default function PublicNocPanel() {
     }
   };
 
+  const openCloneModalNoc = () => {
+    const cur = (mapsList || []).find(m => String(m.id) === String(currentMapId));
+    setCloneForm({
+      name: cur ? `${cur.name} (Cópia)` : "Novo Fluxograma (Cópia)",
+      description: cur?.description || "",
+    });
+    setCloneModalOpen(true);
+  };
+
+  const handleCloneMapNoc = () => {
+    if (!currentMapId || !cloneForm.name.trim()) return;
+    setCloningMap(true);
+    api.post(`/network-maps/${currentMapId}/clone`, {
+      name: cloneForm.name.trim(),
+      description: cloneForm.description.trim() || undefined,
+    })
+      .then((res) => {
+        setCloneModalOpen(false);
+        fetchData();
+        handleMapChange(String(res.data.id));
+      })
+      .catch((err) => {
+        console.error("Erro ao clonar fluxograma:", err);
+        alert(err.response?.data?.detail || "Erro ao clonar o fluxograma.");
+      })
+      .finally(() => {
+        setCloningMap(false);
+      });
+  };
+
   const handleCopyShareableUrl = async () => {
     const params = new URLSearchParams();
     if (locationId) params.set("location_id", locationId);
@@ -556,20 +589,31 @@ export default function PublicNocPanel() {
 
               {/* Seletor de Diagrama para TV (Apenas quando Desbloqueado) */}
               {viewMode === "map" && mapsList.length > 0 && (
-                <div className="flex items-center gap-1.5 bg-slate-950 border border-emerald-500/40 rounded-xl px-2.5 py-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
-                  <Network size={13} className="text-emerald-400 shrink-0" />
-                  <select
-                    value={currentMapId || ""}
-                    onChange={(e) => handleMapChange(e.target.value)}
-                    className="bg-transparent text-xs font-black text-emerald-300 outline-none cursor-pointer max-w-[180px] truncate"
-                    title="Selecione qual diagrama de rede exibir na TV"
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 bg-slate-950 border border-emerald-500/40 rounded-xl px-2.5 py-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+                    <Network size={13} className="text-emerald-400 shrink-0" />
+                    <select
+                      value={currentMapId || ""}
+                      onChange={(e) => handleMapChange(e.target.value)}
+                      className="bg-transparent text-xs font-black text-emerald-300 outline-none cursor-pointer max-w-[180px] truncate"
+                      title="Selecione qual diagrama de rede exibir na TV"
+                    >
+                      {mapsList.map((m) => (
+                        <option key={m.id} value={m.id} className="bg-slate-900 text-white font-bold">
+                          {m.name} {m.has_alerts ? `⚠️ (${m.offline_count})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openCloneModalNoc}
+                    className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-blue-400 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                    title="Duplicar / Clonar este fluxograma com todos os racks e switches"
                   >
-                    {mapsList.map((m) => (
-                      <option key={m.id} value={m.id} className="bg-slate-900 text-white font-bold">
-                        {m.name} {m.has_alerts ? `⚠️ (${m.offline_count})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    <Copy size={13} />
+                    <span>Clonar</span>
+                  </button>
                 </div>
               )}
 
@@ -1211,6 +1255,69 @@ export default function PublicNocPanel() {
                   <span>{carouselSaving ? "Salvando..." : "Salvar Playlist"}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Duplicar / Clonar Fluxograma (Painel NOC) */}
+      {cloneModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Copy size={18} className="text-blue-400" /> Duplicar / Clonar Fluxograma
+              </h3>
+              <button onClick={() => setCloneModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-400 text-xs leading-relaxed">
+                Cria uma cópia idêntica deste fluxograma preservando todos os racks, switches, nós, posições e conexões para você editar apenas os dispositivos conectados sem remontar a infraestrutura.
+              </p>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nome do Novo Fluxograma:</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Rede 2º Andar, Racks e Switches..."
+                  value={cloneForm.name}
+                  onChange={(e) => setCloneForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Descrição (opcional):</label>
+                <input
+                  type="text"
+                  placeholder="Descrição do novo diagrama..."
+                  value={cloneForm.description}
+                  onChange={(e) => setCloneForm(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-2">
+              <button 
+                type="button" 
+                onClick={() => setCloneModalOpen(false)} 
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold cursor-pointer hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                onClick={handleCloneMapNoc} 
+                disabled={cloningMap || !cloneForm.name.trim()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {cloningMap ? "Clonando..." : "Duplicar Fluxograma"}
+              </button>
             </div>
           </div>
         </div>

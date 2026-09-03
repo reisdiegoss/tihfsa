@@ -62,3 +62,9 @@ class CarouselItemSetting(BaseModel):
 class CarouselBatchUpdate(BaseModel):
     items: list[CarouselItemSetting]
 
+
+class NetworkMapClone(BaseModel):
+    name: str
+    description: str | None = None
+
+

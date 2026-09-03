@@ -8,7 +8,7 @@ from app.database import get_db
 from app.auth.dependencies import get_current_user, require_technician
 from app.models.user import User
 from app.models.network_map import NetworkMap
-from app.schemas.network_map import NetworkMapCreate, NetworkMapUpdate, NetworkMapResponse, CarouselBatchUpdate
+from app.schemas.network_map import NetworkMapCreate, NetworkMapUpdate, NetworkMapResponse, CarouselBatchUpdate, NetworkMapClone
 
 router = APIRouter(prefix="/api/v1/network-maps", tags=["Network Maps"])
 
@@ -256,3 +256,37 @@ def delete_network_map(
     db.delete(net_map)
     db.commit()
     return None
+
+
+@router.post("/{map_id}/clone", response_model=NetworkMapResponse, status_code=status.HTTP_201_CREATED)
+def clone_network_map(
+    map_id: int,
+    clone_data: NetworkMapClone,
+    db: Session = Depends(get_db),
+):
+    """Clona/duplica um mapa de topologia existente preservando racks, switches, nós, conexões e enquadramento."""
+    source_map = db.query(NetworkMap).filter(NetworkMap.id == map_id).first()
+    if not source_map:
+        raise HTTPException(status_code=404, detail="Mapa de origem não encontrado")
+
+    import copy
+    new_map = NetworkMap(
+        name=clone_data.name.strip(),
+        description=clone_data.description or source_map.description,
+        is_default=False,
+        location_id=source_map.location_id,
+        nodes_data=copy.deepcopy(source_map.nodes_data or []),
+        edges_data=copy.deepcopy(source_map.edges_data or []),
+        zoom_level=source_map.zoom_level,
+        pan_x=source_map.pan_x,
+        pan_y=source_map.pan_y,
+        in_carousel=source_map.in_carousel,
+        carousel_order=(source_map.carousel_order or 0) + 1,
+        carousel_seconds=source_map.carousel_seconds or 20,
+        background_image_url=source_map.background_image_url,
+    )
+    db.add(new_map)
+    db.commit()
+    db.refresh(new_map)
+    return _format_map_response(new_map)
+
