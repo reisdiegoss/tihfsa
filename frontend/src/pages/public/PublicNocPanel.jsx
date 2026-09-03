@@ -50,8 +50,19 @@ export default function PublicNocPanel() {
   const mapId = searchParams.get("map_id") || "";
   const refreshIntervalSec = parseInt(searchParams.get("refresh") || "15", 10);
 
+  const getInitialTvMapId = () => {
+    if (mapId) return mapId;
+    try {
+      const fromLocal = localStorage.getItem("tihfsa_tv_selected_map");
+      if (fromLocal) return fromLocal;
+      const match = document.cookie.match(/(^|;\s*)tihfsa_tv_selected_map=([^;]*)/);
+      if (match && match[2]) return decodeURIComponent(match[2]);
+    } catch (e) {}
+    return "";
+  };
+
   const [mapsList, setMapsList] = useState([]);
-  const [currentMapId, setCurrentMapId] = useState(mapId || "");
+  const [currentMapId, setCurrentMapId] = useState(getInitialTvMapId());
 
   const [data, setData] = useState({
     assets: [],
@@ -228,6 +239,10 @@ export default function PublicNocPanel() {
     const newParams = new URLSearchParams(searchParams);
     if (newMapId) {
       newParams.set("map_id", newMapId);
+      try {
+        localStorage.setItem("tihfsa_tv_selected_map", newMapId);
+        document.cookie = `tihfsa_tv_selected_map=${newMapId}; max-age=31536000; path=/; samesite=lax`;
+      } catch (e) {}
     } else {
       newParams.delete("map_id");
     }

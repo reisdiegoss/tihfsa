@@ -142,6 +142,41 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
   );
 };
 
+// Helpers para persistência de resolução (zoom) e posicionamento (pan) em Cookies e LocalStorage (TVs e monitores)
+const saveTvViewport = (mapId, zoom, pan) => {
+  if (!mapId) return;
+  try {
+    const payload = JSON.stringify({ zoom, pan });
+    localStorage.setItem(`tihfsa_noc_viewport_${mapId}`, payload);
+    const encoded = encodeURIComponent(payload);
+    document.cookie = `tihfsa_noc_viewport_${mapId}=${encoded}; max-age=31536000; path=/; samesite=lax`;
+  } catch (err) {
+    console.warn("Erro ao salvar viewport no cookie/localStorage:", err);
+  }
+};
+
+const getTvViewport = (mapId) => {
+  if (!mapId) return null;
+  try {
+    // 1. Tentar ler do localStorage primeiro
+    const local = localStorage.getItem(`tihfsa_noc_viewport_${mapId}`);
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (typeof parsed.zoom === 'number' && parsed.pan) return parsed;
+    }
+
+    // 2. Fallback para Cookies
+    const match = document.cookie.match(new RegExp(`(^|;\\s*)tihfsa_noc_viewport_${mapId}=([^;]*)`));
+    if (match && match[2]) {
+      const parsed = JSON.parse(decodeURIComponent(match[2]));
+      if (typeof parsed.zoom === 'number' && parsed.pan) return parsed;
+    }
+  } catch (err) {
+    console.warn("Erro ao recuperar viewport do cookie/localStorage:", err);
+  }
+  return null;
+};
+
 export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapLoaded, refreshTrigger }) {
   const [mapData, setMapData] = useState({
     id: null,
@@ -274,9 +309,19 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         if (!latest) return;
         setMapData(latest);
         if (isFirstLoad) {
-          if (latest.zoom_level) setZoom(latest.zoom_level);
-          if (latest.pan_x !== undefined && latest.pan_y !== undefined) {
-            setPan({ x: latest.pan_x, y: latest.pan_y });
+          // Prioridade 1: Cookies / LocalStorage específico desta TV ou navegador
+          const savedViewport = getTvViewport(id);
+          if (savedViewport && typeof savedViewport.zoom === 'number') {
+            setZoom(savedViewport.zoom);
+            if (savedViewport.pan && typeof savedViewport.pan.x === 'number') {
+              setPan({ x: savedViewport.pan.x, y: savedViewport.pan.y });
+            }
+          } else {
+            // Prioridade 2: Definições padrão salvas no banco de dados
+            if (latest.zoom_level) setZoom(latest.zoom_level);
+            if (latest.pan_x !== undefined && latest.pan_y !== undefined) {
+              setPan({ x: latest.pan_x, y: latest.pan_y });
+            }
           }
         }
         if (latest.assets_data && latest.assets_data.length > 0) {
@@ -400,12 +445,28 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   useEffect(() => {
     if (selectedMapId) {
+      const savedViewport = getTvViewport(selectedMapId);
+      if (savedViewport && typeof savedViewport.zoom === 'number') {
+        setZoom(savedViewport.zoom);
+        if (savedViewport.pan && typeof savedViewport.pan.x === 'number') {
+          setPan({ x: savedViewport.pan.x, y: savedViewport.pan.y });
+        }
+      }
       fetchMapDetails(selectedMapId, true);
       // Refresh automático em segundo plano a cada 15s (sem resetar posições ou arrasto do usuário)
       const interval = setInterval(() => refreshMapStatuses(selectedMapId), 15000);
       return () => clearInterval(interval);
     }
   }, [selectedMapId]);
+
+  // Salvar resolução (zoom) e posicionamento (pan) em cookies/localStorage da TV automaticamente após ajustes
+  useEffect(() => {
+    if (!selectedMapId || isPanning) return;
+    const timeout = setTimeout(() => {
+      saveTvViewport(selectedMapId, zoom, pan);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [selectedMapId, zoom, pan, isPanning]);
 
   // Disparo de sincronização externa (acionado pelo countdown da tela pública/TV ou botão atualizar)
   useEffect(() => {
@@ -419,6 +480,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const handleSaveMap = () => {
     if (!mapData.id) return;
     setSaving(true);
+    saveTvViewport(mapData.id, zoom, pan);
     const payload = {
       name: mapData.name,
       description: mapData.description,
@@ -485,8 +547,13 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     const newPanX = (cWidth - mapWidth * newZoom) / 2 - minX * newZoom;
     const newPanY = (cHeight - mapHeight * newZoom) / 2 - minY * newZoom;
 
-    setZoom(parseFloat(newZoom.toFixed(2)));
-    setPan({ x: Math.round(newPanX), y: Math.round(newPanY) });
+    const finalZoom = parseFloat(newZoom.toFixed(2));
+    const finalPan = { x: Math.round(newPanX), y: Math.round(newPanY) };
+    setZoom(finalZoom);
+    setPan(finalPan);
+    if (selectedMapId) {
+      saveTvViewport(selectedMapId, finalZoom, finalPan);
+    }
   };
 
   // Gerar Diagrama de Exemplo (Presets iguais à imagem fornecida)
