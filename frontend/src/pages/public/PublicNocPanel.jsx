@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { 
   Activity, Server, Wifi, Cpu, AlertCircle, CheckCircle, 
@@ -78,7 +78,10 @@ export default function PublicNocPanel() {
   const [unlockUsername, setUnlockUsername] = useState("admin");
   const [unlockPassword, setUnlockPassword] = useState("");
   const [unlockError, setUnlockError] = useState("");
-  const [unlockTimer, setUnlockTimer] = useState(null);
+
+  const lastActivityRef = useRef(Date.now());
+  const unlockTimeoutRef = useRef(null);
+  const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos de inatividade real
 
   const handleUnlockSubmit = (e) => {
     e.preventDefault();
@@ -94,36 +97,55 @@ export default function PublicNocPanel() {
         setIsUnlocked(true);
         setUnlockModalOpen(false);
         setUnlockPassword("");
-        // Auto lock after 3 minutes
-        resetUnlockTimer();
       })
       .catch((err) => {
         setUnlockError("Credenciais inválidas");
       });
   };
 
-  const resetUnlockTimer = () => {
-    if (unlockTimer) clearTimeout(unlockTimer);
-    const timer = setTimeout(() => {
-      setIsUnlocked(false);
-    }, 3 * 60 * 1000); // 3 minutes
-    setUnlockTimer(timer);
-  };
-
-  // Reset timer on user interaction if unlocked
+  // Trava o painel APENAS após inatividade real (sem cliques, teclas, toques ou movimentos por 15 min)
   useEffect(() => {
+    if (!isUnlocked) {
+      if (unlockTimeoutRef.current) {
+        clearTimeout(unlockTimeoutRef.current);
+        unlockTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    lastActivityRef.current = Date.now();
+
+    const checkInactivity = () => {
+      const elapsed = Date.now() - lastActivityRef.current;
+      const remaining = INACTIVITY_TIMEOUT_MS - elapsed;
+
+      if (remaining <= 0) {
+        setIsUnlocked(false);
+        unlockTimeoutRef.current = null;
+      } else {
+        // Reagenda verificação para o tempo restante (mínimo de 5s para precisão)
+        unlockTimeoutRef.current = setTimeout(checkInactivity, Math.max(remaining, 5000));
+      }
+    };
+
+    unlockTimeoutRef.current = setTimeout(checkInactivity, INACTIVITY_TIMEOUT_MS);
+
+    // Registra qualquer atividade do usuário para resetar a contagem de inatividade
     const handleActivity = () => {
-      if (isUnlocked) resetUnlockTimer();
+      lastActivityRef.current = Date.now();
     };
-    window.addEventListener("mousemove", handleActivity);
-    window.addEventListener("keydown", handleActivity);
-    window.addEventListener("click", handleActivity);
+
+    const events = ["mousemove", "mousedown", "keydown", "click", "touchstart", "scroll", "wheel"];
+    events.forEach(evt => window.addEventListener(evt, handleActivity, { passive: true }));
+
     return () => {
-      window.removeEventListener("mousemove", handleActivity);
-      window.removeEventListener("keydown", handleActivity);
-      window.removeEventListener("click", handleActivity);
+      events.forEach(evt => window.removeEventListener(evt, handleActivity));
+      if (unlockTimeoutRef.current) {
+        clearTimeout(unlockTimeoutRef.current);
+        unlockTimeoutRef.current = null;
+      }
     };
-  }, [isUnlocked, unlockTimer]);
+  }, [isUnlocked]);
 
   const fetchData = () => {
     setLoading(true);
@@ -286,7 +308,6 @@ export default function PublicNocPanel() {
                 onClick={() => {
                   if (isUnlocked) {
                     setIsUnlocked(false);
-                    if (unlockTimer) clearTimeout(unlockTimer);
                   } else {
                     setUnlockModalOpen(true);
                   }
