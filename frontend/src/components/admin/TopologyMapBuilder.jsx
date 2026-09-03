@@ -862,7 +862,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   };
 
   // Adicionar Nó ao Mapa
-  const handleAddNode = () => {
+  const handleAddNode = async () => {
     const selectedAsset = assetsList.find(a => String(a.id) === String(newNodeForm.asset_id));
     
     // Calcula o centro da tela atual baseado no pan e zoom
@@ -894,9 +894,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       rack_display_options: displayOpts
     };
 
+    const updatedNodes = [...mapData.nodes_data, newNode];
     setMapData((prev) => ({
       ...prev,
-      nodes_data: [...prev.nodes_data, newNode],
+      nodes_data: updatedNodes,
     }));
 
     setIsAddNodeModalOpen(false);
@@ -917,6 +918,28 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     });
     setAvailableZabbixItems([]);
     setSelectedZabbixInterface("");
+
+    if (mapData.id) {
+      try {
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: updatedNodes,
+          edges_data: mapData.edges_data,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        const res = await api.put(`/network-maps/${mapData.id}`, payload);
+        if (res.data) {
+          setMapData(res.data);
+          setHasUnsavedChanges(false);
+        }
+      } catch (err) {
+        console.error("Erro ao salvar novo nó no mapa:", err);
+      }
+    }
   };
 
   // Abrir Modal de Edição de Nó
@@ -924,8 +947,14 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     const node = mapData.nodes_data.find(n => n.id === nodeId);
     if (!node) return;
     
-    const existingOpts = node.display_options || node.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
-    const linkedAsset = node.asset_id ? assetsList.find(a => String(a.id) === String(node.asset_id)) : null;
+    const existingOpts = {
+      show_ip: node.display_options?.show_ip ?? node.rack_display_options?.show_ip ?? true,
+      unifi_metrics: Array.isArray(node.display_options?.unifi_metrics)
+        ? [...node.display_options.unifi_metrics]
+        : (Array.isArray(node.rack_display_options?.unifi_metrics)
+        ? [...node.rack_display_options.unifi_metrics]
+        : [...DEFAULT_DISPLAY_OPTIONS.unifi_metrics])
+    };
 
     setEditNodeForm({
       id: node.id,
@@ -936,8 +965,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       width: node.width !== undefined && node.width !== null ? String(node.width) : "",
       height: node.height !== undefined && node.height !== null ? String(node.height) : "",
       sound_alert_offline: !!node.sound_alert_offline,
-      zabbix_selected_metrics: node.zabbix_selected_metrics || [],
-      child_asset_ids: node.child_asset_ids || [],
+      zabbix_selected_metrics: Array.isArray(node.zabbix_selected_metrics) ? [...node.zabbix_selected_metrics] : [],
+      child_asset_ids: Array.isArray(node.child_asset_ids) ? [...node.child_asset_ids] : [],
       display_options: existingOpts,
       rack_display_options: existingOpts
     });
@@ -969,40 +998,73 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   };
 
   // Salvar Edição do Nó
-  const handleSaveEditNode = () => {
+  const handleSaveEditNode = async () => {
     const selectedAsset = assetsList.find(a => String(a.id) === editNodeForm.asset_id);
-    const displayOpts = editNodeForm.display_options || editNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+    const displayOpts = {
+      show_ip: editNodeForm.display_options?.show_ip ?? true,
+      unifi_metrics: Array.isArray(editNodeForm.display_options?.unifi_metrics)
+        ? [...editNodeForm.display_options.unifi_metrics]
+        : (Array.isArray(editNodeForm.rack_display_options?.unifi_metrics)
+        ? [...editNodeForm.rack_display_options.unifi_metrics]
+        : [...DEFAULT_DISPLAY_OPTIONS.unifi_metrics])
+    };
     
-    setHasUnsavedChanges(true);
+    const updatedNodes = mapData.nodes_data.map(n => {
+      if (n.id === editNodeForm.id) {
+        return {
+          ...n,
+          asset_id: selectedAsset ? selectedAsset.id : null,
+          child_asset_ids: editNodeForm.child_asset_ids || [],
+          width: editNodeForm.width ? parseInt(editNodeForm.width, 10) : null,
+          height: editNodeForm.height ? parseInt(editNodeForm.height, 10) : null,
+          sound_alert_offline: !!editNodeForm.sound_alert_offline,
+          display_options: displayOpts,
+          rack_display_options: displayOpts,
+          label: editNodeForm.label || (selectedAsset ? selectedAsset.name : n.label),
+          icon_type: editNodeForm.icon_type,
+          ip_address: editNodeForm.ip_address || (selectedAsset ? selectedAsset.ip_address : n.ip_address),
+          zabbix_selected_metrics: [...editNodeForm.zabbix_selected_metrics],
+          icmp_status: selectedAsset ? selectedAsset.icmp_status : n.icmp_status,
+          zabbix_status: selectedAsset ? selectedAsset.zabbix_status : n.zabbix_status,
+          zabbix_alert_title: selectedAsset ? selectedAsset.zabbix_alert_title : n.zabbix_alert_title,
+        };
+      }
+      return n;
+    });
+
     setMapData(prev => ({
       ...prev,
-      nodes_data: prev.nodes_data.map(n => {
-        if (n.id === editNodeForm.id) {
-          return {
-            ...n,
-            asset_id: selectedAsset ? selectedAsset.id : null,
-            child_asset_ids: editNodeForm.child_asset_ids || [],
-            width: editNodeForm.width ? parseInt(editNodeForm.width, 10) : null,
-            height: editNodeForm.height ? parseInt(editNodeForm.height, 10) : null,
-            sound_alert_offline: !!editNodeForm.sound_alert_offline,
-            display_options: displayOpts,
-            rack_display_options: displayOpts,
-            label: editNodeForm.label || (selectedAsset ? selectedAsset.name : n.label),
-            icon_type: editNodeForm.icon_type,
-            ip_address: editNodeForm.ip_address || (selectedAsset ? selectedAsset.ip_address : n.ip_address),
-            zabbix_selected_metrics: [...editNodeForm.zabbix_selected_metrics],
-            icmp_status: selectedAsset ? selectedAsset.icmp_status : n.icmp_status,
-            zabbix_status: selectedAsset ? selectedAsset.zabbix_status : n.zabbix_status,
-            zabbix_alert_title: selectedAsset ? selectedAsset.zabbix_alert_title : n.zabbix_alert_title,
-          };
-        }
-        return n;
-      }),
+      nodes_data: updatedNodes,
     }));
     
     setIsEditNodeModalOpen(false);
     setAvailableZabbixItems([]);
     setSelectedZabbixInterface("");
+
+    // PERSISTÊNCIA DIRETA NO BACKEND:
+    // Salva imediatamente no banco de dados para garantir que as alterações não sejam perdidas
+    // e o countdown da TV já carregue as opções atualizadas no próximo ciclo!
+    if (mapData.id) {
+      try {
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: updatedNodes,
+          edges_data: mapData.edges_data,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        const res = await api.put(`/network-maps/${mapData.id}`, payload);
+        if (res.data) {
+          setMapData(res.data);
+          setHasUnsavedChanges(false);
+        }
+      } catch (err) {
+        console.error("Erro ao salvar alterações do nó:", err);
+      }
+    }
   };
 
   // Adicionar Conexão entre Nós
@@ -1667,16 +1729,37 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       <div className="flex items-center gap-1.5">
                         <button 
                           type="button"
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
                             if (!isPublicView) {
-                              setHasUnsavedChanges(true);
+                              const updatedNodes = mapData.nodes_data.map(n => 
+                                n.id === node.id ? { ...n, sound_alert_offline: !n.sound_alert_offline } : n
+                              );
                               setMapData(prev => ({
                                 ...prev,
-                                nodes_data: prev.nodes_data.map(n => 
-                                  n.id === node.id ? { ...n, sound_alert_offline: !n.sound_alert_offline } : n
-                                )
+                                nodes_data: updatedNodes
                               }));
+                              if (mapData.id) {
+                                try {
+                                  const payload = {
+                                    name: mapData.name,
+                                    description: mapData.description,
+                                    nodes_data: updatedNodes,
+                                    edges_data: mapData.edges_data,
+                                    zoom_level: zoom,
+                                    pan_x: Math.round(pan.x),
+                                    pan_y: Math.round(pan.y),
+                                    background_image_url: mapData.background_image_url,
+                                  };
+                                  const res = await api.put(`/network-maps/${mapData.id}`, payload);
+                                  if (res.data) {
+                                    setMapData(res.data);
+                                    setHasUnsavedChanges(false);
+                                  }
+                                } catch (err) {
+                                  console.error("Erro ao alternar som:", err);
+                                }
+                              }
                             }
                           }}
                           title={
@@ -1743,12 +1826,13 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     </div>
                     
                     {/* Renderização das Métricas Zabbix dentro do Card */}
-                    {node.asset_id && liveMetrics[node.asset_id] && (
+                    {node.asset_id && liveMetrics[node.asset_id] && (node.zabbix_selected_metrics === undefined || node.zabbix_selected_metrics === null || node.zabbix_selected_metrics.length > 0) && (
                       <div className="mt-3 space-y-1.5 border-t border-slate-700/50 pt-2">
                         {liveMetrics[node.asset_id].map((iface, idx) => {
                           // Se o usuário selecionou métricas específicas (array existe), mostramos apenas as selecionadas.
-                          // Se for um nó antigo sem a prop zabbix_selected_metrics, mostramos todas (retro-compatibilidade).
-                          if (node.zabbix_selected_metrics && Array.isArray(node.zabbix_selected_metrics) && node.zabbix_selected_metrics.length > 0) {
+                          // Se o array for vazio, não exibe nada.
+                          if (node.zabbix_selected_metrics !== undefined && node.zabbix_selected_metrics !== null) {
+                            if (node.zabbix_selected_metrics.length === 0) return null;
                             const assetObj = assetsList.find(a => String(a.id) === String(node.asset_id));
                             if (assetObj && assetObj.zabbix_items) {
                               const checkedItemsForThisIface = assetObj.zabbix_items.filter(
@@ -1794,10 +1878,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     )}
 
                     {/* Renderização das Métricas UniFi */}
-                    {unifiMetrics.length > 0 && node.ip_address && (
+                    {unifiMetrics.length > 0 && (node.ip_address || (node.asset_id && assetsList.find(a => String(a.id) === String(node.asset_id))?.ip_address)) && (
                       <UnifiMetricsBlock 
-                        unifiDev={unifiMetrics.find(u => u.ip === node.ip_address)} 
-                        selectedMetrics={node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx']} 
+                        unifiDev={unifiMetrics.find(u => u.ip === (node.ip_address || assetsList.find(a => String(a.id) === String(node.asset_id))?.ip_address))} 
+                        selectedMetrics={node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? DEFAULT_DISPLAY_OPTIONS.unifi_metrics} 
                       />
                     )}
 
@@ -2435,21 +2519,19 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
                     <input 
                       type="checkbox" 
-                      className="w-3.5 h-3.5 accent-blue-500 rounded"
-                      checked={editNodeForm.display_options?.show_ip ?? editNodeForm.rack_display_options?.show_ip ?? true}
+                      className="w-3.5 h-3.5 accent-blue-500 rounded cursor-pointer"
+                      checked={editNodeForm.display_options?.show_ip ?? true}
                       onChange={(e) => {
                         const val = e.target.checked;
-                        setEditNodeForm(prev => ({
-                          ...prev,
-                          display_options: {
-                            ...(prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS),
-                            show_ip: val
-                          },
-                          rack_display_options: {
-                            ...(prev.rack_display_options || prev.display_options || DEFAULT_DISPLAY_OPTIONS),
-                            show_ip: val
-                          }
-                        }));
+                        setEditNodeForm(prev => {
+                          const base = prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+                          const newOpts = { ...base, show_ip: val };
+                          return {
+                            ...prev,
+                            display_options: newOpts,
+                            rack_display_options: newOpts
+                          };
+                        });
                       }}
                     />
                     Mostrar Endereço IP
@@ -2469,30 +2551,33 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         { id: 'lan_experience', label: 'LAN Exp. (SW)' },
                         { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
                       ].map(metric => {
-                        const currentOpts = editNodeForm.display_options || editNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
-                        const isMetricChecked = (currentOpts.unifi_metrics || []).includes(metric.id);
+                        const currentMetrics = Array.isArray(editNodeForm.display_options?.unifi_metrics)
+                          ? editNodeForm.display_options.unifi_metrics
+                          : (Array.isArray(editNodeForm.rack_display_options?.unifi_metrics)
+                          ? editNodeForm.rack_display_options.unifi_metrics
+                          : DEFAULT_DISPLAY_OPTIONS.unifi_metrics);
+                        const isMetricChecked = currentMetrics.includes(metric.id);
                         return (
                           <label key={metric.id} className="flex items-center gap-2 cursor-pointer text-[10px] text-slate-400 hover:text-slate-200">
                             <input 
                               type="checkbox" 
-                              className="w-3 h-3 accent-blue-500 rounded"
+                              className="w-3 h-3 accent-blue-500 rounded cursor-pointer"
                               checked={isMetricChecked}
                               onChange={(e) => {
-                                const currMetrics = currentOpts.unifi_metrics || [];
-                                const newMetrics = e.target.checked
-                                  ? [...currMetrics, metric.id]
-                                  : currMetrics.filter(m => m !== metric.id);
-                                setEditNodeForm(prev => ({
-                                  ...prev,
-                                  display_options: {
-                                    ...(prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS),
-                                    unifi_metrics: newMetrics
-                                  },
-                                  rack_display_options: {
-                                    ...(prev.rack_display_options || prev.display_options || DEFAULT_DISPLAY_OPTIONS),
-                                    unifi_metrics: newMetrics
-                                  }
-                                }));
+                                const isChecked = e.target.checked;
+                                setEditNodeForm(prev => {
+                                  const base = prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+                                  const curr = Array.isArray(base.unifi_metrics) ? base.unifi_metrics : [...DEFAULT_DISPLAY_OPTIONS.unifi_metrics];
+                                  const nextMetrics = isChecked
+                                    ? (curr.includes(metric.id) ? curr : [...curr, metric.id])
+                                    : curr.filter(m => m !== metric.id);
+                                  const newOpts = { ...base, unifi_metrics: nextMetrics };
+                                  return {
+                                    ...prev,
+                                    display_options: newOpts,
+                                    rack_display_options: newOpts
+                                  };
+                                });
                               }}
                             />
                             {metric.label}

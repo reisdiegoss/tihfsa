@@ -144,8 +144,12 @@ def update_network_map(
         net_map.location_id = map_data.location_id
     if map_data.nodes_data is not None:
         net_map.nodes_data = map_data.nodes_data
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(net_map, "nodes_data")
     if map_data.edges_data is not None:
         net_map.edges_data = map_data.edges_data
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(net_map, "edges_data")
     if map_data.zoom_level is not None:
         net_map.zoom_level = map_data.zoom_level
     if map_data.pan_x is not None:
