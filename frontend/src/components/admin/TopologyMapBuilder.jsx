@@ -908,7 +908,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       ip_address: node.ip_address || "",
       width: node.width !== undefined && node.width !== null ? String(node.width) : "",
       height: node.height !== undefined && node.height !== null ? String(node.height) : "",
-      sound_alert_offline: node.sound_alert_offline !== undefined ? !!node.sound_alert_offline : (linkedAsset ? !!linkedAsset.sound_alert_offline : false),
+      sound_alert_offline: !!node.sound_alert_offline,
       zabbix_selected_metrics: node.zabbix_selected_metrics || [],
       child_asset_ids: node.child_asset_ids || [],
       display_options: existingOpts,
@@ -1124,20 +1124,19 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     return false;
   };
 
-  // Verifica se o nó específico possui alerta sonoro e está offline
+  // Verifica se o nó específico possui alerta sonoro e está offline (configurado no fluxograma)
   const getIsNodeSoundAlertTriggered = (node) => {
-    const linkedAsset = node.asset_id ? assetsList.find(a => String(a.id) === String(node.asset_id)) : null;
-    const nodeAlertEnabled = node.sound_alert_offline ?? linkedAsset?.sound_alert_offline ?? false;
+    if (!node.sound_alert_offline) return false;
     
-    // Status do próprio nó
+    // 1. Status do próprio nó
     const isThisNodeOffline = node.icmp_status === "offline" || (node.ip_address && unifiMetrics.some(um => um.ip === node.ip_address && um.state === 0));
-    if (nodeAlertEnabled && isThisNodeOffline) return true;
+    if (isThisNodeOffline) return true;
 
-    // Se for Rack ou Zone, checa os dispositivos contidos nele
+    // 2. Se for Rack ou Zone com alerta ativado, checa os dispositivos contidos nele
     if (node.child_asset_ids && node.child_asset_ids.length > 0) {
       for (const cid of node.child_asset_ids) {
         const childAsset = assetsList.find(a => String(a.id) === String(cid));
-        if (childAsset && childAsset.sound_alert_offline) {
+        if (childAsset) {
           const isChildOffline = childAsset.icmp_status === "offline" || (childAsset.ip_address && unifiMetrics.some(um => um.ip === childAsset.ip_address && um.state === 0));
           if (isChildOffline) return true;
         }
@@ -1226,6 +1225,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   }, [mapData.nodes_data, assetsList, unifiMetrics, isAudioMuted]);
 
   const hasAnySoundAlertTriggered = (mapData.nodes_data || []).some(n => getIsNodeSoundAlertTriggered(n));
+  const soundAlertsActiveCount = (mapData.nodes_data || []).filter(n => n.sound_alert_offline).length;
 
   return (
     <div className="space-y-4 flex-1 flex flex-col w-full h-full min-h-0">
@@ -1485,7 +1485,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 ? "Mudo" 
                 : hasAnySoundAlertTriggered 
                 ? "Alarme 2s!" 
-                : "Som (2s)"}
+                : `Som (2s)${soundAlertsActiveCount > 0 ? ` (${soundAlertsActiveCount})` : ""}`}
             </span>
           </button>
         </div>
@@ -1638,16 +1638,35 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       </div>
 
                       <div className="flex items-center gap-1.5">
-                        {!!(node.sound_alert_offline ?? (node.asset_id && assetsList.find(a => String(a.id) === String(node.asset_id))?.sound_alert_offline)) && (
-                          <span 
-                            title={isOffline ? "Alerta Sonoro Disparado (intercalado 2s)!" : "Alerta sonoro ativo para quando este dispositivo ficar offline"}
-                            className={`p-1 rounded-md transition-all ${
-                              isOffline ? "bg-red-500/30 text-red-300 animate-pulse ring-1 ring-red-500/50" : "text-slate-500 hover:text-slate-400"
-                            }`}
-                          >
-                            <Bell size={12} />
-                          </span>
-                        )}
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isPublicView) {
+                              setHasUnsavedChanges(true);
+                              setMapData(prev => ({
+                                ...prev,
+                                nodes_data: prev.nodes_data.map(n => 
+                                  n.id === node.id ? { ...n, sound_alert_offline: !n.sound_alert_offline } : n
+                                )
+                              }));
+                            }
+                          }}
+                          title={
+                            node.sound_alert_offline 
+                              ? (isOffline ? "Alerta Sonoro Disparado (2s)! Clique para desativar som deste nó." : "Alerta sonoro ativo para este nó quando offline. Clique para desativar.")
+                              : "Alerta sonoro desativado para este nó. Clique para ativar som se ficar offline."
+                          }
+                          className={`p-1 rounded-md transition-all ${
+                            node.sound_alert_offline
+                              ? (isOffline 
+                                  ? "bg-red-500/30 text-red-300 animate-pulse ring-1 ring-red-500/50" 
+                                  : "bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30")
+                              : "text-slate-600 hover:text-slate-400 hover:bg-slate-800/60 opacity-60 hover:opacity-100"
+                          } ${isPublicView ? "cursor-default" : "cursor-pointer"}`}
+                        >
+                          <Bell size={12} className={node.sound_alert_offline ? "fill-amber-400/20" : ""} />
+                        </button>
                         <span className={`w-2.5 h-2.5 rounded-full ${
                           isOffline ? "bg-red-500 animate-ping" : "bg-emerald-500 animate-pulse"
                         }`} />
@@ -1808,7 +1827,6 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       ...prev,
                       asset_id: assetId,
                       label: selected ? selected.name : prev.label,
-                      sound_alert_offline: selected ? !!selected.sound_alert_offline : prev.sound_alert_offline,
                       zabbix_selected_metrics: []
                     }));
                     setAvailableZabbixItems([]);
@@ -2192,7 +2210,6 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       ...prev,
                       asset_id: assetId,
                       label: selected ? selected.name : prev.label,
-                      sound_alert_offline: selected ? !!selected.sound_alert_offline : prev.sound_alert_offline,
                       zabbix_selected_metrics: []
                     }));
                     setAvailableZabbixMetrics([]);
