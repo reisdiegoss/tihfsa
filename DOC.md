@@ -150,10 +150,19 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
       4. `[ 🔗 Conectar Nós (Cabos) ]`
       5. `[ ✏️ Editar Nó ]`: Botão direto na barra. Ao clicar em qualquer equipamento no mapa, ele abre o **modal de Conectar Nós em Modo Edição** (`Editar Conexão de Nós`), permitindo editar o rótulo/portas da conexão (ex: "Porta 19"), alterar origem/destino ou excluir o cabo com persistência imediata.
       6. `[ 🗑️ Excluir Nó ]`: Botão para exclusão do nó ou área selecionada.
-  - **Adicionar Equipamentos em Lote (Batch Import com Configuração Padrão)**:
+  - **Adicionar e Atualizar Equipamentos em Lote (Batch Import com Dimensões e Métricas Personalizadas)**:
     - Permite selecionar múltiplos equipamentos através de filtros rápidos de tipo (`Antenas / APs`, `Switches`, `Servidores`, `Todos`) e busca por texto/IP.
-    - **Configurações Padrão Unificadas**: O operador define a Área/Bloco de destino, o Tipo de Ícone, as Métricas UniFi desejadas (com botões de conveniência *Marcar Todas* / *Desmarcar Todas*) e o Alerta Sonoro Offline uma única vez, aplicando a todos os itens selecionados.
-    - **Distribuição Automática em Grade**: Calcula as coordenadas `(x, y)` distribuindo os equipamentos em colunas organizadas (`gapX: 260px`, `gapY: 360px`) adjacentes aos membros já existentes ou no centro visível da tela, evitando qualquer sobreposição e permitindo que o contorno em bolha da área se molde em tempo real.
+    - **Ajuste de Dimensões em Lote (Largura e Altura)**:
+      - Inclui controle de largura (px) com botões de preset rápido: `Padrão (220px)`, `Médio (260px)`, `Largo (300px)`, `Extra (340px)` e `Auto`.
+      - Campo opcional de altura mínima (px) para padronizar o layout visual de todos os equipamentos selecionados.
+      - Espaçamento horizontal (`gapX`) e vertical (`gapY`) dinâmico e inteligente baseado na largura e altura escolhidas, garantindo grade limpa sem sobreposições.
+    - **Atualização / Edição em Lote de Nós Existentes ("Já no Mapa")**:
+      - Se um equipamento selecionado na lista já estiver presente no fluxograma, a ação de lote **atualiza / edita** suas métricas, dimensões (largura/altura), área/bloco de destino, ícone e alerta sonoro in-place, sem criar nós duplicados e preservando suas posições `(x, y)` no canvas.
+      - Para equipamentos que ainda não estão no mapa, novos nós são criados com as configurações e posicionados automaticamente.
+      - O rodapé do modal indica com precisão o resumo da ação: `Adicionando X novo(s) e Atualizando/Editando Y já no mapa`.
+    - **Seleção Precisa de Métricas e Presets Rápidos**:
+      - Presets em 1 clique: `[ 📡 Wi-Fi (AP) ]` (seleciona WiFi Exp., Clientes e Uso de Canal), `[ 🔀 Switches ]` (LAN Exp., RX/TX Rates e Uptime), `[ ⚡ Todas ]` e `[ 🚫 Nenhuma ]`.
+      - Clonagem profunda dos arrays de métricas em `display_options` e `rack_display_options`, garantindo que seleções customizadas sejam gravadas com fidelidade no banco de dados e refletidas imediatamente nos cards.
   - **Edição de Conexões e Cabos (Edges)**:
     - **Clique no Botão "Editar Nó"**: Abre o modal de conexão no modo de edição para o equipamento selecionado. Caso o nó possua mais de uma ligação (ex: Switch ligado a múltiplos APs), uma barra superior no modal permite alternar entre as conexões em 1 clique.
     - **Clique Direto no Cabo no Canvas**: Clicar sobre qualquer linha de conexão ou etiqueta de porta no diagrama SVG abre imediatamente o modal de edição daquele cabo.

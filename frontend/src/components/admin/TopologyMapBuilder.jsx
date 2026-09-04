@@ -685,11 +685,13 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx']
   };
 
-    const [isBatchAddModalOpen, setIsBatchAddModalOpen] = useState(false);
+  const [isBatchAddModalOpen, setIsBatchAddModalOpen] = useState(false);
   const [batchAddForm, setBatchAddForm] = useState({
     selected_asset_ids: [],
     zone_id: "",
     icon_type: "AccessPoint",
+    width: "",
+    height: "",
     sound_alert_offline: false,
     display_options: { ...DEFAULT_DISPLAY_OPTIONS },
     rack_display_options: { ...DEFAULT_DISPLAY_OPTIONS },
@@ -1810,10 +1812,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }
   };
 
-  // Adicionar Múltiplos Nós em Lote ao Mapa com Configurações Padrão
+  // Adicionar ou Atualizar Múltiplos Nós em Lote ao Mapa com Configurações e Métricas Padrão
   const handleBatchAddNodes = async () => {
     if (batchAddForm.selected_asset_ids.length === 0) {
-      alert("Selecione ao menos um equipamento para adicionar ao fluxograma.");
+      alert("Selecione ao menos um equipamento para adicionar ou atualizar no fluxograma.");
       return;
     }
 
@@ -1834,6 +1836,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     let startX = baseSafeX;
     let startY = baseSafeY;
 
+    const customWidth = batchAddForm.width ? parseInt(batchAddForm.width, 10) : null;
+    const customHeight = batchAddForm.height ? parseInt(batchAddForm.height, 10) : null;
+    const gapX = Math.max(260, (customWidth || 220) + 40);
+    const gapY = Math.max(340, (customHeight || 280) + 50);
+
     if (existingZoneMembers.length > 0) {
       const maxXMember = existingZoneMembers.reduce((prev, curr) => curr.x > prev.x ? curr : prev, existingZoneMembers[0]);
       const minXMember = existingZoneMembers.reduce((prev, curr) => curr.x < prev.x ? curr : prev, existingZoneMembers[0]);
@@ -1841,56 +1848,94 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       
       if (existingZoneMembers.length >= 4) {
         startX = minXMember.x;
-        startY = maxYMember.y + 360;
+        startY = maxYMember.y + gapY;
       } else {
-        startX = maxXMember.x + 260;
+        startX = maxXMember.x + gapX;
         startY = maxXMember.y;
       }
     }
 
-    const displayOpts = batchAddForm.display_options || DEFAULT_DISPLAY_OPTIONS;
+    // Configurações e métricas UniFi rigorosamente clonadas
+    const finalMetrics = Array.isArray(batchAddForm.display_options?.unifi_metrics)
+      ? [...batchAddForm.display_options.unifi_metrics]
+      : (Array.isArray(batchAddForm.rack_display_options?.unifi_metrics)
+      ? [...batchAddForm.rack_display_options.unifi_metrics]
+      : [...DEFAULT_DISPLAY_OPTIONS.unifi_metrics]);
+
+    const finalDisplayOpts = {
+      show_ip: batchAddForm.display_options?.show_ip ?? true,
+      unifi_metrics: finalMetrics
+    };
+
     const cols = 4; // 4 equipamentos por linha na grade
-    const gapX = 260;
-    const gapY = 360;
-
-    const newNodes = [];
     const timestamp = Date.now();
+    let updatedNodesList = [...mapData.nodes_data];
+    let newItemsCount = 0;
 
-    batchAddForm.selected_asset_ids.forEach((assetId, idx) => {
+    batchAddForm.selected_asset_ids.forEach((assetId) => {
       const asset = assetsList.find(a => String(a.id) === String(assetId));
-      const col = idx % cols;
-      const row = Math.floor(idx / cols);
+      const existingIdx = updatedNodesList.findIndex(n => n.asset_id && String(n.asset_id) === String(assetId));
 
-      const posX = Math.round(startX + col * gapX);
-      const posY = Math.round(startY + row * gapY);
+      if (existingIdx >= 0) {
+        // EQUIPAMENTO JÁ EXISTE NO MAPA: Atualiza / Edita métricas, dimensões e configurações in-place!
+        const prevNode = updatedNodesList[existingIdx];
+        updatedNodesList[existingIdx] = {
+          ...prevNode,
+          icon_type: batchAddForm.icon_type || prevNode.icon_type,
+          zone_id: batchAddForm.zone_id !== "" ? (batchAddForm.zone_id || null) : prevNode.zone_id,
+          width: customWidth !== null ? customWidth : prevNode.width,
+          height: customHeight !== null ? customHeight : prevNode.height,
+          sound_alert_offline: !!batchAddForm.sound_alert_offline,
+          display_options: {
+            show_ip: finalDisplayOpts.show_ip,
+            unifi_metrics: [...finalDisplayOpts.unifi_metrics]
+          },
+          rack_display_options: {
+            show_ip: finalDisplayOpts.show_ip,
+            unifi_metrics: [...finalDisplayOpts.unifi_metrics]
+          }
+        };
+      } else {
+        // EQUIPAMENTO NOVO: Cria e seta todas as configurações e métricas
+        const col = newItemsCount % cols;
+        const row = Math.floor(newItemsCount / cols);
+        const posX = Math.round(startX + col * gapX);
+        const posY = Math.round(startY + row * gapY);
 
-      const node = {
-        id: `node_${timestamp}_${idx}`,
-        asset_id: asset ? asset.id : null,
-        label: asset ? asset.name : `Equipamento ${idx + 1}`,
-        icon_type: batchAddForm.icon_type || (asset?.type === 'AccessPoint' ? 'AccessPoint' : (asset?.type || 'Switch')),
-        zone_id: batchAddForm.zone_id || null,
-        x: posX,
-        y: posY,
-        width: null,
-        height: null,
-        sound_alert_offline: !!batchAddForm.sound_alert_offline,
-        icmp_status: asset ? asset.icmp_status : "online",
-        zabbix_status: asset ? asset.zabbix_status : "ok",
-        zabbix_alert_title: asset ? asset.zabbix_alert_title : null,
-        ip_address: asset ? (asset.ip_address || "") : "",
-        zabbix_selected_metrics: [],
-        child_asset_ids: [],
-        display_options: { ...displayOpts },
-        rack_display_options: { ...displayOpts }
-      };
-      newNodes.push(node);
+        const node = {
+          id: `node_${timestamp}_${newItemsCount}`,
+          asset_id: asset ? asset.id : null,
+          label: asset ? asset.name : `Equipamento ${newItemsCount + 1}`,
+          icon_type: batchAddForm.icon_type || (asset?.type === 'AccessPoint' ? 'AccessPoint' : (asset?.type || 'Switch')),
+          zone_id: batchAddForm.zone_id || null,
+          x: posX,
+          y: posY,
+          width: customWidth,
+          height: customHeight,
+          sound_alert_offline: !!batchAddForm.sound_alert_offline,
+          icmp_status: asset ? asset.icmp_status : "online",
+          zabbix_status: asset ? asset.zabbix_status : "ok",
+          zabbix_alert_title: asset ? asset.zabbix_alert_title : null,
+          ip_address: asset ? (asset.ip_address || "") : "",
+          zabbix_selected_metrics: [],
+          child_asset_ids: [],
+          display_options: {
+            show_ip: finalDisplayOpts.show_ip,
+            unifi_metrics: [...finalDisplayOpts.unifi_metrics]
+          },
+          rack_display_options: {
+            show_ip: finalDisplayOpts.show_ip,
+            unifi_metrics: [...finalDisplayOpts.unifi_metrics]
+          }
+        };
+        updatedNodesList.push(node);
+        newItemsCount++;
+      }
     });
 
-    const updatedNodes = [...mapData.nodes_data, ...newNodes];
     setMapData(prev => ({
       ...prev,
-      nodes_data: updatedNodes
+      nodes_data: updatedNodesList
     }));
 
     setIsBatchAddModalOpen(false);
@@ -1906,7 +1951,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         const payload = {
           name: mapData.name,
           description: mapData.description,
-          nodes_data: updatedNodes,
+          nodes_data: updatedNodesList,
           edges_data: mapData.edges_data,
           zoom_level: zoom,
           pan_x: Math.round(pan.x),
@@ -3619,6 +3664,77 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   </select>
                 </div>
 
+                {/* Dimensões dos Cards (Largura e Altura) */}
+                <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                      <Maximize2 size={13} className="text-cyan-400" />
+                      Dimensões dos Cards (Largura / Altura):
+                    </label>
+                    <span className="text-[10px] text-cyan-400 font-mono font-bold">
+                      {batchAddForm.width ? `${batchAddForm.width}px` : "Largura Padrão"} × {batchAddForm.height ? `${batchAddForm.height}px` : "Altura Auto"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                      <span>Largura do Card:</span>
+                      <div className="flex items-center gap-1 font-mono">
+                        <input
+                          type="number"
+                          min="140"
+                          max="800"
+                          placeholder={batchAddForm.icon_type === 'Rack' ? "280 (Padrão)" : "220 (Padrão)"}
+                          value={batchAddForm.width}
+                          onChange={(e) => setBatchAddForm(prev => ({ ...prev, width: e.target.value }))}
+                          className="w-24 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-center font-bold text-white text-xs outline-none focus:border-cyan-500"
+                        />
+                        <span className="text-slate-500 text-[10px]">px</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {[
+                        { label: "Padrão (220px)", w: "220" },
+                        { label: "Médio (260px)", w: "260" },
+                        { label: "Largo (300px)", w: "300" },
+                        { label: "Extra (340px)", w: "340" },
+                        { label: "Auto", w: "" }
+                      ].map(preset => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => setBatchAddForm(prev => ({ ...prev, width: preset.w }))}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
+                            batchAddForm.width === preset.w 
+                              ? "bg-cyan-600 text-white font-bold shadow-sm" 
+                              : "bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>Altura Mínima (opcional):</span>
+                      <div className="flex items-center gap-1 font-mono">
+                        <input
+                          type="number"
+                          min="60"
+                          max="1500"
+                          placeholder="Auto"
+                          value={batchAddForm.height}
+                          onChange={(e) => setBatchAddForm(prev => ({ ...prev, height: e.target.value }))}
+                          className="w-24 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-center font-bold text-white text-xs outline-none focus:border-cyan-500"
+                        />
+                        <span className="text-slate-500 text-[10px]">px</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Alerta Sonoro Offline */}
                 <div className="pt-1">
                   <label className="flex items-center gap-2 cursor-pointer text-slate-200 font-bold">
@@ -3634,35 +3750,68 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
                 {/* Opções de Exibição & Métricas UniFi */}
                 <div className="pt-2 border-t border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-slate-300 font-bold">O que exibir nos cards:</label>
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const allM = ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'];
-                          setBatchAddForm(prev => ({
-                            ...prev,
-                            display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: allM, show_ip: true }
-                          }));
-                        }}
-                        className="text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
-                      >
-                        Todas
-                      </button>
-                      <span className="text-slate-600">|</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBatchAddForm(prev => ({
-                            ...prev,
-                            display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: [] }
-                          }));
-                        }}
-                        className="text-slate-400 hover:text-slate-300 underline cursor-pointer"
-                      >
-                        Nenhuma
-                      </button>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-slate-300 font-bold">O que exibir nos cards:</label>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const apM = ['wifi_experience', 'clients', 'channel_utilization'];
+                            setBatchAddForm(prev => ({
+                              ...prev,
+                              display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: apM, show_ip: true },
+                              rack_display_options: { ...(prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: apM, show_ip: true }
+                            }));
+                          }}
+                          className="px-1.5 py-0.5 bg-cyan-950/80 border border-cyan-800/80 text-cyan-300 hover:text-white rounded font-bold cursor-pointer transition-colors"
+                          title="Selecionar apenas métricas de Wi-Fi / AP (WiFi Experience, Clientes e Uso de Canais)"
+                        >
+                          Wi-Fi (AP)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const swM = ['lan_experience', 'rx_tx', 'uptime'];
+                            setBatchAddForm(prev => ({
+                              ...prev,
+                              display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: swM, show_ip: true },
+                              rack_display_options: { ...(prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: swM, show_ip: true }
+                            }));
+                          }}
+                          className="px-1.5 py-0.5 bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 hover:text-white rounded font-bold cursor-pointer transition-colors"
+                          title="Selecionar apenas métricas de Switch (LAN Exp, RX/TX Rates e Uptime)"
+                        >
+                          Switches
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allM = ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'];
+                            setBatchAddForm(prev => ({
+                              ...prev,
+                              display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: allM, show_ip: true },
+                              rack_display_options: { ...(prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: allM, show_ip: true }
+                            }));
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded font-bold cursor-pointer transition-colors"
+                        >
+                          Todas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBatchAddForm(prev => ({
+                              ...prev,
+                              display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: [] },
+                              rack_display_options: { ...(prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: [] }
+                            }));
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded font-bold cursor-pointer transition-colors"
+                        >
+                          Nenhuma
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -3675,7 +3824,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         const val = e.target.checked;
                         setBatchAddForm(prev => ({
                           ...prev,
-                          display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), show_ip: val }
+                          display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), show_ip: val },
+                          rack_display_options: { ...(prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS), show_ip: val }
                         }));
                       }}
                     />
@@ -3694,7 +3844,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       { id: 'ram', label: 'RAM' },
                       { id: 'fw', label: 'Firmware' },
                     ].map(metric => {
-                      const currentMetrics = batchAddForm.display_options?.unifi_metrics ?? DEFAULT_DISPLAY_OPTIONS.unifi_metrics;
+                      const currentMetrics = Array.isArray(batchAddForm.display_options?.unifi_metrics)
+                        ? batchAddForm.display_options.unifi_metrics
+                        : (Array.isArray(batchAddForm.rack_display_options?.unifi_metrics)
+                        ? batchAddForm.rack_display_options.unifi_metrics
+                        : DEFAULT_DISPLAY_OPTIONS.unifi_metrics);
                       const isChecked = currentMetrics.includes(metric.id);
                       return (
                         <label key={metric.id} className="flex items-center gap-2 cursor-pointer text-[11px] text-slate-400 hover:text-slate-200">
@@ -3708,7 +3862,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                                 : currentMetrics.filter(m => m !== metric.id);
                               setBatchAddForm(prev => ({
                                 ...prev,
-                                display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: newM }
+                                display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: newM },
+                                rack_display_options: { ...(prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: newM }
                               }));
                             }}
                           />
@@ -3896,18 +4051,32 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             {/* Rodapé do Modal com Resumo e Ação */}
             <div className="border-t border-slate-800 pt-3 flex items-center justify-between shrink-0">
               <div className="text-xs text-slate-400">
-                {batchAddForm.selected_asset_ids.length > 0 ? (
-                  <span>
-                    Adicionando <strong className="text-cyan-400">{batchAddForm.selected_asset_ids.length}</strong> equipamento(s)
-                    {batchAddForm.zone_id ? (
-                      <> na área <strong className="text-indigo-400">{mapData.nodes_data.find(n => n.id === batchAddForm.zone_id)?.label || "selecionada"}</strong></>
-                    ) : (
-                      <> como avulsos</>
-                    )}
-                  </span>
-                ) : (
-                  <span className="text-slate-500">Selecione ao menos um equipamento na lista à direita para continuar.</span>
-                )}
+                {(() => {
+                  if (batchAddForm.selected_asset_ids.length === 0) {
+                    return <span className="text-slate-500">Selecione ao menos um equipamento na lista à direita para continuar.</span>;
+                  }
+                  const existingCount = batchAddForm.selected_asset_ids.filter(id => 
+                    mapData.nodes_data.some(n => n.asset_id && String(n.asset_id) === String(id))
+                  ).length;
+                  const newCount = batchAddForm.selected_asset_ids.length - existingCount;
+
+                  return (
+                    <span>
+                      {newCount > 0 && (
+                        <span>Adicionando <strong className="text-cyan-400">{newCount}</strong> novo(s)</span>
+                      )}
+                      {newCount > 0 && existingCount > 0 && <span> e </span>}
+                      {existingCount > 0 && (
+                        <span>Atualizando/Editando <strong className="text-amber-400 font-bold">{existingCount}</strong> já no mapa</span>
+                      )}
+                      {batchAddForm.zone_id ? (
+                        <> na área <strong className="text-indigo-400">{mapData.nodes_data.find(n => n.id === batchAddForm.zone_id)?.label || "selecionada"}</strong></>
+                      ) : (
+                        <> como avulsos</>
+                      )}
+                    </span>
+                  );
+                })()}
               </div>
 
               <div className="flex items-center gap-2">
@@ -3925,7 +4094,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-cyan-600/30 transition-all"
                 >
                   <Copy size={15} />
-                  <span>{saving ? "Salvando..." : `Adicionar ${batchAddForm.selected_asset_ids.length > 0 ? `(${batchAddForm.selected_asset_ids.length})` : ''} ao Mapa`}</span>
+                  <span>{saving ? "Salvando..." : `Salvar / Aplicar ${batchAddForm.selected_asset_ids.length > 0 ? `(${batchAddForm.selected_asset_ids.length})` : ''} no Mapa`}</span>
                 </button>
               </div>
             </div>
