@@ -411,6 +411,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [isCloneMapModalOpen, setIsCloneMapModalOpen] = useState(false);
   const [cloneMapForm, setCloneMapForm] = useState({ name: "", description: "" });
   const [cloningMap, setCloningMap] = useState(false);
+  const [isEditMapModalOpen, setIsEditMapModalOpen] = useState(false);
+  const [editMapForm, setEditMapForm] = useState({ name: "", description: "" });
+  const [savingMapInfo, setSavingMapInfo] = useState(false);
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
 
   // Estados para Áreas / Blocos de Agrupamento Dinâmicos (ex: Bloco ADM, Bloco UH)
@@ -1199,6 +1202,43 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       .finally(() => {
         setCloningMap(false);
       });
+  };
+
+  // Editar Nome e Descrição do Fluxograma
+  const openEditMapModal = () => {
+    if (!mapData.id) return;
+    setEditMapForm({
+      name: mapData.name || "",
+      description: mapData.description || "",
+    });
+    setIsEditMapModalOpen(true);
+  };
+
+  const handleSaveMapInfo = async () => {
+    if (!editMapForm.name.trim() || !mapData.id) return;
+    setSavingMapInfo(true);
+    try {
+      const payload = {
+        name: editMapForm.name.trim(),
+        description: editMapForm.description.trim(),
+      };
+      const res = await api.put(`/network-maps/${mapData.id}`, payload);
+      if (res.data) {
+        setMapData(prev => ({
+          ...prev,
+          name: res.data.name,
+          description: res.data.description,
+        }));
+        setMapsList(prev => prev.map(m => m.id === mapData.id ? { ...m, name: res.data.name, description: res.data.description } : m));
+        if (onMapLoaded) onMapLoaded(res.data);
+        setIsEditMapModalOpen(false);
+      }
+    } catch (err) {
+      console.error("Erro ao alterar informações do fluxograma:", err);
+      alert("Erro ao salvar alterações no fluxograma.");
+    } finally {
+      setSavingMapInfo(false);
+    }
   };
 
   // Handlers para Áreas / Blocos de Agrupamento
@@ -2067,6 +2107,15 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   <Copy size={13} />
                   <span>Clonar</span>
                 </button>
+                <button
+                  onClick={openEditMapModal}
+                  disabled={!mapData.id}
+                  className="px-2.5 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 hover:border-amber-500/50 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                  title="Alterar Nome e Descrição deste Fluxograma"
+                >
+                  <Edit3 size={13} className="text-amber-400" />
+                  <span>Renomear</span>
+                </button>
               </div>
               <p className="text-[11px] font-semibold text-slate-400 mt-1">
                 {mapData.description || "Desenhe e monitore diagramas de rede em tempo real"}
@@ -2251,12 +2300,27 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       >
         {/* Badge Flutuante de Identificação do Fluxograma (Canto Superior Esquerdo) */}
         {mapData.name && (
-          <div className="absolute top-4 left-4 z-40 pointer-events-none flex flex-col gap-1 bg-slate-900/85 backdrop-blur-md border border-slate-800/80 px-4 py-2.5 rounded-2xl shadow-2xl max-w-md select-none transition-all duration-300">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <h2 className="text-xs sm:text-sm font-black text-white tracking-wide uppercase truncate" title={mapData.name}>
-                {mapData.name}
-              </h2>
+          <div 
+            onClick={() => {
+              if (!isPublicView) openEditMapModal();
+            }}
+            className={`absolute top-4 left-4 z-40 flex flex-col gap-1 bg-slate-900/85 backdrop-blur-md border border-slate-800/80 px-4 py-2.5 rounded-2xl shadow-2xl max-w-md select-none transition-all duration-300 ${
+              !isPublicView ? 'cursor-pointer hover:border-amber-500/50 hover:bg-slate-900/95 group shadow-lg pointer-events-auto' : 'pointer-events-none'
+            }`}
+            title={!isPublicView ? "Clique para alterar o nome e descrição do fluxograma" : ""}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <h2 className="text-xs sm:text-sm font-black text-white tracking-wide uppercase truncate" title={mapData.name}>
+                  {mapData.name}
+                </h2>
+              </div>
+              {!isPublicView && (
+                <span className="p-1 rounded-md text-slate-500 group-hover:text-amber-400 group-hover:bg-amber-500/10 transition-colors shrink-0" title="Editar nome do fluxograma">
+                  <Edit3 size={13} />
+                </span>
+              )}
             </div>
             {mapData.description && (
               <p className="text-[11px] text-slate-400 font-medium line-clamp-1" title={mapData.description}>
@@ -3980,6 +4044,66 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
               >
                 {cloningMap ? "Clonando..." : "Duplicar Fluxograma"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Alterar Nome e Descrição do Fluxograma */}
+      {isEditMapModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Edit3 size={18} className="text-amber-400" /> Alterar Nome do Fluxograma
+              </h3>
+              <button onClick={() => setIsEditMapModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nome do Fluxograma:</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Topologia Geral de Rede, 4º Andar ADM..."
+                  value={editMapForm.name}
+                  onChange={(e) => setEditMapForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-amber-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Descrição do Fluxograma (opcional):</label>
+                <textarea
+                  rows={2}
+                  placeholder="Ex: Diagrama com switches, racks e APs deste setor..."
+                  value={editMapForm.description}
+                  onChange={(e) => setEditMapForm(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-medium text-white outline-none focus:border-amber-500 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+              <button 
+                type="button" 
+                onClick={() => setIsEditMapModalOpen(false)} 
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold cursor-pointer hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                onClick={handleSaveMapInfo} 
+                disabled={savingMapInfo || !editMapForm.name.trim()}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-amber-600/30"
+              >
+                <Save size={14} />
+                <span>{savingMapInfo ? "Salvando..." : "Salvar Alterações"}</span>
               </button>
             </div>
           </div>

@@ -146,6 +146,12 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
     - No carregamento do mapa, coordenadas fora do padrão são sanitizadas automaticamente para garantir visibilidade imediata.
   - **Card Central em Áreas Vazias**:
     - Áreas/Blocos recém-criados que ainda não possuem equipamentos associados agora exibem um card central intuitivo com o ícone, o nome da área e o botão `[ ✏️ Editar Nome & Vincular Itens ]`, eliminando caixas vazias ou imperceptíveis.
+- **Alteração de Nome e Descrição do Fluxograma (Renomear)**:
+  - Disponível tanto na barra superior quanto diretamente pelo canvas no editor e no Painel NOC TV (quando desbloqueado):
+    1. **Botão "Renomear" na Barra Superior**: Localizado imediatamente ao lado do seletor de mapas e do botão de clonar (`[ ✏️ Renomear ]`), abre o modal para editar o título e descrição do fluxograma ativo com persistência imediata no backend.
+    2. **Clique Direto no Badge Flutuante do Canvas**: O badge de identificação do fluxograma no canto superior esquerdo agora conta com ícone de lápis interativo (✏️) e pode ser clicado diretamente para editar o nome e descrição do ambiente sem precisar procurar na barra de ferramentas.
+  - Atualiza instantaneamente a lista de mapas (`mapsList`), o cabeçalho, a tela do operador e os dashboards de TV.
 - **Badge Flutuante de Identificação do Fluxograma (Modo TV & Edição)**:
-  - Overlay em estilo Glassmorphism fixado no canto superior esquerdo do canvas (`absolute top-4 left-4 z-40 pointer-events-none`).
+  - Overlay em estilo Glassmorphism fixado no canto superior esquerdo do canvas (`absolute top-4 left-4 z-40`).
   - Exibe o nome do fluxograma ativo (`mapData.name`) com indicador luminoso pulsante e descrição do ambiente, garantindo que em monitores de TV (mesmo no modo trancado) e durante o carrossel a equipe saiba no primeiro segundo qual andar ou setor está sendo exibido.
+

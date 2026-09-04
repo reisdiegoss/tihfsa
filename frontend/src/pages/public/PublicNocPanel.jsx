@@ -90,6 +90,9 @@ export default function PublicNocPanel() {
   const [cloneModalOpen, setCloneModalOpen] = useState(false);
   const [cloneForm, setCloneForm] = useState({ name: "", description: "" });
   const [cloningMap, setCloningMap] = useState(false);
+  const [editMapModalOpen, setEditMapModalOpen] = useState(false);
+  const [editMapForm, setEditMapForm] = useState({ name: "", description: "" });
+  const [savingMapInfo, setSavingMapInfo] = useState(false);
 
   // Modal de Diagnóstico Ping ao Vivo
   const [pingModal, setPingModal] = useState({ open: false, asset: null, loading: false, result: null });
@@ -404,6 +407,35 @@ export default function PublicNocPanel() {
       });
   };
 
+  const openEditMapModalNoc = () => {
+    const cur = (mapsList || []).find(m => String(m.id) === String(currentMapId));
+    setEditMapForm({
+      name: cur?.name || "",
+      description: cur?.description || "",
+    });
+    setEditMapModalOpen(true);
+  };
+
+  const handleSaveMapInfoNoc = async () => {
+    if (!currentMapId || !editMapForm.name.trim()) return;
+    setSavingMapInfo(true);
+    try {
+      const res = await api.put(`/network-maps/${currentMapId}`, {
+        name: editMapForm.name.trim(),
+        description: editMapForm.description.trim(),
+      });
+      if (res.data) {
+        setMapsList(prev => prev.map(m => String(m.id) === String(currentMapId) ? { ...m, name: res.data.name, description: res.data.description } : m));
+        setEditMapModalOpen(false);
+      }
+    } catch (err) {
+      console.error("Erro ao alterar informações do fluxograma:", err);
+      alert("Erro ao alterar o nome do fluxograma.");
+    } finally {
+      setSavingMapInfo(false);
+    }
+  };
+
   const handleCopyShareableUrl = async () => {
     const params = new URLSearchParams();
     if (locationId) params.set("location_id", locationId);
@@ -613,6 +645,15 @@ export default function PublicNocPanel() {
                   >
                     <Copy size={13} />
                     <span>Clonar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openEditMapModalNoc}
+                    className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-amber-400 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                    title="Alterar Nome e Descrição deste fluxograma"
+                  >
+                    <Edit3 size={13} />
+                    <span>Renomear</span>
                   </button>
                 </div>
               )}
@@ -1317,6 +1358,66 @@ export default function PublicNocPanel() {
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
               >
                 {cloningMap ? "Clonando..." : "Duplicar Fluxograma"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Alterar Nome e Descrição do Fluxograma (Painel NOC) */}
+      {editMapModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Edit3 size={18} className="text-amber-400" /> Alterar Nome do Fluxograma
+              </h3>
+              <button onClick={() => setEditMapModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nome do Fluxograma:</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Topologia Geral de Rede, 4º Andar ADM..."
+                  value={editMapForm.name}
+                  onChange={(e) => setEditMapForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-amber-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Descrição do Fluxograma (opcional):</label>
+                <textarea
+                  rows={2}
+                  placeholder="Ex: Diagrama com switches, racks e APs deste setor..."
+                  value={editMapForm.description}
+                  onChange={(e) => setEditMapForm(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-medium text-white outline-none focus:border-amber-500 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+              <button 
+                type="button" 
+                onClick={() => setEditMapModalOpen(false)} 
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold cursor-pointer hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                onClick={handleSaveMapInfoNoc} 
+                disabled={savingMapInfo || !editMapForm.name.trim()}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-amber-600/30"
+              >
+                <Save size={14} />
+                <span>{savingMapInfo ? "Salvando..." : "Salvar Alterações"}</span>
               </button>
             </div>
           </div>
