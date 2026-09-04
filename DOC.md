@@ -131,11 +131,16 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
     - Pode ser vinculado pelo modal da Área (checklist com detecção de transferência) ou pelo modal individual do próprio equipamento (dropdown com seleção de bloco).
   - **Barra de Ferramentas com Botões Diretos e Alinhados**:
     - A barra de ferramentas mantém todos os botões principais organizados lado a lado:
-      1. `[ + Adicionar Equipamento ]`
-      2. `[ 🏢 Nova Área / Bloco ]`
-      3. `[ 🔗 Conectar Nós (Cabos) ]`
-      4. `[ ✏️ Editar Nó ]`: Botão direto na barra. Ao clicar em qualquer equipamento no mapa, ele abre o **modal de Conectar Nós em Modo Edição** (`Editar Conexão de Nós`), permitindo editar o rótulo/portas da conexão (ex: "Porta 19"), alterar origem/destino ou excluir o cabo com persistência imediata.
-      5. `[ 🗑️ Excluir Nó ]`: Botão para exclusão do nó ou área selecionada.
+      1. `[ + Adicionar Equipamento ]`: Adiciona um equipamento individualmente.
+      2. `[ 📑 Adicionar em Lote ]`: Adiciona múltiplos equipamentos do CMDB de uma só vez (ex: várias antenas UniFi ou switches de um andar) com configurações padrão compartilhadas (área/bloco de destino, tipo de ícone, métricas UniFi e alerta sonoro), organizando-os automaticamente em grade no canvas sem sobreposição.
+      3. `[ 🏢 Nova Área / Bloco ]`
+      4. `[ 🔗 Conectar Nós (Cabos) ]`
+      5. `[ ✏️ Editar Nó ]`: Botão direto na barra. Ao clicar em qualquer equipamento no mapa, ele abre o **modal de Conectar Nós em Modo Edição** (`Editar Conexão de Nós`), permitindo editar o rótulo/portas da conexão (ex: "Porta 19"), alterar origem/destino ou excluir o cabo com persistência imediata.
+      6. `[ 🗑️ Excluir Nó ]`: Botão para exclusão do nó ou área selecionada.
+  - **Adicionar Equipamentos em Lote (Batch Import com Configuração Padrão)**:
+    - Permite selecionar múltiplos equipamentos através de filtros rápidos de tipo (`Antenas / APs`, `Switches`, `Servidores`, `Todos`) e busca por texto/IP.
+    - **Configurações Padrão Unificadas**: O operador define a Área/Bloco de destino, o Tipo de Ícone, as Métricas UniFi desejadas (com botões de conveniência *Marcar Todas* / *Desmarcar Todas*) e o Alerta Sonoro Offline uma única vez, aplicando a todos os itens selecionados.
+    - **Distribuição Automática em Grade**: Calcula as coordenadas `(x, y)` distribuindo os equipamentos em colunas organizadas (`gapX: 260px`, `gapY: 360px`) adjacentes aos membros já existentes ou no centro visível da tela, evitando qualquer sobreposição e permitindo que o contorno em bolha da área se molde em tempo real.
   - **Edição de Conexões e Cabos (Edges)**:
     - **Clique no Botão "Editar Nó"**: Abre o modal de conexão no modo de edição para o equipamento selecionado. Caso o nó possua mais de uma ligação (ex: Switch ligado a múltiplos APs), uma barra superior no modal permite alternar entre as conexões em 1 clique.
     - **Clique Direto no Cabo no Canvas**: Clicar sobre qualquer linha de conexão ou etiqueta de porta no diagrama SVG abre imediatamente o modal de edição daquele cabo.

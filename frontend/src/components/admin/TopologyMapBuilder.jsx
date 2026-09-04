@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { 
   Server, HardDrive, Wifi, Phone, Shield, Cloud, Monitor, Activity, Zap,
-  Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2,
+  Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2, Search, CheckSquare, Square, Check,
   ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy, Layers, ListFilter, ChevronDown, Crosshair
 } from "lucide-react";
 import api from "../../api/client";
@@ -583,6 +583,18 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     show_ip: true,
     unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx']
   };
+
+    const [isBatchAddModalOpen, setIsBatchAddModalOpen] = useState(false);
+  const [batchAddForm, setBatchAddForm] = useState({
+    selected_asset_ids: [],
+    zone_id: "",
+    icon_type: "AccessPoint",
+    sound_alert_offline: false,
+    display_options: { ...DEFAULT_DISPLAY_OPTIONS },
+    rack_display_options: { ...DEFAULT_DISPLAY_OPTIONS },
+    search_filter: "",
+    type_filter: "ALL",
+  });
 
   const [newNodeForm, setNewNodeForm] = useState({
     asset_id: "",
@@ -1596,6 +1608,97 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     });
   };
 
+  // Adicionar Múltiplos Nós em Lote ao Mapa com Configurações Padrão
+  const handleBatchAddNodes = () => {
+    if (batchAddForm.selected_asset_ids.length === 0) {
+      alert("Selecione ao menos um equipamento para adicionar ao fluxograma.");
+      return;
+    }
+
+    const container = containerRef.current;
+    const cWidth = container ? container.clientWidth : 1200;
+    const cHeight = container ? container.clientHeight : 750;
+    const centerX = (-pan.x + cWidth / 2) / zoom - 110;
+    const centerY = (-pan.y + cHeight / 2) / zoom - 150;
+
+    const baseSafeX = Math.max(80, Math.min(3400, Math.round(centerX)));
+    const baseSafeY = Math.max(80, Math.min(2400, Math.round(centerY)));
+
+    // Se uma área foi selecionada e ela já tem membros, posiciona adjacente
+    const existingZoneMembers = batchAddForm.zone_id 
+      ? mapData.nodes_data.filter(n => String(n.zone_id) === String(batchAddForm.zone_id) && n.icon_type !== 'Zone')
+      : [];
+
+    let startX = baseSafeX;
+    let startY = baseSafeY;
+
+    if (existingZoneMembers.length > 0) {
+      const maxXMember = existingZoneMembers.reduce((prev, curr) => curr.x > prev.x ? curr : prev, existingZoneMembers[0]);
+      const minXMember = existingZoneMembers.reduce((prev, curr) => curr.x < prev.x ? curr : prev, existingZoneMembers[0]);
+      const maxYMember = existingZoneMembers.reduce((prev, curr) => curr.y > prev.y ? curr : prev, existingZoneMembers[0]);
+      
+      if (existingZoneMembers.length >= 4) {
+        startX = minXMember.x;
+        startY = maxYMember.y + 360;
+      } else {
+        startX = maxXMember.x + 260;
+        startY = maxXMember.y;
+      }
+    }
+
+    const displayOpts = batchAddForm.display_options || DEFAULT_DISPLAY_OPTIONS;
+    const cols = 4; // 4 equipamentos por linha na grade
+    const gapX = 260;
+    const gapY = 360;
+
+    const newNodes = [];
+    const timestamp = Date.now();
+
+    batchAddForm.selected_asset_ids.forEach((assetId, idx) => {
+      const asset = assetsList.find(a => String(a.id) === String(assetId));
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+
+      const posX = Math.max(80, Math.min(3700, startX + col * gapX));
+      const posY = Math.max(80, Math.min(2700, startY + row * gapY));
+
+      const node = {
+        id: `node_${timestamp}_${idx}`,
+        asset_id: asset ? asset.id : null,
+        label: asset ? asset.name : `Equipamento ${idx + 1}`,
+        icon_type: batchAddForm.icon_type || (asset?.type === 'AccessPoint' ? 'AccessPoint' : (asset?.type || 'Switch')),
+        zone_id: batchAddForm.zone_id || null,
+        x: posX,
+        y: posY,
+        width: null,
+        height: null,
+        sound_alert_offline: !!batchAddForm.sound_alert_offline,
+        icmp_status: asset ? asset.icmp_status : "online",
+        zabbix_status: asset ? asset.zabbix_status : "ok",
+        zabbix_alert_title: asset ? asset.zabbix_alert_title : null,
+        ip_address: asset ? (asset.ip_address || "") : "",
+        zabbix_selected_metrics: [],
+        child_asset_ids: [],
+        display_options: { ...displayOpts },
+        rack_display_options: { ...displayOpts }
+      };
+      newNodes.push(node);
+    });
+
+    setMapData(prev => ({
+      ...prev,
+      nodes_data: [...prev.nodes_data, ...newNodes]
+    }));
+
+    setHasUnsavedChanges(true);
+    setIsBatchAddModalOpen(false);
+    setBatchAddForm(prev => ({
+      ...prev,
+      selected_asset_ids: [],
+      search_filter: "",
+    }));
+  };
+
   // Adicionar Nó ao Mapa
   const handleAddNode = async () => {
     const selectedAsset = assetsList.find(a => String(a.id) === String(newNodeForm.asset_id));
@@ -2294,13 +2397,22 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               </button>
             )}
 
-            {/* 1. Adicionar Equipamento */}
+            {/* 1. Adicionar Equipamento Individual */}
             <button
               onClick={() => setIsAddNodeModalOpen(true)}
               className="bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
               title="Adicionar um novo equipamento (Switch, AP, Servidor, Rack...)"
             >
               <Plus size={15} /> Adicionar Equipamento
+            </button>
+
+            {/* 1.1 Adicionar Equipamentos em Lote */}
+            <button
+              onClick={() => setIsBatchAddModalOpen(true)}
+              className="bg-cyan-600 hover:bg-cyan-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-cyan-600/20"
+              title="Adicionar múltiplos equipamentos em lote com configurações e métricas padrão"
+            >
+              <Copy size={15} /> Adicionar em Lote
             </button>
 
             {/* 2. Nova Área / Bloco */}
@@ -3128,6 +3240,385 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         )}
       </div>
 
+            {/* Modal Adicionar Equipamentos em Lote */}
+      {isBatchAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl p-6 space-y-4 shadow-2xl flex flex-col max-h-[92vh]">
+            
+            {/* Cabeçalho do Modal */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+              <div>
+                <h3 className="text-base font-black text-white flex items-center gap-2">
+                  <Copy size={20} className="text-cyan-400" /> Adicionar Equipamentos em Lote à Topologia
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Selecione múltiplos ativos do CMDB e defina as configurações padrão (área, tipo e métricas) compartilhadas.
+                </p>
+              </div>
+              <button onClick={() => setIsBatchAddModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Corpo com Grid de Duas Colunas */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 overflow-y-auto pr-1 text-xs">
+              
+              {/* COLUNA ESQUERDA: Configurações Padrão (5 colunas) */}
+              <div className="md:col-span-5 space-y-3.5 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
+                <h4 className="font-black text-cyan-400 text-xs uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-slate-800">
+                  <Layers size={14} /> 1. Configurações Padrão
+                </h4>
+
+                {/* Área / Bloco de Destino */}
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Área / Bloco de Destino:</label>
+                  <select
+                    value={batchAddForm.zone_id || ""}
+                    onChange={(e) => setBatchAddForm(prev => ({ ...prev, zone_id: e.target.value }))}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-cyan-500"
+                  >
+                    <option value="">Nenhuma (Equipamentos Avulsos / Fora de Área)</option>
+                    {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map(z => (
+                      <option key={z.id} value={z.id}>🏢 {z.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Todos os equipamentos selecionados pertencerão a esta área e a bolha se moldará a eles.
+                  </p>
+                </div>
+
+                {/* Tipo de Ícone Padrão */}
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Tipo de Ícone Padrão:</label>
+                  <select
+                    value={batchAddForm.icon_type}
+                    onChange={(e) => setBatchAddForm(prev => ({ ...prev, icon_type: e.target.value }))}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-cyan-500"
+                  >
+                    <option value="AccessPoint">Access Point (Antena Wi-Fi)</option>
+                    <option value="Switch">Switch / Roteador</option>
+                    <option value="Server">Servidor / Datacenter</option>
+                    <option value="Phone">Telefone IP / Ramal</option>
+                    <option value="Firewall">Firewall / Gateway</option>
+                    <option value="Cloud">Link de Provedor WAN / Nuvem</option>
+                  </select>
+                </div>
+
+                {/* Alerta Sonoro Offline */}
+                <div className="pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-200 font-bold">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 accent-cyan-500 rounded"
+                      checked={batchAddForm.sound_alert_offline}
+                      onChange={(e) => setBatchAddForm(prev => ({ ...prev, sound_alert_offline: e.target.checked }))}
+                    />
+                    <span>Alerta sonoro ao ficar offline (2s)</span>
+                  </label>
+                </div>
+
+                {/* Opções de Exibição & Métricas UniFi */}
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-300 font-bold">O que exibir nos cards:</label>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allM = ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'];
+                          setBatchAddForm(prev => ({
+                            ...prev,
+                            display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: allM, show_ip: true }
+                          }));
+                        }}
+                        className="text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                      >
+                        Todas
+                      </button>
+                      <span className="text-slate-600">|</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBatchAddForm(prev => ({
+                            ...prev,
+                            display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: [] }
+                          }));
+                        }}
+                        className="text-slate-400 hover:text-slate-300 underline cursor-pointer"
+                      >
+                        Nenhuma
+                      </button>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 text-xs">
+                    <input 
+                      type="checkbox" 
+                      className="w-3.5 h-3.5 accent-cyan-500 rounded"
+                      checked={batchAddForm.display_options?.show_ip ?? true}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setBatchAddForm(prev => ({
+                          ...prev,
+                          display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), show_ip: val }
+                        }));
+                      }}
+                    />
+                    Mostrar Endereço IP
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    {[
+                      { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
+                      { id: 'clients', label: 'Clientes (AP)' },
+                      { id: 'channel_utilization', label: 'Uso Canal (AP)' },
+                      { id: 'lan_experience', label: 'LAN Exp. (SW)' },
+                      { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
+                      { id: 'uptime', label: 'Uptime' },
+                      { id: 'cpu', label: 'CPU' },
+                      { id: 'ram', label: 'RAM' },
+                      { id: 'fw', label: 'Firmware' },
+                    ].map(metric => {
+                      const currentMetrics = batchAddForm.display_options?.unifi_metrics ?? DEFAULT_DISPLAY_OPTIONS.unifi_metrics;
+                      const isChecked = currentMetrics.includes(metric.id);
+                      return (
+                        <label key={metric.id} className="flex items-center gap-2 cursor-pointer text-[11px] text-slate-400 hover:text-slate-200">
+                          <input 
+                            type="checkbox" 
+                            className="w-3.5 h-3.5 accent-cyan-500 rounded"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const newM = e.target.checked 
+                                ? [...currentMetrics, metric.id]
+                                : currentMetrics.filter(m => m !== metric.id);
+                              setBatchAddForm(prev => ({
+                                ...prev,
+                                display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: newM }
+                              }));
+                            }}
+                          />
+                          <span>{metric.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* COLUNA DIREITA: Seleção de Ativos do CMDB (7 colunas) */}
+              <div className="md:col-span-7 space-y-3 flex flex-col">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                  <h4 className="font-black text-cyan-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckSquare size={14} /> 2. Seleção de Equipamentos ({batchAddForm.selected_asset_ids.length} selecionados)
+                  </h4>
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Filtra conforme busca e tipo atual
+                        const filtered = assetsList.filter(a => {
+                          const matchesSearch = !batchAddForm.search_filter || 
+                            a.name?.toLowerCase().includes(batchAddForm.search_filter.toLowerCase()) || 
+                            a.ip_address?.includes(batchAddForm.search_filter);
+                          let matchesType = true;
+                          if (batchAddForm.type_filter === 'AccessPoint') {
+                            matchesType = a.type === 'AccessPoint' || a.name?.toLowerCase().includes('antena') || a.name?.toLowerCase().includes('ap');
+                          } else if (batchAddForm.type_filter === 'Switch') {
+                            matchesType = a.type === 'Switch' || a.name?.toLowerCase().includes('switch') || a.name?.toLowerCase().includes('sw');
+                          } else if (batchAddForm.type_filter === 'Server') {
+                            matchesType = a.type === 'Server' || a.name?.toLowerCase().includes('servidor');
+                          }
+                          return matchesSearch && matchesType;
+                        });
+                        setBatchAddForm(prev => ({
+                          ...prev,
+                          selected_asset_ids: Array.from(new Set([...prev.selected_asset_ids, ...filtered.map(a => String(a.id))]))
+                        }));
+                      }}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded-md font-bold cursor-pointer transition-colors text-[11px]"
+                    >
+                      Selecionar Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBatchAddForm(prev => ({ ...prev, selected_asset_ids: [] }))}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-md font-bold cursor-pointer transition-colors text-[11px]"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filtros e Busca */}
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
+                    <input 
+                      type="text"
+                      placeholder="Buscar por nome ou endereço IP (ex: Antena 4º andar, 192.168...)"
+                      value={batchAddForm.search_filter}
+                      onChange={(e) => setBatchAddForm(prev => ({ ...prev, search_filter: e.target.value }))}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  {/* Filtros Rápidos por Categoria */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                    {[
+                      { id: 'ALL', label: 'Todos os Ativos' },
+                      { id: 'AccessPoint', label: 'Antenas / APs Wi-Fi' },
+                      { id: 'Switch', label: 'Switches' },
+                      { id: 'Server', label: 'Servidores' },
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setBatchAddForm(prev => ({ 
+                          ...prev, 
+                          type_filter: tab.id,
+                          icon_type: tab.id === 'AccessPoint' ? 'AccessPoint' : (tab.id === 'Switch' ? 'Switch' : (tab.id === 'Server' ? 'Server' : prev.icon_type))
+                        }))}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                          batchAddForm.type_filter === tab.id
+                            ? 'bg-cyan-600 text-white shadow-sm'
+                            : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Lista de Ativos com Checkbox */}
+                <div className="flex-1 max-h-[360px] overflow-y-auto space-y-1.5 bg-slate-950/70 p-2.5 rounded-2xl border border-slate-800">
+                  {assetsList
+                    .filter(a => {
+                      const matchesSearch = !batchAddForm.search_filter || 
+                        a.name?.toLowerCase().includes(batchAddForm.search_filter.toLowerCase()) || 
+                        a.ip_address?.includes(batchAddForm.search_filter);
+                      let matchesType = true;
+                      if (batchAddForm.type_filter === 'AccessPoint') {
+                        matchesType = a.type === 'AccessPoint' || a.name?.toLowerCase().includes('antena') || a.name?.toLowerCase().includes('ap');
+                      } else if (batchAddForm.type_filter === 'Switch') {
+                        matchesType = a.type === 'Switch' || a.name?.toLowerCase().includes('switch') || a.name?.toLowerCase().includes('sw');
+                      } else if (batchAddForm.type_filter === 'Server') {
+                        matchesType = a.type === 'Server' || a.name?.toLowerCase().includes('servidor');
+                      }
+                      return matchesSearch && matchesType;
+                    })
+                    .map(asset => {
+                      const isSelected = batchAddForm.selected_asset_ids.includes(String(asset.id));
+                      const isAlreadyInMap = mapData.nodes_data.some(n => String(n.asset_id) === String(asset.id));
+
+                      return (
+                        <div 
+                          key={asset.id}
+                          onClick={() => {
+                            setBatchAddForm(prev => {
+                              const curr = prev.selected_asset_ids;
+                              const idStr = String(asset.id);
+                              return {
+                                ...prev,
+                                selected_asset_ids: curr.includes(idStr) 
+                                  ? curr.filter(id => id !== idStr)
+                                  : [...curr, idStr]
+                              };
+                            });
+                          }}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                            isSelected 
+                              ? 'bg-cyan-950/40 border-cyan-500/80 text-white shadow-sm' 
+                              : 'bg-slate-900/60 border-slate-800/80 text-slate-300 hover:bg-slate-850 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <input 
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}} // controlado pelo onClick do container
+                              className="w-4 h-4 accent-cyan-500 rounded cursor-pointer shrink-0"
+                            />
+                            <div className="truncate">
+                              <div className="font-bold text-xs text-white truncate flex items-center gap-1.5">
+                                {asset.name}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
+                                <span>IP: {asset.ip_address || "Sem IP"}</span>
+                                <span>•</span>
+                                <span>Tipo: {asset.type || "Hardware"}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 flex items-center gap-1.5">
+                            {isAlreadyInMap && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full">
+                                Já no Mapa
+                              </span>
+                            )}
+                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
+                              asset.icmp_status === 'offline' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
+                            }`}>
+                              {asset.icmp_status === 'offline' ? 'Offline' : 'Online'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                  {assetsList.length === 0 && (
+                    <div className="text-center py-8 text-slate-500">
+                      Nenhum ativo encontrado no CMDB.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Rodapé do Modal com Resumo e Ação */}
+            <div className="border-t border-slate-800 pt-3 flex items-center justify-between shrink-0">
+              <div className="text-xs text-slate-400">
+                {batchAddForm.selected_asset_ids.length > 0 ? (
+                  <span>
+                    Adicionando <strong className="text-cyan-400">{batchAddForm.selected_asset_ids.length}</strong> equipamento(s)
+                    {batchAddForm.zone_id ? (
+                      <> na área <strong className="text-indigo-400">{mapData.nodes_data.find(n => n.id === batchAddForm.zone_id)?.label || "selecionada"}</strong></>
+                    ) : (
+                      <> como avulsos</>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-slate-500">Selecione ao menos um equipamento na lista à direita para continuar.</span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBatchAddModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBatchAddNodes}
+                  disabled={batchAddForm.selected_asset_ids.length === 0}
+                  className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-cyan-600/30 transition-all"
+                >
+                  <Copy size={15} />
+                  <span>Adicionar {batchAddForm.selected_asset_ids.length > 0 ? `(${batchAddForm.selected_asset_ids.length})` : ''} ao Mapa</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* Modal Adicionar Nó */}
       {isAddNodeModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -3138,6 +3629,18 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               </h3>
               <button onClick={() => setIsAddNodeModalOpen(false)} className="text-slate-400 hover:text-white">
                 <X size={18} />
+              </button>
+            </div>
+
+            {/* Banner de atalho para Adicionar em Lote */}
+            <div className="bg-cyan-950/40 border border-cyan-800/50 rounded-xl p-2.5 flex items-center justify-between text-xs">
+              <span className="text-cyan-300 font-medium">Precisa adicionar várias antenas ou switches iguais?</span>
+              <button 
+                type="button" 
+                onClick={() => { setIsAddNodeModalOpen(false); setIsBatchAddModalOpen(true); }}
+                className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold text-[11px] cursor-pointer transition-colors shadow-sm"
+              >
+                Importar em Lote
               </button>
             </div>
 
