@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { 
   Activity, Server, Wifi, Cpu, AlertCircle, CheckCircle, 
   RefreshCw, MapPin, Tag, Copy, Check, Tv, Maximize2, Terminal, X, Search, Network,
-  Lock, Unlock, Key, Play, Pause, Settings, ArrowUp, ArrowDown, ShieldAlert, Save
+  Lock, Unlock, Key, Play, Pause, Settings, ArrowUp, ArrowDown, ShieldAlert, Save, Edit3
 } from "lucide-react";
 import api from "../../api/client";
 import TopologyMapBuilder from "../../components/admin/TopologyMapBuilder";
