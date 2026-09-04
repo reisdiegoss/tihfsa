@@ -660,6 +660,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   // Métricas ao vivo do Zabbix para exibir DENTRO dos cards
   const [liveMetrics, setLiveMetrics] = useState({});
   // Métricas do UniFi para exibir no painel de prevenção
+  const [unifiMetrics, setUnifiMetrics] = useState([]);
+
   const [hasUnsavedChanges, setHasUnsavedChangesState] = useState(false);
   const hasUnsavedChangesRef = useRef(false);
 
