@@ -21,14 +21,26 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
   const uptimeDays = Math.floor(uptimeSecs / 86400);
   const isAP = unifiDev.type === 'uap';
   
-  // Switch specific: Aggregate port rates
+  // Suporte a taxas RX / TX tanto para Switches quanto Access Points (Uplink / Portas)
   let totalRxRate = 0;
   let totalTxRate = 0;
-  if (!isAP && unifiDev.port_table && showMetric('rx_tx')) {
-     unifiDev.port_table.forEach(p => {
-         if (p.up && p['rx_bytes-r']) totalRxRate += p['rx_bytes-r'];
-         if (p.up && p['tx_bytes-r']) totalTxRate += p['tx_bytes-r'];
-     });
+  if (showMetric('rx_tx')) {
+    if (isAP) {
+      const up = unifiDev.uplink || {};
+      totalRxRate = up['rx_bytes-r'] || unifiDev['rx_bytes-r'] || 0;
+      totalTxRate = up['tx_bytes-r'] || unifiDev['tx_bytes-r'] || 0;
+      if (!totalRxRate && !totalTxRate && unifiDev.port_table) {
+        unifiDev.port_table.forEach(p => {
+          if (p.up && p['rx_bytes-r']) totalRxRate += p['rx_bytes-r'];
+          if (p.up && p['tx_bytes-r']) totalTxRate += p['tx_bytes-r'];
+        });
+      }
+    } else if (unifiDev.port_table) {
+      unifiDev.port_table.forEach(p => {
+        if (p.up && p['rx_bytes-r']) totalRxRate += p['rx_bytes-r'];
+        if (p.up && p['tx_bytes-r']) totalTxRate += p['tx_bytes-r'];
+      });
+    }
   }
   
   const formatBytes = (bytes) => {
@@ -84,7 +96,7 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
         </div>
 
         {/* Access Point Specific */}
-        {isAP && (showMetric('wifi_experience') || showMetric('clients') || showMetric('channel_utilization')) && (
+        {isAP && (showMetric('wifi_experience') || showMetric('clients') || showMetric('channel_utilization') || showMetric('rx_tx') || showMetric('lan_experience')) && (
           <div className="mt-1 pt-1 border-t border-blue-900/30 flex flex-col gap-1">
             {showMetric('wifi_experience') && (
             <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
@@ -108,6 +120,22 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
                 <span className={radio.cu_total > 70 ? "text-amber-400" : "text-slate-300"}>Uso: {radio.cu_total || 0}%</span>
               </div>
             ))}
+
+            {/* Tráfego de Rede RX / TX no Access Point */}
+            {showMetric('rx_tx') && (
+              <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px] bg-slate-900/40 px-1 rounded">
+                <span className="flex items-center gap-0.5"><span className="text-emerald-500 font-bold">↓</span> RX: {formatBytes(totalRxRate)}</span>
+                <span className="flex items-center gap-0.5"><span className="text-blue-400 font-bold">↑</span> TX: {formatBytes(totalTxRate)}</span>
+              </div>
+            )}
+
+            {/* Status do Cabo LAN / Uplink no AP */}
+            {showMetric('lan_experience') && (
+              <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px] bg-slate-900/40 px-1 rounded">
+                <span className="text-blue-200">Uplink LAN</span>
+                <span className="text-slate-300">{unifiDev.uplink?.speed ? `${unifiDev.uplink.speed}M ${unifiDev.uplink.full_duplex ? 'FD' : 'HD'}` : 'Conectado'}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -3757,7 +3785,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         <button
                           type="button"
                           onClick={() => {
-                            const apM = ['wifi_experience', 'clients', 'channel_utilization'];
+                            const apM = ['wifi_experience', 'clients', 'channel_utilization', 'rx_tx'];
                             setBatchAddForm(prev => ({
                               ...prev,
                               display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: apM, show_ip: true },
@@ -3836,9 +3864,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     {[
                       { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
                       { id: 'clients', label: 'Clientes (AP)' },
-                      { id: 'channel_utilization', label: 'Uso Canal (AP)' },
-                      { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                      { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
+                      { id: 'channel_utilization', label: 'Canais 2.4G / 5G & Uso (AP)' },
+                      { id: 'lan_experience', label: 'LAN Exp. / Uplink (SW & AP)' },
+                      { id: 'rx_tx', label: 'Tráfego RX / TX (AP & SW)' },
                       { id: 'uptime', label: 'Uptime' },
                       { id: 'cpu', label: 'CPU' },
                       { id: 'ram', label: 'RAM' },
@@ -4396,9 +4424,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         { id: 'fw', label: 'Firmware' },
                         { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
                         { id: 'clients', label: 'Clientes (AP)' },
-                        { id: 'channel_utilization', label: 'Uso de Canal (AP)' },
-                        { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
+                        { id: 'channel_utilization', label: 'Canais 2.4G / 5G & Uso (AP)' },
+                        { id: 'lan_experience', label: 'LAN Exp. / Uplink (SW & AP)' },
+                        { id: 'rx_tx', label: 'Tráfego RX / TX (AP & SW)' }
                       ].map(metric => {
                         const currentOpts = newNodeForm.display_options || newNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
                         const isMetricChecked = (currentOpts.unifi_metrics || []).includes(metric.id);
@@ -4799,9 +4827,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         { id: 'fw', label: 'Firmware' },
                         { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
                         { id: 'clients', label: 'Clientes (AP)' },
-                        { id: 'channel_utilization', label: 'Uso de Canal (AP)' },
-                        { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
+                        { id: 'channel_utilization', label: 'Canais 2.4G / 5G & Uso (AP)' },
+                        { id: 'lan_experience', label: 'LAN Exp. / Uplink (SW & AP)' },
+                        { id: 'rx_tx', label: 'Tráfego RX / TX (AP & SW)' }
                       ].map(metric => {
                         const currentMetrics = Array.isArray(editNodeForm.display_options?.unifi_metrics)
                           ? editNodeForm.display_options.unifi_metrics
