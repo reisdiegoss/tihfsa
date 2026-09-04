@@ -178,112 +178,292 @@ const getTvViewport = (mapId) => {
 };
 
 
-// Paleta de temas visuais para Áreas / Blocos de Agrupamento
+// Paleta de temas visuais para Áreas / Blocos de Agrupamento (suporta SVG e DOM)
 const ZONE_COLOR_THEMES = {
   blue: {
     key: "blue",
     name: "Azul Índigo",
+    stroke: "#3b82f6",
+    fill: "rgba(59, 130, 246, 0.07)",
+    fillSelected: "rgba(59, 130, 246, 0.16)",
+    glow: "rgba(59, 130, 246, 0.4)",
     border: "border-blue-500/60",
     bg: "bg-blue-950/20",
-    headerBg: "bg-blue-900/80 text-blue-200 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]",
+    headerBg: "bg-blue-900/90 text-blue-100 border-blue-400/50 shadow-[0_0_15px_rgba(59,130,246,0.3)]",
     accent: "text-blue-400",
+    ring: "ring-blue-500",
     badge: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
     dot: "bg-blue-400",
   },
   emerald: {
     key: "emerald",
     name: "Verde Esmeralda",
+    stroke: "#10b981",
+    fill: "rgba(16, 185, 129, 0.07)",
+    fillSelected: "rgba(16, 185, 129, 0.16)",
+    glow: "rgba(16, 185, 129, 0.4)",
     border: "border-emerald-500/60",
     bg: "bg-emerald-950/20",
-    headerBg: "bg-emerald-900/80 text-emerald-200 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]",
+    headerBg: "bg-emerald-900/90 text-emerald-100 border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]",
     accent: "text-emerald-400",
+    ring: "ring-emerald-500",
     badge: "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
     dot: "bg-emerald-400",
   },
   purple: {
     key: "purple",
     name: "Roxo / Violeta",
+    stroke: "#a855f7",
+    fill: "rgba(168, 85, 247, 0.07)",
+    fillSelected: "rgba(168, 85, 247, 0.16)",
+    glow: "rgba(168, 85, 247, 0.4)",
     border: "border-purple-500/60",
     bg: "bg-purple-950/20",
-    headerBg: "bg-purple-900/80 text-purple-200 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]",
+    headerBg: "bg-purple-900/90 text-purple-100 border-purple-400/50 shadow-[0_0_15px_rgba(168,85,247,0.3)]",
     accent: "text-purple-400",
+    ring: "ring-purple-500",
     badge: "bg-purple-500/20 text-purple-300 border border-purple-500/30",
     dot: "bg-purple-400",
   },
   amber: {
     key: "amber",
     name: "Âmbar / Laranja",
+    stroke: "#f59e0b",
+    fill: "rgba(245, 158, 11, 0.07)",
+    fillSelected: "rgba(245, 158, 11, 0.16)",
+    glow: "rgba(245, 158, 11, 0.4)",
     border: "border-amber-500/60",
     bg: "bg-amber-950/20",
-    headerBg: "bg-amber-900/80 text-amber-200 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]",
+    headerBg: "bg-amber-900/90 text-amber-100 border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.3)]",
     accent: "text-amber-400",
+    ring: "ring-amber-500",
     badge: "bg-amber-500/20 text-amber-300 border border-amber-500/30",
     dot: "bg-amber-400",
   },
   rose: {
     key: "rose",
     name: "Rosa / Carmim",
+    stroke: "#f43f5e",
+    fill: "rgba(244, 63, 94, 0.07)",
+    fillSelected: "rgba(244, 63, 94, 0.16)",
+    glow: "rgba(244, 63, 94, 0.4)",
     border: "border-rose-500/60",
     bg: "bg-rose-950/20",
-    headerBg: "bg-rose-900/80 text-rose-200 border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.2)]",
+    headerBg: "bg-rose-900/90 text-rose-100 border-rose-400/50 shadow-[0_0_15px_rgba(244,63,94,0.3)]",
     accent: "text-rose-400",
+    ring: "ring-rose-500",
     badge: "bg-rose-500/20 text-rose-300 border border-rose-500/30",
     dot: "bg-rose-400",
   },
   cyan: {
     key: "cyan",
     name: "Ciano / Turquesa",
+    stroke: "#06b6d4",
+    fill: "rgba(6, 182, 212, 0.07)",
+    fillSelected: "rgba(6, 182, 212, 0.16)",
+    glow: "rgba(6, 182, 212, 0.4)",
     border: "border-cyan-500/60",
     bg: "bg-cyan-950/20",
-    headerBg: "bg-cyan-900/80 text-cyan-200 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.2)]",
+    headerBg: "bg-cyan-900/90 text-cyan-100 border-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.3)]",
     accent: "text-cyan-400",
+    ring: "ring-cyan-500",
     badge: "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30",
     dot: "bg-cyan-400",
   },
 };
 
-// Calcula a menor caixa delimitadora (envelope com cantos arredondados) que envolve todos os nós membros da área
-const getZoneBounds = (zone, allNodes) => {
-  const members = (allNodes || []).filter(n => n.zone_id === zone.id && n.id !== zone.id && n.icon_type !== 'Zone');
+// Calcula as dimensões reais e precisas de um card no canvas de acordo com seu conteúdo e métricas
+const getNodeRealDimensions = (node) => {
+  const isRack = node.icon_type === 'Rack';
+  const isZone = node.icon_type === 'Zone';
+  const childCount = node.child_asset_ids?.length || 0;
+  const w = node.width || (isRack || isZone ? 280 : 220);
+  
+  if (node.height) {
+    return { w, h: Number(node.height) };
+  }
+  
+  if (isRack) {
+    return { w, h: Math.max(160, 100 + childCount * 48) };
+  }
+  
+  const showIp = node.display_options?.show_ip ?? node.rack_display_options?.show_ip ?? true;
+  const unifiMetrics = node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? [];
+  const zabbixMetrics = node.zabbix_selected_metrics || [];
+  
+  let h = 95;
+  if (node.label && node.label.length > 24) h += 20;
+  if (node.ip_address && showIp) h += 18;
+  if (node.zone_id) h += 26;
+  
+  if (unifiMetrics.length > 0) {
+    h += 45;
+    if (unifiMetrics.includes('wifi_experience') || unifiMetrics.includes('cpu') || unifiMetrics.includes('ram') || unifiMetrics.includes('uptime') || unifiMetrics.includes('fw')) {
+      h += 35;
+    }
+    if (unifiMetrics.includes('clients') || unifiMetrics.includes('channel_utilization') || unifiMetrics.includes('lan_experience') || unifiMetrics.includes('rx_tx')) {
+      h += 35;
+    }
+  } else if (zabbixMetrics.length > 0) {
+    h += 30 + zabbixMetrics.length * 20;
+  }
+  
+  if (childCount > 0) {
+    h += 25 + childCount * 42;
+  }
+  
+  return { w, h: Math.max(130, h) };
+};
+
+// Algoritmo Convex Hull (Envoltória Convexa 2D - Monotone Chain)
+const computeConvexHull = (points) => {
+  if (!points || points.length <= 2) return points || [];
+  const sorted = [...points].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  
+  const lower = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  
+  const upper = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+};
+
+// Gera um caminho SVG suavizado com curvas Bezier quadráticas arredondando os vértices do polígono
+const getRoundedPolygonPath = (points, radius = 28) => {
+  if (!points || points.length < 3) return "";
+  
+  const n = points.length;
+  const path = [];
+  
+  for (let i = 0; i < n; i++) {
+    const pPrev = points[(i - 1 + n) % n];
+    const pCurr = points[i];
+    const pNext = points[(i + 1) % n];
+    
+    const v1 = { x: pPrev.x - pCurr.x, y: pPrev.y - pCurr.y };
+    const v2 = { x: pNext.x - pCurr.x, y: pNext.y - pCurr.y };
+    
+    const d1 = Math.hypot(v1.x, v1.y);
+    const d2 = Math.hypot(v2.x, v2.y);
+    
+    if (d1 === 0 || d2 === 0) continue;
+    
+    const r = Math.min(radius, d1 / 2, d2 / 2);
+    
+    const c1 = { x: pCurr.x + (v1.x / d1) * r, y: pCurr.y + (v1.y / d1) * r };
+    const c2 = { x: pCurr.x + (v2.x / d2) * r, y: pCurr.y + (v2.y / d2) * r };
+    
+    if (path.length === 0) {
+      path.push(`M ${c1.x.toFixed(1)} ${c1.y.toFixed(1)}`);
+      path.push(`Q ${pCurr.x.toFixed(1)} ${pCurr.y.toFixed(1)} ${c2.x.toFixed(1)} ${c2.y.toFixed(1)}`);
+    } else {
+      path.push(`L ${c1.x.toFixed(1)} ${c1.y.toFixed(1)}`);
+      path.push(`Q ${pCurr.x.toFixed(1)} ${pCurr.y.toFixed(1)} ${c2.x.toFixed(1)} ${c2.y.toFixed(1)}`);
+    }
+  }
+  
+  path.push("Z");
+  return path.join(" ");
+};
+
+// Calcula a geometria dinâmica adaptativa da Área / Bloco (molda-se aos dispositivos em tempo real)
+const getZoneGeometry = (zone, allNodes) => {
+  const members = (allNodes || []).filter(
+    n => String(n.zone_id) === String(zone.id) && String(n.id) !== String(zone.id) && n.icon_type !== 'Zone'
+  );
+
   if (members.length === 0) {
+    const x = zone.x || 100;
+    const y = zone.y || 100;
+    const w = zone.width || 380;
+    const h = zone.height || 240;
     return {
-      x: zone.x || 100,
-      y: zone.y || 100,
-      width: zone.width || 380,
-      height: zone.height || 240,
+      minX: x,
+      minY: y,
+      maxX: x + w,
+      maxY: y + h,
+      width: w,
+      height: h,
+      headerX: x + 24,
+      headerY: y - 18,
       membersCount: 0,
       hasMembers: false,
+      path: "",
     };
   }
 
-  const padX = 35;
-  const padTop = 50; // Espaço reservado para a etiqueta/cabeçalho superior da área
+  const padX = 30;
+  const padTop = 48;
   const padBottom = 30;
 
+  const allPoints = [];
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
 
   members.forEach(m => {
-    const isRack = m.icon_type === 'Rack';
-    const childCount = m.child_asset_ids?.length || 0;
-    const w = m.width || (isRack ? 280 : 220);
-    const h = m.height || (isRack ? Math.max(160, 100 + childCount * 48) : 140);
-    
-    if (m.x < minX) minX = m.x;
-    if (m.y < minY) minY = m.y;
-    if (m.x + w > maxX) maxX = m.x + w;
-    if (m.y + h > maxY) maxY = m.y + h;
+    const dim = getNodeRealDimensions(m);
+    const mx1 = m.x - padX;
+    const my1 = m.y - padTop;
+    const mx2 = m.x + dim.w + padX;
+    const my2 = m.y + dim.h + padBottom;
+
+    if (mx1 < minX) minX = mx1;
+    if (my1 < minY) minY = my1;
+    if (mx2 > maxX) maxX = mx2;
+    if (my2 > maxY) maxY = my2;
+
+    allPoints.push({ x: mx1, y: my1 });
+    allPoints.push({ x: mx2, y: my1 });
+    allPoints.push({ x: mx2, y: my2 });
+    allPoints.push({ x: mx1, y: my2 });
   });
 
+  const hull = computeConvexHull(allPoints);
+  const path = getRoundedPolygonPath(hull, 32);
+
   return {
-    x: minX - padX,
-    y: minY - padTop,
-    width: (maxX - minX) + (padX * 2),
-    height: (maxY - minY) + padTop + padBottom,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+    headerX: minX + 24,
+    headerY: minY - 18,
     membersCount: members.length,
     hasMembers: true,
+    hull,
+    path,
+  };
+};
+
+// Retrocompatibilidade para limites da área
+const getZoneBounds = (zone, allNodes) => {
+  const geom = getZoneGeometry(zone, allNodes);
+  return {
+    x: geom.minX,
+    y: geom.minY,
+    width: geom.width,
+    height: geom.height,
+    membersCount: geom.membersCount,
+    hasMembers: geom.hasMembers,
   };
 };
 
@@ -656,15 +836,12 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
           maxY: zb.y + zb.height
         };
       }
-      const isRack = n.icon_type === 'Rack';
-      const nodeW = isRack ? 260 : 160;
-      const childCount = n.child_asset_ids?.length || 0;
-      const nodeH = isRack ? Math.max(160, 100 + childCount * 48) : 130;
+      const dim = getNodeRealDimensions(n);
       return {
         minX: n.x,
-        maxX: n.x + nodeW,
+        maxX: n.x + dim.w,
         minY: n.y,
-        maxY: n.y + nodeH
+        maxY: n.y + dim.h
       };
     });
 
@@ -2309,8 +2486,46 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             {/* Background Grid Lines Pattern */}
             <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#334155_1.5px,transparent_1.5px)] [background-size:28px_28px]" />
 
-            {/* SVG Layer for Network Edges / Connecting Cables */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
+            {/* SVG Layer para Contornos Dinâmicos Adaptativos de Áreas (z-10) e Cabos (z-20) */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+              {/* Contornos Geométricos Adaptativos das Áreas / Blocos (moldam-se aos nós em tempo real) */}
+              {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map((zone) => {
+                const geom = getZoneGeometry(zone, mapData.nodes_data);
+                if (!geom.hasMembers || !geom.path) return null;
+                const theme = ZONE_COLOR_THEMES[zone.color] || ZONE_COLOR_THEMES.blue;
+                const isSelected = String(selectedNodeId) === String(zone.id);
+
+                return (
+                  <g key={zone.id} className="pointer-events-auto cursor-pointer">
+                    {/* Linha de brilho externa quando selecionado */}
+                    {isSelected && (
+                      <path
+                        d={geom.path}
+                        fill="none"
+                        stroke={theme.stroke}
+                        strokeWidth="8"
+                        opacity="0.25"
+                      />
+                    )}
+                    {/* Contorno Adaptativo com Borda Tracejada e Preenchimento Translúcido */}
+                    <path
+                      d={geom.path}
+                      fill={isSelected ? theme.fillSelected : theme.fill}
+                      stroke={theme.stroke}
+                      strokeWidth={isSelected ? "3" : "2"}
+                      strokeDasharray="8 6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedNodeId(zone.id);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (!isPublicView) openEditZoneModal(zone.id);
+                      }}
+                    />
+                  </g>
+                );
+              })}
               {mapData.edges_data.map((edge) => {
                 const sourceNode = mapData.nodes_data.find(n => n.id === edge.source_id);
                 const targetNode = mapData.nodes_data.find(n => n.id === edge.target_id);
@@ -2397,16 +2612,83 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               })}
             </svg>
 
-            {/* Layer de Áreas / Blocos com Contorno Adaptativo (z-10) */}
-            <div className="absolute inset-0 pointer-events-none">
+            {/* Layer DOM de Cabeçalhos Flutuantes & Áreas Vazias (z-15) */}
+            <div className="absolute inset-0 pointer-events-none z-15">
               {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map((zone) => {
-                const bounds = getZoneBounds(zone, mapData.nodes_data);
+                const geom = getZoneGeometry(zone, mapData.nodes_data);
                 const theme = ZONE_COLOR_THEMES[zone.color] || ZONE_COLOR_THEMES.blue;
-                const isSelected = selectedNodeId === zone.id;
+                const isSelected = String(selectedNodeId) === String(zone.id);
 
+                // ÁREA COM MEMBROS: Cabeçalho flutuante que acompanha o topo do contorno
+                if (geom.hasMembers) {
+                  return (
+                    <div
+                      key={zone.id}
+                      style={{
+                        left: `${geom.headerX}px`,
+                        top: `${geom.headerY}px`,
+                      }}
+                      className="absolute pointer-events-auto"
+                    >
+                      <div
+                        onMouseDown={(e) => handleMouseDownZone(zone.id, e)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedNodeId(zone.id);
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          if (!isPublicView) openEditZoneModal(zone.id);
+                        }}
+                        className={`px-3 py-1 rounded-full border shadow-lg flex items-center gap-2 cursor-grab active:cursor-grabbing ${theme.headerBg} backdrop-blur-md select-none ${
+                          isSelected ? "ring-2 ring-white/60 shadow-xl" : ""
+                        }`}
+                        title={!isPublicView ? "Arraste pelo cabeçalho para mover todo o bloco ou clique duas vezes para editar" : ""}
+                      >
+                        <Layers size={13} className={theme.accent} />
+                        <span className="text-xs font-black tracking-wide uppercase">
+                          {zone.label}
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-black/50 text-slate-300 font-mono">
+                          {geom.membersCount} {geom.membersCount === 1 ? 'item' : 'itens'}
+                        </span>
+
+                        {!isPublicView && (
+                          <div className="flex items-center gap-1 ml-1 border-l border-white/20 pl-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditZoneModal(zone.id);
+                              }}
+                              className="p-1 hover:bg-white/20 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
+                              title="Editar configurações e membros desta área"
+                            >
+                              <Edit3 size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteZone(zone.id);
+                              }}
+                              className="p-1 hover:bg-red-500/40 rounded text-red-300 hover:text-red-200 transition-colors cursor-pointer"
+                              title="Excluir esta área (mantém os equipamentos)"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ÁREA VAZIA (0 membros): Delimitador com card central para visualização e edição
                 return (
                   <div
                     key={zone.id}
+                    onMouseDown={(e) => handleMouseDownNode(zone.id, e)}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedNodeId(zone.id);
@@ -2416,89 +2698,31 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       if (!isPublicView) openEditZoneModal(zone.id);
                     }}
                     style={{
-                      left: `${bounds.x}px`,
-                      top: `${bounds.y}px`,
-                      width: `${bounds.width}px`,
-                      height: `${bounds.height}px`,
+                      left: `${geom.minX}px`,
+                      top: `${geom.minY}px`,
+                      width: `${geom.width}px`,
+                      height: `${geom.height}px`,
                     }}
-                    className={`absolute rounded-3xl border-2 border-dashed ${theme.border} ${theme.bg} transition-[width,height,left,top] duration-75 z-10 pointer-events-auto cursor-pointer ${
-                      isSelected ? `ring-4 ${theme.ring} shadow-2xl` : 'hover:border-opacity-100'
+                    className={`absolute rounded-3xl border-2 border-dashed ${theme.border} ${theme.bg} pointer-events-auto cursor-grab active:cursor-grabbing p-4 flex flex-col items-center justify-center text-center ${
+                      isSelected ? `ring-4 ${theme.ring} shadow-2xl` : ''
                     }`}
-                    title={!isPublicView ? "Clique para selecionar esta área ou dê duplo clique para editar" : ""}
                   >
-                    {/* Cabeçalho da Área / Bloco */}
-                    <div
-                      onMouseDown={(e) => handleMouseDownZone(zone.id, e)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedNodeId(zone.id);
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        if (!isPublicView) openEditZoneModal(zone.id);
-                      }}
-                      className={`absolute -top-3.5 left-6 px-3 py-1 rounded-full border shadow-lg flex items-center gap-2 pointer-events-auto cursor-grab active:cursor-grabbing ${theme.headerBg} backdrop-blur-md select-none ${
-                        isSelected ? "ring-2 ring-white/60 shadow-xl" : ""
-                      }`}
-                      title={!isPublicView ? "Arraste pelo cabeçalho para mover todo o bloco ou clique duas vezes para editar" : ""}
-                    >
-                      <Layers size={13} className={theme.accent} />
-                      <span className="text-xs font-black tracking-wide uppercase">
-                        {zone.label}
-                      </span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-black/50 text-slate-300 font-mono">
-                        {bounds.membersCount} {bounds.membersCount === 1 ? 'item' : 'itens'}
-                      </span>
-
-                      {!isPublicView && (
-                        <div className="flex items-center gap-1 ml-1 border-l border-white/20 pl-1.5">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditZoneModal(zone.id);
-                            }}
-                            className="p-1 hover:bg-white/20 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
-                            title="Editar configurações e membros desta área"
-                          >
-                            <Edit3 size={11} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteZone(zone.id);
-                            }}
-                            className="p-1 hover:bg-red-500/40 rounded text-red-300 hover:text-red-200 transition-colors cursor-pointer"
-                            title="Excluir esta área (mantém os equipamentos)"
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        </div>
-                      )}
+                    <div className={`p-2.5 rounded-2xl ${theme.badge} mb-1.5 shadow-sm`}>
+                      <Layers size={22} className={theme.accent} />
                     </div>
-
-                    {/* Card de Área Vazia (0 itens): garante visibilidade total e botão direto para editar o nome */}
-                    {bounds.membersCount === 0 && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 pointer-events-auto select-none">
-                        <div className={`p-2.5 rounded-2xl ${theme.badge} mb-1.5 shadow-sm`}>
-                          <Layers size={22} className={theme.accent} />
-                        </div>
-                        <span className="text-xs font-black text-white tracking-wide uppercase">{zone.label}</span>
-                        <span className="text-[10px] text-slate-400 mt-0.5">Área sem equipamentos vinculados</span>
-                        {!isPublicView && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditZoneModal(zone.id);
-                            }}
-                            className="mt-2.5 px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
-                          >
-                            <Edit3 size={12} /> Editar Nome & Vincular Itens
-                          </button>
-                        )}
-                      </div>
+                    <span className="text-xs font-black text-white tracking-wide uppercase">{zone.label}</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">Área sem equipamentos vinculados</span>
+                    {!isPublicView && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditZoneModal(zone.id);
+                        }}
+                        className="mt-2.5 px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                      >
+                        <Edit3 size={12} /> Editar Nome & Vincular Itens
+                      </button>
                     )}
                   </div>
                 );

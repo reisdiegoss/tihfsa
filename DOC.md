@@ -115,14 +115,18 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
   - **Reutilização Total de Infraestrutura**: O clone preserva fielmente todos os racks, switches, nós, dimensões personalizadas, posições `(x, y)`, conexões e cabos (edges), nível de zoom e coordenadas de enquadramento.
   - Abre um modal solicitando o nome do novo fluxograma (preenchido por padrão como `[Nome] (Cópia)`) e descrição opcional.
   - Ao confirmar, o novo mapa é gravado no banco de dados e a interface alterna imediatamente para o diagrama recém-criado. O operador pode então apenas alterar os dispositivos conectados aos switches e racks (ex: trocar APs ou computadores de uma sala para outra) sem precisar remontar toda a estrutura física de racks e switches.
-- **Áreas / Zonas com Contorno Adaptativo (Moldura Dinâmica - ex: Bloco ADM, Bloco UH)**:
+- **Áreas / Zonas com Contorno Adaptativo Dinâmico (Remodelagem Geométrica em Tempo Real via SVG)**:
   - Permite criar blocos de agrupamento espacial no canvas para separar setores físicos ou lógicos (ex: antenas do Administrativo vs. antenas dos Apartamentos).
-  - **Contorno Bounding Box em Tempo Real**: Diferente dos racks (que guardam listas fechadas), a área é um perímetro translúcido com borda tracejada elegante que se molda automaticamente conforme o usuário movimenta os equipamentos vinculados no canvas.
-  - **Paleta de Cores Temáticas**: Suporte a temas visualmente harmônicos (Azul Índigo, Verde Esmeralda, Roxo/Violeta, Âmbar/Laranja, Rosa/Carmim e Ciano/Turquesa).
+  - **Geometria Dinâmica Adaptativa (SVG Convex Hull + Bezier Suave)**:
+    - O contorno da área agora é renderizado na camada SVG através de um polígono adaptativo com curvas de Bézier quadráticas suavizadas (`Q`) e cálculo de envoltória convexa 2D (*Monotone Chain Convex Hull*).
+    - **Acompanhamento e Remodelagem em Tempo Real**: Conforme qualquer equipamento pertencente à área é arrastado pelo canvas, a geometria do contorno se refaz e se molda instantaneamente ao redor dos itens, acompanhando cada movimento sem delay.
+    - **Cálculo Real de Altura e Métricas**: O motor geométrico calcula as dimensões precisas de cada card com base no seu conteúdo ativo (nome, IP, tags, status, métricas UniFi detalhadas como WiFi Experience, canais e taxas RX/TX, métricas Zabbix e ativos de racks), garantindo que a borda nunca corte cards ao meio.
+    - **Cabeçalho Flutuante com Arrastar em Bloco**: O badge de identificação da área (`[ 🏢 ADM 4º ANDAR (2 itens) ]`) flutua dinamicamente no topo do polígono. Ao arrastar por esse cabeçalho, todos os nós membros se movem em sincronia pelo canvas.
+    - **Cards de Áreas Vazias**: Áreas sem membros exibem um container delimitado com card central de configuração e botão direto para editar o nome ou vincular equipamentos, também podendo ser arrastados livremente.
+  - **Paleta de Cores Temáticas**: Suporte a temas visualmente harmônicos com cores de traço SVG, preenchimentos translúcidos e realces de brilho (Azul Índigo, Verde Esmeralda, Roxo/Violeta, Âmbar/Laranja, Rosa/Carmim e Ciano/Turquesa).
   - **Associação Mútua Exclusiva**:
     - Cada equipamento só pode pertencer a uma única área/zona simultaneamente.
     - Pode ser vinculado pelo modal da Área (checklist com detecção de transferência) ou pelo modal individual do próprio equipamento (dropdown com seleção de bloco).
-  - **Movimentação em Bloco**: Ao arrastar a etiqueta de cabeçalho da área, todos os equipamentos vinculados se movimentam conjuntamente pelo canvas. Ao arrastar uma antena avulsa, apenas ela se move e o perímetro da área se recalcula e se expande/contrai dinamicamente.
   - **Barra de Ferramentas com Botões Diretos e Alinhados**:
     - A barra de ferramentas mantém todos os botões principais organizados lado a lado:
       1. `[ + Adicionar Equipamento ]`
