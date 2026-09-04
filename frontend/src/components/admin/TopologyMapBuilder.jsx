@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { 
   Server, HardDrive, Wifi, Phone, Shield, Cloud, Monitor, Activity, Zap,
-  Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2, Search, CheckSquare, Square, Check,
+  Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2, Search, CheckSquare, Square, Check, LayoutGrid,
   ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy, Layers, ListFilter, ChevronDown, Crosshair
 } from "lucide-react";
 import api from "../../api/client";
@@ -859,6 +859,22 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }
   }, [selectedMapId]);
 
+  // Rastreamento global de arrasto para movimento suave sem perda de foco
+  useEffect(() => {
+    if (draggingNodeId || draggingZoneId || resizingNodeId || isPanning) {
+      const onWindowMouseMove = (e) => handleMouseMove(e);
+      const onWindowMouseUp = (e) => handleMouseUp(e);
+
+      window.addEventListener("mousemove", onWindowMouseMove);
+      window.addEventListener("mouseup", onWindowMouseUp);
+
+      return () => {
+        window.removeEventListener("mousemove", onWindowMouseMove);
+        window.removeEventListener("mouseup", onWindowMouseUp);
+      };
+    }
+  }, [draggingNodeId, draggingZoneId, resizingNodeId, isPanning, dragOffset, zoneDragStart, resizeStart, panStart, zoom, pan, mapData]);
+
   // Salvar resolução (zoom) e posicionamento (pan) em cookies/localStorage da TV automaticamente após ajustes
   useEffect(() => {
     if (!selectedMapId || isPanning) return;
@@ -1608,6 +1624,60 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     });
   };
 
+  // Organiza todos os membros de uma área em grade alinhada e salva automaticamente
+  const handleAutoOrganizeZone = async (zoneId) => {
+    const zone = mapData.nodes_data.find(n => n.id === zoneId);
+    if (!zone) return;
+
+    const members = mapData.nodes_data.filter(n => String(n.zone_id) === String(zoneId) && n.id !== zoneId && n.icon_type !== 'Zone');
+    if (members.length === 0) return;
+
+    // Determina a posição inicial segura baseada nos membros atuais
+    const minX = Math.min(...members.map(m => m.x));
+    const minY = Math.min(...members.map(m => m.y));
+    const cols = members.length <= 4 ? members.length : (members.length <= 8 ? 3 : 4);
+    const gapX = 260;
+    const gapY = 370;
+
+    const updatedNodes = mapData.nodes_data.map(n => {
+      const memberIdx = members.findIndex(m => m.id === n.id);
+      if (memberIdx !== -1) {
+        const col = memberIdx % cols;
+        const row = Math.floor(memberIdx / cols);
+        return {
+          ...n,
+          x: minX + col * gapX,
+          y: minY + row * gapY
+        };
+      }
+      return n;
+    });
+
+    setMapData(prev => ({
+      ...prev,
+      nodes_data: updatedNodes
+    }));
+    setHasUnsavedChanges(false);
+
+    if (mapData.id) {
+      try {
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: updatedNodes,
+          edges_data: mapData.edges_data,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        await api.put(`/network-maps/${mapData.id}`, payload);
+      } catch (err) {
+        console.error("Erro ao organizar grade da área:", err);
+      }
+    }
+  };
+
   // Adicionar Múltiplos Nós em Lote ao Mapa com Configurações Padrão
   const handleBatchAddNodes = async () => {
     if (batchAddForm.selected_asset_ids.length === 0) {
@@ -2182,8 +2252,44 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
     if (!draggingNodeId || isPublicView) return;
     
-    const newX = Math.round((e.clientX - pan.x) / zoom - dragOffset.x);
-    const newY = Math.round((e.clientY - pan.y) / zoom - dragOffset.y);
+    let newX = Math.round((e.clientX - pan.x) / zoom - dragOffset.x);
+    let newY = Math.round((e.clientY - pan.y) / zoom - dragOffset.y);
+
+    const draggedNode = mapData.nodes_data.find(n => n.id === draggingNodeId);
+    
+    // Se não for um Rack, nunca permitir ficar embaixo de nenhum Rack (faz o contorno pelas bordas)
+    if (draggedNode && draggedNode.icon_type !== 'Rack') {
+      const dWidth = draggedNode.width || 220;
+      const dHeight = draggedNode.height || 340;
+      const racks = mapData.nodes_data.filter(n => n.icon_type === 'Rack');
+
+      for (const rack of racks) {
+        const rWidth = rack.width || 280;
+        const rHeight = rack.height || 700;
+        const margin = 25;
+
+        const overlapsX = (newX < rack.x + rWidth + margin) && (newX + dWidth + margin > rack.x);
+        const overlapsY = (newY < rack.y + rHeight + margin) && (newY + dHeight + margin > rack.y);
+
+        if (overlapsX && overlapsY) {
+          const distLeft = Math.abs((newX + dWidth) - rack.x);
+          const distRight = Math.abs(newX - (rack.x + rWidth));
+          const distTop = Math.abs((newY + dHeight) - rack.y);
+          const distBottom = Math.abs(newY - (rack.y + rHeight));
+
+          const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+          if (minDist === distLeft) {
+            newX = rack.x - dWidth - margin;
+          } else if (minDist === distRight) {
+            newX = rack.x + rWidth + margin;
+          } else if (minDist === distTop) {
+            newY = rack.y - dHeight - margin;
+          } else {
+            newY = rack.y + rHeight + margin;
+          }
+        }
+      }
+    }
 
     setHasUnsavedChanges(true);
     setMapData((prev) => ({
@@ -2194,11 +2300,37 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }));
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = async () => {
+    const wasDraggingNode = !!draggingNodeId;
+    const wasDraggingZone = !!draggingZoneId;
+    const wasResizing = !!resizingNodeId;
+
     setDraggingNodeId(null);
     setDraggingZoneId(null);
     setIsPanning(false);
     setResizingNodeId(null);
+
+    // Persiste imediatamente no servidor após arrastar nó ou área
+    if ((wasDraggingNode || wasDraggingZone || wasResizing) && mapData.id) {
+      try {
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: mapData.nodes_data,
+          edges_data: mapData.edges_data,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        const res = await api.put(`/network-maps/${mapData.id}`, payload);
+        if (res.data) {
+          setHasUnsavedChanges(false);
+        }
+      } catch (err) {
+        console.error("Erro ao salvar posições após arrasto:", err);
+      }
+    }
   };
 
   // Renderizar Ícones dos Equipamentos no Nó
@@ -2777,13 +2909,14 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         opacity="0.25"
                       />
                     )}
-                    {/* Contorno Adaptativo Dinâmico em Formato de Bolha com Borda Tracejada */}
+                    {/* Contorno Adaptativo Dinâmico em Formato de Bolha com Borda Tracejada e Arraste Direto */}
                     <path
                       d={geom.path}
                       fill={isSelected ? theme.fillSelected : theme.fill}
                       stroke={theme.stroke}
-                      strokeWidth={isSelected ? "3" : "2"}
+                      strokeWidth={isSelected ? "4" : "2.5"}
                       strokeDasharray="8 6"
+                      onMouseDown={(e) => handleMouseDownZone(zone.id, e)}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedNodeId(zone.id);
@@ -2792,6 +2925,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         e.stopPropagation();
                         if (!isPublicView) openEditZoneModal(zone.id);
                       }}
+                      className="cursor-grab active:cursor-grabbing pointer-events-auto"
+                      title={!isPublicView ? "Clique e arraste pelo contorno para mover toda a área" : ""}
                     />
                   </g>
                 );
@@ -2929,6 +3064,17 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                handleAutoOrganizeZone(zone.id);
+                              }}
+                              className="p-1 hover:bg-white/20 rounded text-cyan-300 hover:text-white transition-colors cursor-pointer"
+                              title="Organizar automaticamente os equipamentos desta área em grade alinhada"
+                            >
+                              <LayoutGrid size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 openEditZoneModal(zone.id);
                               }}
                               className="p-1 hover:bg-white/20 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
@@ -3026,8 +3172,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       top: `${node.y}px`,
                       width: `${nodeWidth}px`,
                       minHeight: nodeHeight ? `${nodeHeight}px` : undefined,
+                      transition: (draggingNodeId === node.id || draggingZoneId) ? 'none' : 'box-shadow 0.2s, border-color 0.2s',
+                      zIndex: draggingNodeId === node.id ? 45 : (isSelected ? 40 : (node.icon_type === 'Rack' ? 25 : 30)),
                     }}
-                    className={`absolute transition-all duration-150 cursor-grab active:cursor-grabbing shadow-xl pointer-events-auto ${
+                    className={`absolute cursor-grab active:cursor-grabbing shadow-xl pointer-events-auto ${
                       node.icon_type === 'Zone' 
                         ? "p-4 border-4 border-dashed rounded-3xl z-30 backdrop-blur-md " + (
                           isOffline ? "border-red-500 bg-red-950/80 animate-bounce" : "border-slate-500 bg-slate-800/80"
