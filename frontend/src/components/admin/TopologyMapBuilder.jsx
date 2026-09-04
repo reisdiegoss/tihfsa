@@ -357,8 +357,104 @@ const computeConvexHull = (points) => {
   return hull;
 };
 
-// Gera o caminho SVG em formato de bolha/cápsula orgânica ao redor dos membros
-const generateBubblePath = (members, padX = 30, padTop = 45, padBottom = 30, radius = 24) => {
+// Desvia o contorno da bolha ao redor de qualquer Rack no caminho para respeitar rigorosamente a área do rack
+const avoidRacksInHull = (hull, racks, margin = 28) => {
+  if (!racks || racks.length === 0 || !hull || hull.length < 3) return hull;
+
+  let currentHull = [...hull];
+
+  racks.forEach(rack => {
+    const rw = rack.width || 280;
+    const rh = rack.height || 700;
+    const rx1 = rack.x - margin;
+    const rx2 = rack.x + rw + margin;
+    const ry1 = rack.y - margin;
+    const ry2 = rack.y + rh + margin;
+
+    const nextHull = [];
+    const n = currentHull.length;
+
+    for (let i = 0; i < n; i++) {
+      const p1 = currentHull[i];
+      const p2 = currentHull[(i + 1) % n];
+
+      // Amostra o segmento para checar se penetra na bounding box expandida do Rack
+      let intersects = false;
+      const steps = 30;
+      for (let s = 1; s < steps; s++) {
+        const t = s / steps;
+        const x = p1.x + t * (p2.x - p1.x);
+        const y = p1.y + t * (p2.y - p1.y);
+        if (x > rx1 && x < rx2 && y > ry1 && y < ry2) {
+          intersects = true;
+          break;
+        }
+      }
+
+      nextHull.push(p1);
+
+      if (intersects) {
+        const TL = { x: rx1, y: ry1 };
+        const TR = { x: rx2, y: ry1 };
+        const BL = { x: rx1, y: ry2 };
+        const BR = { x: rx2, y: ry2 };
+
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const detour = [];
+
+        // Movimento para a esquerda (cortando a parte superior ou lateral do Rack)
+        if (dx < 0 && p1.x >= rx1 && p2.x <= rx1) {
+          detour.push(TL);
+          if (p2.y > ry1) {
+            detour.push({ x: rx1, y: Math.min(p2.y, ry2) });
+          }
+        }
+        // Movimento para a direita (cortando a parte superior ou lateral do Rack)
+        else if (dx > 0 && p1.x <= rx2 && p2.x >= rx2) {
+          detour.push(TR);
+          if (p2.y > ry1) {
+            detour.push({ x: rx2, y: Math.min(p2.y, ry2) });
+          }
+        }
+        // Movimento para cima
+        else if (dy < 0 && p1.y >= ry2 && p2.y <= ry1) {
+          detour.push(BL);
+          detour.push(TL);
+        }
+        // Movimento para baixo
+        else if (dy > 0 && p1.y <= ry1 && p2.y >= ry2) {
+          detour.push(TR);
+          detour.push(BR);
+        }
+        // Fallback: escolhe o canto mais próximo da trajetória externa
+        else {
+          const corners = [TL, TR, BR, BL];
+          corners.sort((c1, c2) => {
+            const d1 = Math.hypot(c1.x - p1.x, c1.y - p1.y) + Math.hypot(p2.x - c1.x, p2.y - c1.y);
+            const d2 = Math.hypot(c2.x - p1.x, c2.y - p1.y) + Math.hypot(p2.x - c2.x, p2.y - c2.y);
+            return d1 - d2;
+          });
+          detour.push(corners[0]);
+        }
+
+        detour.forEach(dp => {
+          const last = nextHull[nextHull.length - 1];
+          if (Math.hypot(dp.x - last.x, dp.y - last.y) > 6) {
+            nextHull.push(dp);
+          }
+        });
+      }
+    }
+
+    currentHull = nextHull;
+  });
+
+  return currentHull;
+};
+
+// Gera o caminho SVG em formato de bolha/cápsula orgânica ao redor dos membros contornando Racks
+const generateBubblePath = (members, padX = 30, padTop = 45, padBottom = 30, radius = 24, racks = []) => {
   if (!members || members.length === 0) return "";
 
   const centers = [];
@@ -378,7 +474,11 @@ const generateBubblePath = (members, padX = 30, padTop = 45, padBottom = 30, rad
     );
   });
 
-  const hull = computeConvexHull(centers);
+  let hull = computeConvexHull(centers);
+  if (racks && racks.length > 0) {
+    hull = avoidRacksInHull(hull, racks, 28);
+  }
+
   const n = hull.length;
   if (n === 0) return "";
 
@@ -498,7 +598,8 @@ const getZoneGeometry = (zone, allNodes) => {
     };
   });
 
-  const path = generateBubblePath(memberBoxes, padX, padTop, padBottom, radius);
+  const racks = (allNodes || []).filter(n => n.icon_type === 'Rack');
+  const path = generateBubblePath(memberBoxes, padX, padTop, padBottom, radius, racks);
   const width = Math.max(220, maxX - minX);
   const height = Math.max(140, maxY - minY);
 
@@ -2929,7 +3030,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#334155_1.5px,transparent_1.5px)] [background-size:28px_28px]" />
 
             {/* SVG Layer para Contornos Dinâmicos Adaptativos de Áreas (z-10) e Cabos (z-20) */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" style={{ overflow: "visible" }}>
               {/* Contornos Geométricos Adaptativos das Áreas / Blocos (moldam-se aos nós em tempo real) */}
               {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map((zone) => {
                 const geom = getZoneGeometry(zone, mapData.nodes_data);
@@ -3058,7 +3159,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             </svg>
 
             {/* Layer DOM de Cabeçalhos Flutuantes & Áreas Vazias (z-15) */}
-            <div className="absolute inset-0 pointer-events-none z-15">
+            <div className="absolute inset-0 pointer-events-none z-15" style={{ overflow: "visible" }}>
               {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map((zone) => {
                 const geom = getZoneGeometry(zone, mapData.nodes_data);
                 const theme = ZONE_COLOR_THEMES[zone.color] || ZONE_COLOR_THEMES.blue;

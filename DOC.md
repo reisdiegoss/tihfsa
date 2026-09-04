@@ -131,7 +131,12 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
         - O timer periódico de 15 segundos (`refreshMapStatuses`) e o countdown da TV pública (`refreshTrigger`) consultam essa referência mutável: enquanto houver edições locais em andamento, o recarregamento do mapa do banco de dados é rigorosamente bloqueado, executando apenas a sincronização não-destrutiva de status de ICMP e Zabbix sem alterar as posições `(x, y)` dos nós.
         - O usuário pode arranjar e mover livremente todos os equipamentos e áreas sem risco de reversão ou snap-back involuntário, confirmando todas as novas posições de forma definitiva ao clicar no botão **`[ 💾 Salvar Mapa ]`**.
         - Inclui listener de proteção de navegador (`beforeunload`) avisando sobre alterações pendentes antes de fechar ou atualizar a aba.
-      - **Prevenção de Colisão e Contorno de Racks**: Nenhum equipamento de área pode ficar embaixo ou sobreposto a racks. Ao aproximar uma antena de um rack, o motor calcula as distâncias e contorna o rack pelas bordas externas (`margin: 25px`), mantendo a infraestrutura de racks sempre visível e destacada.
+      - **Prevenção de Colisão e Desvio Inteligente de Racks (`avoidRacksInHull`)**:
+        - Nenhum equipamento de área pode ficar embaixo ou sobreposto a racks durante o arrasto manual (`margin: 25px`).
+        - O motor de geometria adaptativa (`avoidRacksInHull`) detecta todos os Racks no diagrama e intercepta qualquer segmento de contorno que cruze a caixa delimitadora do Rack (margem de segurança de 28px).
+        - A linha pontilhada da bolha calcula uma rota de desvio pelas quinas externas do Rack (arestas $TL$, $TR$, $BL$, $BR$), contornando suavemente as bordas e garantindo que o contorno da área **nunca passe por trás nem corte o Rack**, respeitando 100% o espaço físico do Rack na topologia.
+      - **Suporte Total a Coordenadas Negativas e Overflow Sem Cortes**:
+        - A camada SVG de contornos e a camada DOM de cabeçalhos contam com `overflow: visible`, impedindo cortes na linha $X = 0$ e garantindo que bolhas envolvendo equipamentos em qualquer quadrante do canvas permaneçam 100% visíveis e contínuas.
     - **Cards de Áreas Vazias**: Áreas sem membros exibem um container delimitado com card central de configuração e botão direto para editar o nome ou vincular equipamentos, também podendo ser arrastados livremente.
   - **Paleta de Cores Temáticas**: Suporte a temas visualmente harmônicos com cores de traço SVG, preenchimentos translúcidos e realces de brilho (Azul Índigo, Verde Esmeralda, Roxo/Violeta, Âmbar/Laranja, Rosa/Carmim e Ciano/Turquesa).
   - **Associação Mútua Exclusiva**:
