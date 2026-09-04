@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Server, HardDrive, Wifi, Phone, Shield, Cloud, Monitor, Activity, Zap,
   Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2,
-  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy, Layers
+  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy, Layers, ListFilter, ChevronDown, Crosshair
 } from "lucide-react";
 import api from "../../api/client";
 const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
@@ -316,6 +316,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   // Estados para Áreas / Blocos de Agrupamento Dinâmicos (ex: Bloco ADM, Bloco UH)
   const [isZoneModalOpen, setIsZoneModalOpen] = useState(false);
+  const [isNodeListOpen, setIsNodeListOpen] = useState(false);
+  const [nodeSearchTerm, setNodeSearchTerm] = useState("");
   const [zoneForm, setZoneForm] = useState({
     id: null,
     label: "",
@@ -433,7 +435,14 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       .then((res) => {
         const latest = res.data;
         if (!latest) return;
-        setMapData(latest);
+        // Sanitiza nós para que nenhum fique com coordenadas negativas ou perdidas fora da tela
+        const sanitizedNodes = (latest.nodes_data || []).map(n => {
+          let updated = { ...n };
+          if (typeof updated.x === 'number' && updated.x < 50) updated.x = 80;
+          if (typeof updated.y === 'number' && updated.y < 50) updated.y = 80;
+          return updated;
+        });
+        setMapData({ ...latest, nodes_data: sanitizedNodes });
         if (isFirstLoad) {
           // Prioridade 1: Cookies / LocalStorage específico desta TV ou navegador
           const savedViewport = getTvViewport(id);
@@ -1096,6 +1105,40 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   };
 
   // Handlers para Áreas / Blocos de Agrupamento
+  // Foca e centraliza a tela diretamente em um nó ou área, selecionando-o
+  const focusOnNode = (nodeId) => {
+    const node = mapData.nodes_data.find(n => String(n.id) === String(nodeId));
+    if (!node) return;
+
+    setSelectedNodeId(node.id);
+
+    const container = containerRef.current;
+    const cWidth = container ? container.clientWidth : 1200;
+    const cHeight = container ? container.clientHeight : 750;
+
+    let targetX = Number(node.x) || 100;
+    let targetY = Number(node.y) || 100;
+    let targetW = node.width || (node.icon_type === 'Rack' ? 280 : 220);
+    let targetH = node.height || 140;
+
+    if (node.icon_type === 'Zone') {
+      const zb = getZoneBounds(node, mapData.nodes_data);
+      targetX = zb.x;
+      targetY = zb.y;
+      targetW = zb.width;
+      targetH = zb.height;
+    }
+
+    if (targetX < 50) targetX = 80;
+    if (targetY < 50) targetY = 80;
+
+    const currentZoom = Math.max(0.6, Math.min(1.4, zoom));
+    const newPanX = Math.round(cWidth / 2 - (targetX + targetW / 2) * currentZoom);
+    const newPanY = Math.round(cHeight / 2 - (targetY + targetH / 2) * currentZoom);
+
+    setPan({ x: newPanX, y: newPanY });
+  };
+
   const openAddZoneModal = () => {
     setZoneForm({
       id: null,
@@ -1133,6 +1176,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     const cHeight = container ? container.clientHeight : 750;
     const centerX = (-pan.x + cWidth / 2) / zoom - 180;
     const centerY = (-pan.y + cHeight / 2) / zoom - 120;
+    const safeX = Math.max(80, Math.min(3600, Math.round(centerX)));
+    const safeY = Math.max(80, Math.min(2600, Math.round(centerY)));
 
     let updatedNodes = [...mapData.nodes_data];
 
@@ -1142,8 +1187,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         label: zoneForm.label.trim(),
         icon_type: "Zone",
         color: zoneForm.color || "blue",
-        x: Math.round(centerX),
-        y: Math.round(centerY),
+        x: safeX,
+        y: safeY,
         width: 380,
         height: 240,
       };
@@ -1274,6 +1319,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     const cHeight = container ? container.clientHeight : 750;
     const centerX = (-pan.x + cWidth / 2) / zoom - 60;
     const centerY = (-pan.y + cHeight / 2) / zoom - 45;
+    const safeX = Math.max(80, Math.min(3600, Math.round(centerX)));
+    const safeY = Math.max(80, Math.min(2600, Math.round(centerY)));
 
     const displayOpts = newNodeForm.display_options || newNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
 
@@ -1283,8 +1330,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       label: newNodeForm.label || (selectedAsset ? selectedAsset.name : "Novo Equipamento"),
       icon_type: newNodeForm.icon_type,
       zone_id: newNodeForm.zone_id || null,
-      x: Math.round(centerX),
-      y: Math.round(centerY),
+      x: safeX,
+      y: safeY,
       width: newNodeForm.width ? parseInt(newNodeForm.width, 10) : null,
       height: newNodeForm.height ? parseInt(newNodeForm.height, 10) : null,
       sound_alert_offline: !!newNodeForm.sound_alert_offline,
@@ -1519,6 +1566,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   const handleCanvasMouseDown = (e) => {
     setSelectedNodeId(null);
+    setIsNodeListOpen(false);
     if (e.target === containerRef.current || isPanMode || e.button === 1) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -1825,6 +1873,132 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 <span>🪄 Modelo Exemplo</span>
               </button>
             )}
+
+            {/* Botão e Menu Suspenso de Localização & Gerenciamento de Nós e Áreas */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsNodeListOpen(prev => !prev)}
+                className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm border ${
+                  isNodeListOpen
+                    ? "bg-blue-600 text-white border-blue-500 shadow-blue-500/20"
+                    : "bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700"
+                }`}
+                title="Ver lista de todos os nós/áreas do mapa, focar na tela ou editar o nome imediatamente"
+              >
+                <ListFilter size={15} className={isNodeListOpen ? "text-white" : "text-blue-400"} />
+                <span>Localizar Nó ({mapData.nodes_data.length})</span>
+                <ChevronDown size={13} className={`transition-transform duration-200 ${isNodeListOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isNodeListOpen && (
+                <div 
+                  className="absolute left-0 mt-2 w-80 max-h-[420px] bg-slate-900/95 backdrop-blur-2xl border border-slate-700 rounded-2xl shadow-2xl p-2.5 z-50 flex flex-col gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between px-1 pb-1.5 border-b border-slate-800">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                      <ListFilter size={13} className="text-blue-400" />
+                      Nós & Áreas ({mapData.nodes_data.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsNodeListOpen(false)}
+                      className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="🔍 Buscar por nome ou tipo..."
+                    value={nodeSearchTerm}
+                    onChange={(e) => setNodeSearchTerm(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500"
+                    autoFocus
+                  />
+
+                  <div className="overflow-y-auto max-h-[300px] space-y-1 pr-1 custom-scrollbar">
+                    {mapData.nodes_data
+                      .filter(n => {
+                        if (!nodeSearchTerm.trim()) return true;
+                        const term = nodeSearchTerm.toLowerCase();
+                        return (n.label || "").toLowerCase().includes(term) || (n.icon_type || "").toLowerCase().includes(term);
+                      })
+                      .map((n) => {
+                        const isZone = n.icon_type === 'Zone';
+                        const isSelected = String(selectedNodeId) === String(n.id);
+                        return (
+                          <div
+                            key={n.id}
+                            className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-xs transition-colors ${
+                              isSelected
+                                ? 'bg-blue-600/25 border border-blue-500/50 text-white font-bold'
+                                : 'hover:bg-slate-800/80 text-slate-300 border border-transparent'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                focusOnNode(n.id);
+                                setIsNodeListOpen(false);
+                              }}
+                              className="flex items-center gap-2 text-left truncate flex-1 cursor-pointer"
+                              title={`Clique para focar na tela em ${n.label}`}
+                            >
+                              <span className="shrink-0 text-base">
+                                {isZone ? '🏢' : n.icon_type === 'Rack' ? '🖥️' : n.icon_type === 'Switch' ? '🔀' : n.icon_type === 'AccessPoint' ? '📡' : '📟'}
+                              </span>
+                              <div className="truncate">
+                                <div className="truncate font-bold leading-tight text-white">{n.label || 'Sem Nome'}</div>
+                                <div className="text-[10px] text-slate-400 font-medium leading-none mt-0.5">
+                                  {isZone ? 'Área / Bloco' : n.icon_type} • ({Math.round(n.x)}, {Math.round(n.y)})
+                                </div>
+                              </div>
+                            </button>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  focusOnNode(n.id);
+                                  setIsNodeListOpen(false);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700/50 rounded-lg cursor-pointer transition-colors"
+                                title="Focar e centralizar na tela"
+                              >
+                                <Crosshair size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  focusOnNode(n.id);
+                                  if (isZone) {
+                                    openEditZoneModal(n.id);
+                                  } else {
+                                    openEditNodeModal(n.id);
+                                  }
+                                  setIsNodeListOpen(false);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-white hover:bg-blue-600 rounded-lg cursor-pointer transition-colors"
+                                title="Editar Nome deste nó"
+                              >
+                                <Edit3 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    {mapData.nodes_data.length === 0 && (
+                      <div className="py-4 text-center text-xs text-slate-500 font-medium">
+                        Nenhum nó neste mapa
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Barra de Ferramentas Dinâmica Conforme Seleção */}
             {(() => {
@@ -2309,6 +2483,29 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         </div>
                       )}
                     </div>
+
+                    {/* Card de Área Vazia (0 itens): garante visibilidade total e botão direto para editar o nome */}
+                    {bounds.membersCount === 0 && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 pointer-events-auto select-none">
+                        <div className={`p-2.5 rounded-2xl ${theme.badge} mb-1.5 shadow-sm`}>
+                          <Layers size={22} className={theme.accent} />
+                        </div>
+                        <span className="text-xs font-black text-white tracking-wide uppercase">{zone.label}</span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">Área sem equipamentos vinculados</span>
+                        {!isPublicView && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditZoneModal(zone.id);
+                            }}
+                            className="mt-2.5 px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                          >
+                            <Edit3 size={12} /> Editar Nome & Vincular Itens
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -2436,9 +2633,21 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
                     {/* Node Label & Subtext */}
                     <div>
-                      <p className="font-extrabold text-xs text-white break-words line-clamp-2" title={node.label}>
-                        {node.label}
-                      </p>
+                      <div className="flex items-center gap-1 group/title">
+                        <p 
+                          onClick={(e) => {
+                            if (!isPublicView) {
+                              e.stopPropagation();
+                              setSelectedNodeId(node.id);
+                              openEditNodeModal(node.id);
+                            }
+                          }}
+                          className={`font-extrabold text-xs text-white break-words line-clamp-2 ${!isPublicView ? 'cursor-pointer hover:text-blue-300 hover:underline' : ''}`}
+                          title={!isPublicView ? "Clique para editar o nome deste equipamento" : node.label}
+                        >
+                          {node.label}
+                        </p>
+                      </div>
                       
                       {node.ip_address && (node.display_options?.show_ip ?? node.rack_display_options?.show_ip ?? true) && (
                         <p className="text-[10px] font-mono text-slate-400 font-bold truncate">
@@ -3051,6 +3260,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   value={editNodeForm.label}
                   onChange={(e) => setEditNodeForm(prev => ({ ...prev, label: e.target.value }))}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                  autoFocus
                 />
               </div>
 
