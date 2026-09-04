@@ -128,12 +128,15 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
       1. `[ + Adicionar Equipamento ]`
       2. `[ 🏢 Nova Área / Bloco ]`
       3. `[ 🔗 Conectar Nós (Cabos) ]`
-      4. `[ ✏️ Editar Nó ]`: Botão direto presente na barra conforme os demais. Ao clicar em qualquer equipamento no mapa, ele se destaca em verde (`Editar Nó` ou `Editar Área`) e abre imediatamente o modal para alterar o nome e parâmetros.
+      4. `[ ✏️ Editar Nó ]`: Botão direto na barra. Ao clicar em qualquer equipamento no mapa, ele abre o **modal de Conectar Nós em Modo Edição** (`Editar Conexão de Nós`), permitindo editar o rótulo/portas da conexão (ex: "Porta 19"), alterar origem/destino ou excluir o cabo com persistência imediata.
       5. `[ 🗑️ Excluir Nó ]`: Botão para exclusão do nó ou área selecionada.
-  - **Edição Imediata de Nós Existentes**:
-    - **Ao Clicar no Equipamento**: O clique seleciona o nó no canvas e ativa o botão `[ ✏️ Editar Nó ]` na barra superior.
-    - **1-Clique no Card**: Cada equipamento no canvas também possui um botão de lápis (✏️) em seu cabeçalho e permite clicar no próprio nome para abrir o modal de edição.
-    - **Vínculo com Áreas**: O campo *Área / Bloco de Agrupamento* fica permanentemente visível no modal de edição do equipamento, permitindo associá-lo a um bloco existente (ex: Bloco ADM ou Bloco UH) ou desvinculá-lo a qualquer momento.
+  - **Edição de Conexões e Cabos (Edges)**:
+    - **Clique no Botão "Editar Nó"**: Abre o modal de conexão no modo de edição para o equipamento selecionado. Caso o nó possua mais de uma ligação (ex: Switch ligado a múltiplos APs), uma barra superior no modal permite alternar entre as conexões em 1 clique.
+    - **Clique Direto no Cabo no Canvas**: Clicar sobre qualquer linha de conexão ou etiqueta de porta no diagrama SVG abre imediatamente o modal de edição daquele cabo.
+    - **Persistência Imediata**: Qualquer alteração de rótulo de porta ou nós de ligação é salva imediatamente no backend (`/network-maps/{id}`).
+  - **Edição Imediata de Hardware e Equipamentos**:
+    - **1-Clique no Card**: O card de cada equipamento mantém seu botão de lápis (✏️) dedicado para editar dados de hardware/CMDB, endereço IP e métricas UniFi/Zabbix.
+    - **Vínculo com Áreas**: O campo *Área / Bloco de Agrupamento* permanece acessível para organizar o equipamento em blocos espaciais.
   - **Sanitização Automática de Coordenadas (Prevenção de Nós Invisíveis)**:
     - Qualquer nó ou área criada é posicionado de forma segura dentro dos limites visíveis do canvas (`safeX >= 80, safeY >= 80`), impedindo coordenadas negativas decorrentes de arrastos extremos de câmera ou TVs de alta resolução.
     - No carregamento do mapa, coordenadas fora do padrão são sanitizadas automaticamente para garantir visibilidade imediata.

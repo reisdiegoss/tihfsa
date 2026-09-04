@@ -367,7 +367,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [availableZabbixItems, setAvailableZabbixItems] = useState([]);
   const [selectedZabbixInterface, setSelectedZabbixInterface] = useState("");
 
-  // Formulário para nova conexão
+  // Formulário para nova conexão e edição de conexão entre nós
+  const [edgeEditId, setEdgeEditId] = useState(null);
   const [newEdgeForm, setNewEdgeForm] = useState({
     source_id: "",
     target_id: "",
@@ -1525,23 +1526,147 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }
   };
 
-  // Adicionar Conexão entre Nós
-  const handleAddEdge = () => {
-    if (!newEdgeForm.source_id || !newEdgeForm.target_id) return;
-    const newEdge = {
-      id: `edge_${Date.now()}`,
-      source_id: newEdgeForm.source_id,
-      target_id: newEdgeForm.target_id,
-      label: newEdgeForm.label || "",
-    };
+  // Abrir Modal de Conexão em Modo Edição
+  const openEditEdgeModal = (edgeId) => {
+    const edge = mapData.edges_data.find(e => e.id === edgeId);
+    if (!edge) return;
+    setEdgeEditId(edge.id);
+    setNewEdgeForm({
+      source_id: edge.source_id,
+      target_id: edge.target_id,
+      label: edge.label || "",
+    });
+    setIsAddEdgeModalOpen(true);
+  };
 
-    setMapData((prev) => ({
+  // Abrir Modal de Conectar Nós no modo Edição para o Nó selecionado
+  const handleOpenEditNodeConnection = (nodeId) => {
+    const nodeEdges = mapData.edges_data.filter(
+      e => String(e.source_id) === String(nodeId) || String(e.target_id) === String(nodeId)
+    );
+
+    if (nodeEdges.length > 0) {
+      // Abre a primeira conexão deste nó no modo edição
+      const edge = nodeEdges[0];
+      setEdgeEditId(edge.id);
+      setNewEdgeForm({
+        source_id: edge.source_id,
+        target_id: edge.target_id,
+        label: edge.label || "",
+      });
+    } else {
+      // Se ainda não tiver conexão, abre para conectar a partir deste nó
+      setEdgeEditId(null);
+      setNewEdgeForm({
+        source_id: nodeId,
+        target_id: "",
+        label: "",
+      });
+    }
+    setIsAddEdgeModalOpen(true);
+  };
+
+  // Salvar Conexão entre Nós (Criação ou Edição) com persistência imediata
+  const handleSaveEdge = async () => {
+    if (!newEdgeForm.source_id || !newEdgeForm.target_id) {
+      alert("Selecione o Nó Origem e o Nó Destino.");
+      return;
+    }
+    if (newEdgeForm.source_id === newEdgeForm.target_id) {
+      alert("O Nó Origem e o Nó Destino devem ser diferentes.");
+      return;
+    }
+
+    let updatedEdges;
+    if (edgeEditId) {
+      updatedEdges = mapData.edges_data.map(e => {
+        if (e.id === edgeEditId) {
+          return {
+            ...e,
+            source_id: newEdgeForm.source_id,
+            target_id: newEdgeForm.target_id,
+            label: newEdgeForm.label.trim(),
+          };
+        }
+        return e;
+      });
+    } else {
+      const newEdge = {
+        id: `edge_${Date.now()}`,
+        source_id: newEdgeForm.source_id,
+        target_id: newEdgeForm.target_id,
+        label: newEdgeForm.label.trim(),
+      };
+      updatedEdges = [...mapData.edges_data, newEdge];
+    }
+
+    setMapData(prev => ({
       ...prev,
-      edges_data: [...prev.edges_data, newEdge],
+      edges_data: updatedEdges,
     }));
 
     setIsAddEdgeModalOpen(false);
+    setEdgeEditId(null);
     setNewEdgeForm({ source_id: "", target_id: "", label: "" });
+
+    // Persistência imediata no backend
+    if (mapData.id) {
+      try {
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: mapData.nodes_data,
+          edges_data: updatedEdges,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        const res = await api.put(`/network-maps/${mapData.id}`, payload);
+        if (res.data) {
+          setMapData(res.data);
+          setHasUnsavedChanges(false);
+        }
+      } catch (err) {
+        console.error("Erro ao salvar conexão:", err);
+      }
+    }
+  };
+
+  // Excluir Conexão entre Nós
+  const handleDeleteEdge = async () => {
+    if (!edgeEditId) return;
+    const updatedEdges = mapData.edges_data.filter(e => e.id !== edgeEditId);
+    setMapData(prev => ({
+      ...prev,
+      edges_data: updatedEdges,
+    }));
+
+    setIsAddEdgeModalOpen(false);
+    setEdgeEditId(null);
+    setNewEdgeForm({ source_id: "", target_id: "", label: "" });
+
+    if (mapData.id) {
+      try {
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: mapData.nodes_data,
+          edges_data: updatedEdges,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        const res = await api.put(`/network-maps/${mapData.id}`, payload);
+        if (res.data) {
+          setMapData(res.data);
+          setHasUnsavedChanges(false);
+        }
+      } catch (err) {
+        console.error("Erro ao excluir conexão:", err);
+      }
+    }
   };
 
   // Remover Nó Selecionado
@@ -1895,9 +2020,12 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             {/* 3. Conectar Nós (Cabos) */}
             <button
               onClick={() => {
-                if (selectedNodeId) {
-                  setNewEdgeForm({ source_id: selectedNodeId, target_id: "", label: "" });
-                }
+                setEdgeEditId(null);
+                setNewEdgeForm({
+                  source_id: selectedNodeId || "",
+                  target_id: "",
+                  label: "",
+                });
                 setIsAddEdgeModalOpen(true);
               }}
               className="bg-purple-600 hover:bg-purple-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
@@ -1918,7 +2046,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       if (isZone) {
                         openEditZoneModal(selectedNode.id);
                       } else {
-                        openEditNodeModal(selectedNode.id);
+                        handleOpenEditNodeConnection(selectedNode.id);
                       }
                     }}
                     className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-600/30"
@@ -2204,7 +2332,26 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 const strokeColor = isProblemLink ? "#ef4444" : "#10b981";
 
                 return (
-                  <g key={edge.id}>
+                  <g 
+                    key={edge.id}
+                    className="pointer-events-auto cursor-pointer group"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isPublicView) {
+                        openEditEdgeModal(edge.id);
+                      }
+                    }}
+                  >
+                    {/* Linha invisível mais espessa para facilitar o clique no cabo */}
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="transparent"
+                      strokeWidth="18"
+                    />
+
                     {/* Cable Connection Line */}
                     <line
                       x1={x1}
@@ -2214,37 +2361,37 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       stroke={strokeColor}
                       strokeWidth={isProblemLink ? "3" : "2"}
                       strokeDasharray={isProblemLink ? "6,6" : "none"}
-                      className={isProblemLink ? "animate-pulse" : ""}
+                      className={`${isProblemLink ? "animate-pulse" : ""} group-hover:stroke-purple-400 group-hover:stroke-[3.5px] transition-all`}
                       opacity="0.85"
                     />
 
                     {/* Edge Label (Interface / Port Tag, ex: GE1/0/4) */}
-                    {edge.label && (
-                      <g transform={`translate(${(x1 + x2) / 2}, ${(y1 + y2) / 2})`}>
-                        <rect
-                          x="-45"
-                          y="-10"
-                          width="90"
-                          height="20"
-                          rx="6"
-                          fill="#090d16"
-                          stroke={strokeColor}
-                          strokeWidth="1"
-                          opacity="0.9"
-                        />
-                        <text
-                          x="0"
-                          y="3"
-                          textAnchor="middle"
-                          fill="#e2e8f0"
-                          fontSize="9"
-                          fontWeight="bold"
-                          fontFamily="monospace"
-                        >
-                          {edge.label}
-                        </text>
-                      </g>
-                    )}
+                    <g transform={`translate(${(x1 + x2) / 2}, ${(y1 + y2) / 2})`}>
+                      <rect
+                        x="-45"
+                        y="-10"
+                        width="90"
+                        height="20"
+                        rx="6"
+                        fill="#090d16"
+                        stroke={strokeColor}
+                        strokeWidth="1"
+                        className="group-hover:stroke-purple-400 group-hover:fill-purple-950 transition-all"
+                        opacity="0.95"
+                      />
+                      <text
+                        x="0"
+                        y="3"
+                        textAnchor="middle"
+                        fill="#e2e8f0"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                        className="group-hover:fill-white"
+                      >
+                        {edge.label || "Link"}
+                      </text>
+                    </g>
                   </g>
                 );
               })}
@@ -3454,18 +3601,64 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         </div>
       )}
 
-      {/* Modal Conectar Nós (Cabos) */}
+      {/* Modal Conectar Nós (Cabos) / Editar Conexão */}
       {isAddEdgeModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-black text-white flex items-center gap-2">
-                <LinkIcon size={18} className="text-purple-400" /> Conectar Nós (Cabo / Link)
+                <LinkIcon size={18} className="text-purple-400" />
+                {edgeEditId ? "Editar Conexão de Nós (Cabo / Link)" : "Conectar Nós (Cabo / Link)"}
               </h3>
-              <button onClick={() => setIsAddEdgeModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button 
+                onClick={() => {
+                  setIsAddEdgeModalOpen(false);
+                  setEdgeEditId(null);
+                }} 
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
                 <X size={18} />
               </button>
             </div>
+
+            {/* Se o nó selecionado tiver múltiplas conexões, permite alternar entre elas */}
+            {selectedNodeId && mapData.edges_data.filter(e => String(e.source_id) === String(selectedNodeId) || String(e.target_id) === String(selectedNodeId)).length > 1 && (
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-1">
+                <label className="block text-slate-400 font-bold text-[11px]">
+                  Conexões deste nó ({mapData.edges_data.filter(e => String(e.source_id) === String(selectedNodeId) || String(e.target_id) === String(selectedNodeId)).length}):
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {mapData.edges_data
+                    .filter(e => String(e.source_id) === String(selectedNodeId) || String(e.target_id) === String(selectedNodeId))
+                    .map(e => {
+                      const isCurrent = edgeEditId === e.id;
+                      const otherNodeId = String(e.source_id) === String(selectedNodeId) ? e.target_id : e.source_id;
+                      const otherNode = mapData.nodes_data.find(n => String(n.id) === String(otherNodeId));
+                      return (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => {
+                            setEdgeEditId(e.id);
+                            setNewEdgeForm({
+                              source_id: e.source_id,
+                              target_id: e.target_id,
+                              label: e.label || "",
+                            });
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                            isCurrent
+                              ? "bg-purple-600 text-white border-purple-500 shadow"
+                              : "bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700"
+                          }`}
+                        >
+                          🔗 {otherNode ? otherNode.label : "Nó"} {e.label ? `(${e.label})` : ""}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3 text-xs">
               <div>
@@ -3497,20 +3690,50 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               </div>
 
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Rótulo da Conexão / Portas (Ex: GE1/0/4):</label>
+                <label className="block text-slate-400 font-bold mb-1">Rótulo da Conexão / Portas (Ex: GE1/0/4, Porta 19):</label>
                 <input
                   type="text"
-                  placeholder="Ex: GE1/0/4 <-> GE2/0/1, Trunk 10G..."
+                  placeholder="Ex: GE1/0/4 <-> GE2/0/1, Porta 19, Trunk 10G..."
                   value={newEdgeForm.label}
                   onChange={(e) => setNewEdgeForm(prev => ({ ...prev, label: e.target.value }))}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-purple-500"
+                  autoFocus
                 />
               </div>
             </div>
 
-            <div className="pt-3 flex items-center justify-end gap-2">
-              <button onClick={() => setIsAddEdgeModalOpen(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold">Cancelar</button>
-              <button onClick={handleAddEdge} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-black">Conectar</button>
+            <div className="pt-3 flex items-center justify-between gap-2 border-t border-slate-800">
+              {edgeEditId ? (
+                <button
+                  type="button"
+                  onClick={handleDeleteEdge}
+                  className="px-3 py-2 bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white rounded-xl font-bold cursor-pointer transition-colors flex items-center gap-1.5"
+                  title="Excluir esta conexão"
+                >
+                  <Trash2 size={14} /> Excluir Cabo
+                </button>
+              ) : <div />}
+
+              <div className="flex items-center gap-2">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setIsAddEdgeModalOpen(false);
+                    setEdgeEditId(null);
+                  }} 
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold hover:bg-slate-700 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button"
+                  onClick={handleSaveEdge} 
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-black cursor-pointer shadow-md shadow-purple-600/30 flex items-center gap-1.5"
+                >
+                  <Save size={14} />
+                  {edgeEditId ? "Salvar Alterações" : "Conectar"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
