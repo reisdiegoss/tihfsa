@@ -660,14 +660,41 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   // Métricas ao vivo do Zabbix para exibir DENTRO dos cards
   const [liveMetrics, setLiveMetrics] = useState({});
   // Métricas do UniFi para exibir no painel de prevenção
-  const [unifiMetrics, setUnifiMetrics] = useState([]);
+  const [hasUnsavedChanges, setHasUnsavedChangesState] = useState(false);
+  const hasUnsavedChangesRef = useRef(false);
 
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const setHasUnsavedChanges = (val) => {
+    hasUnsavedChangesRef.current = !!val;
+    setHasUnsavedChangesState(!!val);
+  };
+
   const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const audioCtxRef = useRef(null);
+
+  const draggingNodeIdRef = useRef(null);
+  const draggingZoneIdRef = useRef(null);
+  const resizingNodeIdRef = useRef(null);
+  const isPanningRef = useRef(false);
+  const selectedMapIdRef = useRef(selectedMapId);
+
+  useEffect(() => {
+    selectedMapIdRef.current = selectedMapId;
+  }, [selectedMapId]);
+
+  // Alerta nativo de proteção contra perda de alterações não salvas
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChangesRef.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   // Carregar lista de mapas e ativos
   const fetchMaps = () => {
@@ -700,11 +727,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       .then((res) => {
         const latest = res.data;
         if (!latest) return;
-        // Sanitiza nós para que nenhum fique com coordenadas negativas ou perdidas fora da tela
+        // Sanitiza nós para que nenhum fique com coordenadas nulas ou inválidas (preserva qualquer coordenada real)
         const sanitizedNodes = (latest.nodes_data || []).map(n => {
           let updated = { ...n };
-          if (typeof updated.x === 'number' && updated.x < 50) updated.x = 80;
-          if (typeof updated.y === 'number' && updated.y < 50) updated.y = 80;
+          if (typeof updated.x !== 'number' || isNaN(updated.x)) updated.x = 100;
+          if (typeof updated.y !== 'number' || isNaN(updated.y)) updated.y = 100;
           return updated;
         });
         setMapData({ ...latest, nodes_data: sanitizedNodes });
@@ -742,22 +769,26 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   // Refresh periódico EM SEGUNDO PLANO
   const refreshMapStatuses = (id) => {
-    if (!id || draggingNodeId || isPanning || resizingNodeId) return;
+    if (!id) return;
+    // Se o usuário estiver interagindo (arrastando nós, áreas, pan ou redimensionando), não mexe em nada!
+    if (draggingNodeIdRef.current || draggingZoneIdRef.current || isPanningRef.current || resizingNodeIdRef.current) return;
 
     // Se NÃO há alterações pendentes locais (ex: tela da TV ou monitor sem edição ativa),
     // puxa a versão completa do fluxograma silenciosamente.
     // Isso garante que se um nó for adicionado, movido, excluído ou editado em outro PC,
     // a TV atualiza automaticamente no countdown sem precisar de F5 ou acesso remoto!
-    if (!hasUnsavedChanges) {
+    if (!hasUnsavedChangesRef.current) {
       fetchMapDetails(id, false);
       fetchLiveMetrics(id);
       return;
     }
 
-    // Se o usuário estiver no meio de uma edição neste computador,
-    // atualiza apenas os status de ICMP/Zabbix para não perder seu trabalho em andamento
+    // Se o usuário estiver no meio de uma edição neste computador (hasUnsavedChangesRef.current === true),
+    // JAMAIS recarrega o mapa do banco para não sobrescrever nem reverter o trabalho em andamento!
+    // Apenas consulta o backend para mesclar status ICMP e Zabbix nos nós locais existentes:
     api.get(`/network-maps/${id}`)
       .then((res) => {
+        if (!hasUnsavedChangesRef.current) return;
         const latestMap = res.data;
         if (!latestMap || !latestMap.nodes_data) return;
 
@@ -768,7 +799,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
           if (n.id) statusByNodeId[n.id] = n;
         });
 
-        // Atualizar status nos nós locais preservando posições (x, y) e edições pendentes
+        // Atualizar status nos nós locais preservando RIGIDAMENTE posições (x, y) e edições pendentes
         setMapData((prev) => ({
           ...prev,
           nodes_data: prev.nodes_data.map((node) => {
@@ -789,45 +820,47 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       })
       .catch(console.error);
         
-      fetchLiveMetrics(id);
-    };
+    fetchLiveMetrics(id);
+  };
 
-    const fetchLiveMetrics = async (mapId) => {
-      // Fetch UniFi Preventative Metrics regardless of mapId
-      try {
-        const unifiRes = await api.get("/integrations/unifi/devices");
-        if (unifiRes.data && unifiRes.data.devices) {
-          setUnifiMetrics(unifiRes.data.devices);
-        }
-      } catch (e) {
-        // silent fail if UniFi is not configured
+  const refreshMapStatusesRef = useRef();
+  refreshMapStatusesRef.current = refreshMapStatuses;
+
+  const fetchLiveMetrics = async (mapId) => {
+    // Fetch UniFi Preventative Metrics regardless of mapId
+    try {
+      const unifiRes = await api.get("/integrations/unifi/devices");
+      if (unifiRes.data && unifiRes.data.devices) {
+        setUnifiMetrics(unifiRes.data.devices);
       }
+    } catch (e) {
+      // silent fail if UniFi is not configured
+    }
 
-      if (!mapId) return; // Se não tem mapa selecionado, não busca métricas do zabbix
+    if (!mapId) return; // Se não tem mapa selecionado, não busca métricas do zabbix
 
-      try {
-        const res = await api.get(`/network-maps/${mapId}`);
-        const mapNodes = res.data.nodes_data || [];
-        
-        const assetsToFetch = mapNodes.filter(n => n.asset_id);
-        const metricsMap = { ...liveMetrics };
-        
-        await Promise.all(assetsToFetch.map(async (node) => {
-          try {
-            const metricsRes = await api.get(`/zabbix/assets/${node.asset_id}/network-interfaces`);
-            if (metricsRes.data && metricsRes.data.interfaces && metricsRes.data.interfaces.length > 0) {
-              metricsMap[node.asset_id] = metricsRes.data.interfaces;
-            }
-          } catch (e) {
-            // silent fail for nodes without metrics
+    try {
+      const res = await api.get(`/network-maps/${mapId}`);
+      const mapNodes = res.data.nodes_data || [];
+      
+      const assetsToFetch = mapNodes.filter(n => n.asset_id);
+      const metricsMap = { ...liveMetrics };
+      
+      await Promise.all(assetsToFetch.map(async (node) => {
+        try {
+          const metricsRes = await api.get(`/zabbix/assets/${node.asset_id}/network-interfaces`);
+          if (metricsRes.data && metricsRes.data.interfaces && metricsRes.data.interfaces.length > 0) {
+            metricsMap[node.asset_id] = metricsRes.data.interfaces;
           }
-        }));
-        setLiveMetrics(metricsMap);
-      } catch (err) {
-        console.error("Erro ao buscar métricas ao vivo", err);
-      }
-    };
-
+        } catch (e) {
+          // silent fail for nodes without metrics
+        }
+      }));
+      setLiveMetrics(metricsMap);
+    } catch (err) {
+      console.error("Erro ao buscar métricas ao vivo", err);
+    }
+  };
 
   useEffect(() => {
     fetchMaps();
@@ -853,27 +886,15 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         }
       }
       fetchMapDetails(selectedMapId, true);
-      // Refresh automático em segundo plano a cada 15s (sem resetar posições ou arrasto do usuário)
-      const interval = setInterval(() => refreshMapStatuses(selectedMapId), 15000);
+      // Refresh periódico seguro a cada 15s via Ref para nunca sofrer de stale closure
+      const interval = setInterval(() => {
+        if (refreshMapStatusesRef.current && selectedMapIdRef.current) {
+          refreshMapStatusesRef.current(selectedMapIdRef.current);
+        }
+      }, 15000);
       return () => clearInterval(interval);
     }
   }, [selectedMapId]);
-
-  // Rastreamento global de arrasto para movimento suave sem perda de foco
-  useEffect(() => {
-    if (draggingNodeId || draggingZoneId || resizingNodeId || isPanning) {
-      const onWindowMouseMove = (e) => handleMouseMove(e);
-      const onWindowMouseUp = (e) => handleMouseUp(e);
-
-      window.addEventListener("mousemove", onWindowMouseMove);
-      window.addEventListener("mouseup", onWindowMouseUp);
-
-      return () => {
-        window.removeEventListener("mousemove", onWindowMouseMove);
-        window.removeEventListener("mouseup", onWindowMouseUp);
-      };
-    }
-  }, [draggingNodeId, draggingZoneId, resizingNodeId, isPanning, dragOffset, zoneDragStart, resizeStart, panStart, zoom, pan, mapData]);
 
   // Salvar resolução (zoom) e posicionamento (pan) em cookies/localStorage da TV automaticamente após ajustes
   useEffect(() => {
@@ -886,9 +907,16 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   // Disparo de sincronização externa (acionado pelo countdown da tela pública/TV ou botão atualizar)
   useEffect(() => {
-    if (refreshTrigger && selectedMapId && !draggingNodeId && !isPanning && !resizingNodeId && !hasUnsavedChanges) {
+    if (!refreshTrigger || !selectedMapId) return;
+    if (draggingNodeIdRef.current || draggingZoneIdRef.current || isPanningRef.current || resizingNodeIdRef.current) return;
+
+    if (!hasUnsavedChangesRef.current) {
       fetchMapDetails(selectedMapId, false);
       fetchLiveMetrics(selectedMapId);
+    } else {
+      if (refreshMapStatusesRef.current) {
+        refreshMapStatusesRef.current(selectedMapId);
+      }
     }
   }, [refreshTrigger]);
 
@@ -1605,6 +1633,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     if (isPublicView) return;
     e.stopPropagation();
     setDraggingZoneId(zoneId);
+    draggingZoneIdRef.current = zoneId;
     setSelectedNodeId(zoneId);
 
     const zone = mapData.nodes_data.find(n => n.id === zoneId);
@@ -1729,8 +1758,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       const col = idx % cols;
       const row = Math.floor(idx / cols);
 
-      const posX = Math.max(80, Math.min(3700, startX + col * gapX));
-      const posY = Math.max(80, Math.min(2700, startY + row * gapY));
+      const posX = Math.round(startX + col * gapX);
+      const posY = Math.round(startY + row * gapY);
 
       const node = {
         id: `node_${timestamp}_${idx}`,
@@ -2156,6 +2185,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   // Remover Nó Selecionado
   const handleDeleteSelectedNode = () => {
     if (!selectedNodeId) return;
+    setHasUnsavedChanges(true);
     setMapData((prev) => ({
       ...prev,
       nodes_data: prev.nodes_data
@@ -2178,6 +2208,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     setIsNodeListOpen(false);
     if (e.target === containerRef.current || isPanMode || e.button === 1) {
       setIsPanning(true);
+      isPanningRef.current = true;
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
     }
   };
@@ -2187,6 +2218,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     e.stopPropagation();
     setSelectedNodeId(nodeId);
     setDraggingNodeId(nodeId);
+    draggingNodeIdRef.current = nodeId;
     
     const node = mapData.nodes_data.find(n => n.id === nodeId);
     if (node) {
@@ -2300,38 +2332,44 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }));
   };
 
-  const handleMouseUp = async () => {
-    const wasDraggingNode = !!draggingNodeId;
-    const wasDraggingZone = !!draggingZoneId;
-    const wasResizing = !!resizingNodeId;
-
+  const handleMouseUp = () => {
     setDraggingNodeId(null);
+    draggingNodeIdRef.current = null;
     setDraggingZoneId(null);
+    draggingZoneIdRef.current = null;
     setIsPanning(false);
+    isPanningRef.current = false;
     setResizingNodeId(null);
-
-    // Persiste imediatamente no servidor após arrastar nó ou área
-    if ((wasDraggingNode || wasDraggingZone || wasResizing) && mapData.id) {
-      try {
-        const payload = {
-          name: mapData.name,
-          description: mapData.description,
-          nodes_data: mapData.nodes_data,
-          edges_data: mapData.edges_data,
-          zoom_level: zoom,
-          pan_x: Math.round(pan.x),
-          pan_y: Math.round(pan.y),
-          background_image_url: mapData.background_image_url,
-        };
-        const res = await api.put(`/network-maps/${mapData.id}`, payload);
-        if (res.data) {
-          setHasUnsavedChanges(false);
-        }
-      } catch (err) {
-        console.error("Erro ao salvar posições após arrasto:", err);
-      }
-    }
+    resizingNodeIdRef.current = null;
   };
+
+  const handleMouseMoveRef = useRef();
+  handleMouseMoveRef.current = handleMouseMove;
+
+  const handleMouseUpRef = useRef();
+  handleMouseUpRef.current = handleMouseUp;
+
+  // Rastreamento global no window para garantir soltura e arrasto perfeitos mesmo fora do canvas
+  useEffect(() => {
+    const onWindowMouseMove = (e) => {
+      if (draggingNodeIdRef.current || draggingZoneIdRef.current || resizingNodeIdRef.current || isPanningRef.current) {
+        if (handleMouseMoveRef.current) handleMouseMoveRef.current(e);
+      }
+    };
+    const onWindowMouseUp = (e) => {
+      if (draggingNodeIdRef.current || draggingZoneIdRef.current || resizingNodeIdRef.current || isPanningRef.current) {
+        if (handleMouseUpRef.current) handleMouseUpRef.current(e);
+      }
+    };
+
+    window.addEventListener("mousemove", onWindowMouseMove);
+    window.addEventListener("mouseup", onWindowMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", onWindowMouseMove);
+      window.removeEventListener("mouseup", onWindowMouseUp);
+    };
+  }, []);
 
   // Renderizar Ícones dos Equipamentos no Nó
   const renderNodeIcon = (iconType, isProblem, isOffline) => {
@@ -3392,6 +3430,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           setResizingNodeId(node.id);
+                          resizingNodeIdRef.current = node.id;
                           const curW = node.width || (node.icon_type === 'Rack' || node.icon_type === 'Zone' ? 280 : 220);
                           const curH = node.height || 0;
                           setResizeStart({ x: e.clientX, y: e.clientY, w: curW, h: curH });
