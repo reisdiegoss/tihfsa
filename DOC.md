@@ -71,7 +71,7 @@ Fechamento de Ticket: Técnicos não fecham chamados de usuários comuns. O téc
 Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Diagramas de Topologia Interativos**: Suporte completo a nós de infraestrutura (Switches, Racks, Access Points, Servidores, Firewalls, Roteadores).
 - **Dimensionamento Personalizado de Cards**: Suporte a ajuste de largura e altura (pixels manuais ou presets: Padrão, Médio, Largo, Extra Largo), além de alça interativa de redimensionamento direto no canvas. Quebra de texto inteligente para manter nomes longos legíveis sem corte.
-- **Opções de Exibição Granulares**: Seleção precisa do que exibir em cada card (tanto dentro do Rack quanto em equipamentos avulsos fora do rack), incluindo exibição de IP e métricas UniFi detalhadas: CPU, RAM, Uptime, Firmware, WiFi Experience, Clientes Conectados, Canais 2.4G/5G & Uso, Experiência LAN / Uplink e Tráfego RX / TX em tempo real (tanto para Switches quanto para Access Points via telemetria de portas e uplink).
+- **Opções de Exibição Granulares**: Seleção precisa do que exibir em cada card (tanto dentro do Rack quanto em equipamentos avulsos fora do rack), incluindo exibição de IP e métricas UniFi detalhadas (CPU, RAM, Uptime, Firmware, WiFi Experience, Clientes conectados, Utilização de Canais, LAN Experience e Taxas RX/TX).
 - **Alerta Sonoro Inteligente para Dispositivos Offline (Intercalado a cada 2s)**:
   - Configurado diretamente no painel do Fluxograma / Topologia NOC:
     - **1-Clique no Card**: Clique direto no ícone de sino (🔔) no cabeçalho do card no canvas para ativar/desativar o alerta do dispositivo instantaneamente.

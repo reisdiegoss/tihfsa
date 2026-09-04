@@ -3864,9 +3864,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     {[
                       { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
                       { id: 'clients', label: 'Clientes (AP)' },
-                      { id: 'channel_utilization', label: 'Canais 2.4G / 5G & Uso (AP)' },
-                      { id: 'lan_experience', label: 'LAN Exp. / Uplink (SW & AP)' },
-                      { id: 'rx_tx', label: 'Tráfego RX / TX (AP & SW)' },
+                      { id: 'channel_utilization', label: 'Uso Canal (AP)' },
+                      { id: 'lan_experience', label: 'LAN Exp. (SW)' },
+                      { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
                       { id: 'uptime', label: 'Uptime' },
                       { id: 'cpu', label: 'CPU' },
                       { id: 'ram', label: 'RAM' },
@@ -4424,9 +4424,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         { id: 'fw', label: 'Firmware' },
                         { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
                         { id: 'clients', label: 'Clientes (AP)' },
-                        { id: 'channel_utilization', label: 'Canais 2.4G / 5G & Uso (AP)' },
-                        { id: 'lan_experience', label: 'LAN Exp. / Uplink (SW & AP)' },
-                        { id: 'rx_tx', label: 'Tráfego RX / TX (AP & SW)' }
+                        { id: 'channel_utilization', label: 'Uso Canal (AP)' },
+                        { id: 'lan_experience', label: 'LAN Exp. (SW)' },
+                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
                       ].map(metric => {
                         const currentOpts = newNodeForm.display_options || newNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
                         const isMetricChecked = (currentOpts.unifi_metrics || []).includes(metric.id);
@@ -4827,9 +4827,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         { id: 'fw', label: 'Firmware' },
                         { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
                         { id: 'clients', label: 'Clientes (AP)' },
-                        { id: 'channel_utilization', label: 'Canais 2.4G / 5G & Uso (AP)' },
-                        { id: 'lan_experience', label: 'LAN Exp. / Uplink (SW & AP)' },
-                        { id: 'rx_tx', label: 'Tráfego RX / TX (AP & SW)' }
+                        { id: 'channel_utilization', label: 'Uso Canal (AP)' },
+                        { id: 'lan_experience', label: 'LAN Exp. (SW)' },
+                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
                       ].map(metric => {
                         const currentMetrics = Array.isArray(editNodeForm.display_options?.unifi_metrics)
                           ? editNodeForm.display_options.unifi_metrics
