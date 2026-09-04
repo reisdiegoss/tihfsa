@@ -305,7 +305,134 @@ const getNodeRealDimensions = (node) => {
   return { w, h: 220 };
 };
 
-// Calcula a geometria dinâmica adaptativa da Área / Bloco (molda-se aos dispositivos em tempo real)
+// Monotone chain algorithm for 2D convex hull. Retorna polígono no sentido horário.
+const computeConvexHull = (points) => {
+  if (!points || points.length <= 2) return points || [];
+  
+  const pts = points.map(p => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 }));
+  pts.sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+  
+  const unique = [];
+  for (let i = 0; i < pts.length; i++) {
+    if (i === 0 || pts[i].x !== pts[i-1].x || pts[i].y !== pts[i-1].y) {
+      unique.push(pts[i]);
+    }
+  }
+  if (unique.length <= 2) return unique;
+
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+  // Lower hull
+  const lower = [];
+  for (const p of unique) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0.001) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+
+  // Upper hull
+  const upper = [];
+  for (let i = unique.length - 1; i >= 0; i--) {
+    const p = unique[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0.001) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+
+  lower.pop();
+  upper.pop();
+  const hull = lower.concat(upper);
+
+  // No sistema de coordenadas do SVG (y para baixo), área positiva com cross-sum é sentido horário
+  let area = 0;
+  for (let i = 0; i < hull.length; i++) {
+    const j = (i + 1) % hull.length;
+    area += hull[i].x * hull[j].y - hull[j].x * hull[i].y;
+  }
+  if (area < 0) {
+    hull.reverse();
+  }
+  return hull;
+};
+
+// Gera o caminho SVG em formato de bolha/cápsula orgânica ao redor dos membros
+const generateBubblePath = (members, padX = 30, padTop = 45, padBottom = 30, radius = 24) => {
+  if (!members || members.length === 0) return "";
+
+  const centers = [];
+  members.forEach(m => {
+    const w = m.w || 220;
+    const h = m.h || 340;
+    const x1 = m.x - padX + radius;
+    const y1 = m.y - padTop + radius;
+    const x2 = m.x + w + padX - radius;
+    const y2 = m.y + h + padBottom - radius;
+
+    centers.push(
+      { x: x1, y: y1 },
+      { x: x2, y: y1 },
+      { x: x2, y: y2 },
+      { x: x1, y: y2 }
+    );
+  });
+
+  const hull = computeConvexHull(centers);
+  const n = hull.length;
+  if (n === 0) return "";
+
+  if (n === 1) {
+    const c = hull[0];
+    return `M ${c.x - radius} ${c.y} A ${radius} ${radius} 0 1 0 ${c.x + radius} ${c.y} A ${radius} ${radius} 0 1 0 ${c.x - radius} ${c.y} Z`;
+  }
+
+  // Normais externas para cada aresta no SVG (sentido horário, y para baixo)
+  const edgesNormals = [];
+  for (let i = 0; i < n; i++) {
+    const p1 = hull[i];
+    const p2 = hull[(i + 1) % n];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-6) {
+      edgesNormals.push({ nx: 0, ny: 0 });
+    } else {
+      edgesNormals.push({
+        nx: dy / dist,
+        ny: -dx / dist
+      });
+    }
+  }
+
+  const cmds = [];
+  for (let i = 0; i < n; i++) {
+    const p = hull[i];
+    const prevIdx = (i - 1 + n) % n;
+    const normIn = edgesNormals[prevIdx];
+    const normOut = edgesNormals[i];
+
+    const startX = (p.x + normIn.nx * radius).toFixed(1);
+    const startY = (p.y + normIn.ny * radius).toFixed(1);
+    const endX = (p.x + normOut.nx * radius).toFixed(1);
+    const endY = (p.y + normOut.ny * radius).toFixed(1);
+
+    const pNext = hull[(i + 1) % n];
+    const nextX = (pNext.x + normOut.nx * radius).toFixed(1);
+    const nextY = (pNext.y + normOut.ny * radius).toFixed(1);
+
+    if (i === 0) {
+      cmds.push(`M ${startX} ${startY}`);
+    }
+    cmds.push(`A ${radius} ${radius} 0 0 1 ${endX} ${endY}`);
+    cmds.push(`L ${nextX} ${nextY}`);
+  }
+
+  cmds.push("Z");
+  return cmds.join(" ");
+};
+
+// Calcula a geometria dinâmica adaptativa da Área / Bloco (molda-se aos dispositivos em formato de bolha)
 const getZoneGeometry = (zone, allNodes) => {
   const members = (allNodes || []).filter(
     n => String(n.zone_id) === String(zone.id) && String(n.id) !== String(zone.id) && n.icon_type !== 'Zone'
@@ -316,6 +443,8 @@ const getZoneGeometry = (zone, allNodes) => {
     const y = zone.y || 100;
     const w = zone.width || 380;
     const h = zone.height || 240;
+    const r = 28;
+    const path = `M ${x + r} ${y} L ${x + w - r} ${y} A ${r} ${r} 0 0 1 ${x + w} ${y + r} L ${x + w} ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} L ${x + r} ${y + h} A ${r} ${r} 0 0 1 ${x} ${y + h - r} L ${x} ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z`;
     return {
       x,
       y,
@@ -325,6 +454,7 @@ const getZoneGeometry = (zone, allNodes) => {
       maxY: y + h,
       width: w,
       height: h,
+      path,
       headerX: x + 24,
       headerY: y - 18,
       membersCount: 0,
@@ -332,16 +462,19 @@ const getZoneGeometry = (zone, allNodes) => {
     };
   }
 
-  const padX = 35;
-  const padTop = 50; // Espaço reservado para o cabeçalho superior da área
-  const padBottom = 35;
+  const padX = 30;
+  const padTop = 45; // Espaço reservado para o cabeçalho superior da área
+  const padBottom = 30;
+  const radius = 24;
 
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  members.forEach(m => {
+  let topmostMember = members[0];
+
+  const memberBoxes = members.map(m => {
     const dim = getNodeRealDimensions(m);
     const mx1 = m.x - padX;
     const my1 = m.y - padTop;
@@ -352,10 +485,26 @@ const getZoneGeometry = (zone, allNodes) => {
     if (my1 < minY) minY = my1;
     if (mx2 > maxX) maxX = mx2;
     if (my2 > maxY) maxY = my2;
+
+    if (m.y < topmostMember.y) {
+      topmostMember = m;
+    }
+
+    return {
+      x: m.x,
+      y: m.y,
+      w: dim.w,
+      h: dim.h
+    };
   });
 
+  const path = generateBubblePath(memberBoxes, padX, padTop, padBottom, radius);
   const width = Math.max(220, maxX - minX);
   const height = Math.max(140, maxY - minY);
+
+  // Posiciona o cabeçalho flutuante acima do card mais alto da área
+  const headerX = topmostMember.x + 16;
+  const headerY = topmostMember.y - padTop - 14;
 
   return {
     x: minX,
@@ -366,8 +515,9 @@ const getZoneGeometry = (zone, allNodes) => {
     maxY,
     width,
     height,
-    headerX: minX + 24,
-    headerY: minY - 18,
+    path,
+    headerX,
+    headerY,
     membersCount: members.length,
     hasMembers: true,
   };
@@ -2482,27 +2632,17 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   <g key={zone.id} className="pointer-events-auto cursor-pointer">
                     {/* Linha de brilho externa quando selecionado */}
                     {isSelected && (
-                      <rect
-                        x={geom.x - 3}
-                        y={geom.y - 3}
-                        width={geom.width + 6}
-                        height={geom.height + 6}
-                        rx="30"
-                        ry="30"
+                      <path
+                        d={geom.path}
                         fill="none"
                         stroke={theme.stroke}
-                        strokeWidth="6"
+                        strokeWidth="8"
                         opacity="0.25"
                       />
                     )}
-                    {/* Contorno Adaptativo com Borda Tracejada e Preenchimento Translúcido */}
-                    <rect
-                      x={geom.x}
-                      y={geom.y}
-                      width={geom.width}
-                      height={geom.height}
-                      rx="28"
-                      ry="28"
+                    {/* Contorno Adaptativo Dinâmico em Formato de Bolha com Borda Tracejada */}
+                    <path
+                      d={geom.path}
                       fill={isSelected ? theme.fillSelected : theme.fill}
                       stroke={theme.stroke}
                       strokeWidth={isSelected ? "3" : "2"}
