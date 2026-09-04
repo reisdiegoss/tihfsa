@@ -115,5 +115,18 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
   - **Reutilização Total de Infraestrutura**: O clone preserva fielmente todos os racks, switches, nós, dimensões personalizadas, posições `(x, y)`, conexões e cabos (edges), nível de zoom e coordenadas de enquadramento.
   - Abre um modal solicitando o nome do novo fluxograma (preenchido por padrão como `[Nome] (Cópia)`) e descrição opcional.
   - Ao confirmar, o novo mapa é gravado no banco de dados e a interface alterna imediatamente para o diagrama recém-criado. O operador pode então apenas alterar os dispositivos conectados aos switches e racks (ex: trocar APs ou computadores de uma sala para outra) sem precisar remontar toda a estrutura física de racks e switches.
+- **Áreas / Zonas com Contorno Adaptativo (Moldura Dinâmica - ex: Bloco ADM, Bloco UH)**:
+  - Permite criar blocos de agrupamento espacial no canvas para separar setores físicos ou lógicos (ex: antenas do Administrativo vs. antenas dos Apartamentos).
+  - **Contorno Bounding Box em Tempo Real**: Diferente dos racks (que guardam listas fechadas), a área é um perímetro translúcido com borda tracejada elegante que se molda automaticamente conforme o usuário movimenta os equipamentos vinculados no canvas.
+  - **Paleta de Cores Temáticas**: Suporte a temas visualmente harmônicos (Azul Índigo, Verde Esmeralda, Roxo/Violeta, Âmbar/Laranja, Rosa/Carmim e Ciano/Turquesa).
+  - **Associação Mútua Exclusiva**:
+    - Cada equipamento só pode pertencer a uma única área/zona simultaneamente.
+    - Pode ser vinculado pelo modal da Área (checklist com detecção de transferência) ou pelo modal individual do próprio equipamento (dropdown com seleção de bloco).
+  - **Movimentação em Bloco**: Ao arrastar a etiqueta de cabeçalho da área, todos os equipamentos vinculados se movimentam conjuntamente pelo canvas. Ao arrastar uma antena avulsa, apenas ela se move e o perímetro da área se recalcula e se expande/contrai dinamicamente.
+  - **Camadas sem Conflito (Z-Index)**: As áreas rodam em camada de fundo (`z-10`) com cliques passantes transparentes, permitindo clicar, abrir métricas e interagir com switches, antenas e cabos (`z-30`) sem qualquer sobreposição.
+- **Badge Flutuante de Identificação do Fluxograma (Modo TV & Edição)**:
+  - Overlay em estilo Glassmorphism fixado no canto superior esquerdo do canvas (`absolute top-4 left-4 z-40 pointer-events-none`).
+  - Exibe o nome do fluxograma ativo (`mapData.name`) com indicador luminoso pulsante e descrição do ambiente, garantindo que em monitores de TV (mesmo no modo trancado) e durante o carrossel a equipe saiba no primeiro segundo qual andar ou setor está sendo exibido.
+
 
 

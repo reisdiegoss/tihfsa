@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Server, HardDrive, Wifi, Phone, Shield, Cloud, Monitor, Activity, Zap,
   Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2,
-  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy
+  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy, Layers
 } from "lucide-react";
 import api from "../../api/client";
 const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
@@ -177,6 +177,116 @@ const getTvViewport = (mapId) => {
   return null;
 };
 
+
+// Paleta de temas visuais para Áreas / Blocos de Agrupamento
+const ZONE_COLOR_THEMES = {
+  blue: {
+    key: "blue",
+    name: "Azul Índigo",
+    border: "border-blue-500/60",
+    bg: "bg-blue-950/20",
+    headerBg: "bg-blue-900/80 text-blue-200 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]",
+    accent: "text-blue-400",
+    badge: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+    dot: "bg-blue-400",
+  },
+  emerald: {
+    key: "emerald",
+    name: "Verde Esmeralda",
+    border: "border-emerald-500/60",
+    bg: "bg-emerald-950/20",
+    headerBg: "bg-emerald-900/80 text-emerald-200 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]",
+    accent: "text-emerald-400",
+    badge: "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
+    dot: "bg-emerald-400",
+  },
+  purple: {
+    key: "purple",
+    name: "Roxo / Violeta",
+    border: "border-purple-500/60",
+    bg: "bg-purple-950/20",
+    headerBg: "bg-purple-900/80 text-purple-200 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]",
+    accent: "text-purple-400",
+    badge: "bg-purple-500/20 text-purple-300 border border-purple-500/30",
+    dot: "bg-purple-400",
+  },
+  amber: {
+    key: "amber",
+    name: "Âmbar / Laranja",
+    border: "border-amber-500/60",
+    bg: "bg-amber-950/20",
+    headerBg: "bg-amber-900/80 text-amber-200 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]",
+    accent: "text-amber-400",
+    badge: "bg-amber-500/20 text-amber-300 border border-amber-500/30",
+    dot: "bg-amber-400",
+  },
+  rose: {
+    key: "rose",
+    name: "Rosa / Carmim",
+    border: "border-rose-500/60",
+    bg: "bg-rose-950/20",
+    headerBg: "bg-rose-900/80 text-rose-200 border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.2)]",
+    accent: "text-rose-400",
+    badge: "bg-rose-500/20 text-rose-300 border border-rose-500/30",
+    dot: "bg-rose-400",
+  },
+  cyan: {
+    key: "cyan",
+    name: "Ciano / Turquesa",
+    border: "border-cyan-500/60",
+    bg: "bg-cyan-950/20",
+    headerBg: "bg-cyan-900/80 text-cyan-200 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.2)]",
+    accent: "text-cyan-400",
+    badge: "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30",
+    dot: "bg-cyan-400",
+  },
+};
+
+// Calcula a menor caixa delimitadora (envelope com cantos arredondados) que envolve todos os nós membros da área
+const getZoneBounds = (zone, allNodes) => {
+  const members = (allNodes || []).filter(n => n.zone_id === zone.id && n.id !== zone.id && n.icon_type !== 'Zone');
+  if (members.length === 0) {
+    return {
+      x: zone.x || 100,
+      y: zone.y || 100,
+      width: zone.width || 380,
+      height: zone.height || 240,
+      membersCount: 0,
+      hasMembers: false,
+    };
+  }
+
+  const padX = 35;
+  const padTop = 50; // Espaço reservado para a etiqueta/cabeçalho superior da área
+  const padBottom = 30;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  members.forEach(m => {
+    const isRack = m.icon_type === 'Rack';
+    const childCount = m.child_asset_ids?.length || 0;
+    const w = m.width || (isRack ? 280 : 220);
+    const h = m.height || (isRack ? Math.max(160, 100 + childCount * 48) : 140);
+    
+    if (m.x < minX) minX = m.x;
+    if (m.y < minY) minY = m.y;
+    if (m.x + w > maxX) maxX = m.x + w;
+    if (m.y + h > maxY) maxY = m.y + h;
+  });
+
+  return {
+    x: minX - padX,
+    y: minY - padTop,
+    width: (maxX - minX) + (padX * 2),
+    height: (maxY - minY) + padTop + padBottom,
+    membersCount: members.length,
+    hasMembers: true,
+  };
+};
+
 export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapLoaded, refreshTrigger }) {
   const [mapData, setMapData] = useState({
     id: null,
@@ -204,6 +314,17 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [cloningMap, setCloningMap] = useState(false);
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
 
+  // Estados para Áreas / Blocos de Agrupamento Dinâmicos (ex: Bloco ADM, Bloco UH)
+  const [isZoneModalOpen, setIsZoneModalOpen] = useState(false);
+  const [zoneForm, setZoneForm] = useState({
+    id: null,
+    label: "",
+    color: "blue",
+    selected_node_ids: [],
+  });
+  const [draggingZoneId, setDraggingZoneId] = useState(null);
+  const [zoneDragStart, setZoneDragStart] = useState({ x: 0, y: 0, zoneX: 0, zoneY: 0, memberPositions: {} });
+
   const DEFAULT_DISPLAY_OPTIONS = {
     show_ip: true,
     unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx']
@@ -215,6 +336,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     label: "",
     ip_address: "",
     icon_type: "Switch", // 'Switch', 'AccessPoint', 'Phone', 'Server', 'Firewall', 'Cloud', 'Rack', 'Zone'
+    zone_id: "",
     width: "",
     height: "",
     sound_alert_offline: false,
@@ -232,6 +354,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     label: "",
     ip_address: "",
     icon_type: "Switch",
+    zone_id: "",
     width: "",
     height: "",
     sound_alert_offline: false,
@@ -514,7 +637,16 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     
     // Calcular limites reais considerando a largura e altura de cada tipo de nó (especialmente Racks)
     const bounds = mapData.nodes_data.map(n => {
-      const isRack = n.icon_type === 'Rack' || n.icon_type === 'Zone';
+      if (n.icon_type === 'Zone') {
+        const zb = getZoneBounds(n, mapData.nodes_data);
+        return {
+          minX: zb.x,
+          maxX: zb.x + zb.width,
+          minY: zb.y,
+          maxY: zb.y + zb.height
+        };
+      }
+      const isRack = n.icon_type === 'Rack';
       const nodeW = isRack ? 260 : 160;
       const childCount = n.child_asset_ids?.length || 0;
       const nodeH = isRack ? Math.max(160, 100 + childCount * 48) : 130;
@@ -963,6 +1095,175 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       });
   };
 
+  // Handlers para Áreas / Blocos de Agrupamento
+  const openAddZoneModal = () => {
+    setZoneForm({
+      id: null,
+      label: "",
+      color: "blue",
+      selected_node_ids: [],
+    });
+    setIsZoneModalOpen(true);
+  };
+
+  const openEditZoneModal = (zoneId) => {
+    const zone = mapData.nodes_data.find(n => n.id === zoneId);
+    if (!zone) return;
+    const currentMembers = mapData.nodes_data
+      .filter(n => n.zone_id === zone.id && n.id !== zone.id && n.icon_type !== 'Zone')
+      .map(n => n.id);
+
+    setZoneForm({
+      id: zone.id,
+      label: zone.label,
+      color: zone.color || "blue",
+      selected_node_ids: currentMembers,
+    });
+    setIsZoneModalOpen(true);
+  };
+
+  const handleSaveZone = async () => {
+    if (!zoneForm.label.trim()) return;
+
+    const isNew = !zoneForm.id;
+    const zoneId = zoneForm.id || `zone_${Date.now()}`;
+
+    const container = containerRef.current;
+    const cWidth = container ? container.clientWidth : 1200;
+    const cHeight = container ? container.clientHeight : 750;
+    const centerX = (-pan.x + cWidth / 2) / zoom - 180;
+    const centerY = (-pan.y + cHeight / 2) / zoom - 120;
+
+    let updatedNodes = [...mapData.nodes_data];
+
+    if (isNew) {
+      const newZoneNode = {
+        id: zoneId,
+        label: zoneForm.label.trim(),
+        icon_type: "Zone",
+        color: zoneForm.color || "blue",
+        x: Math.round(centerX),
+        y: Math.round(centerY),
+        width: 380,
+        height: 240,
+      };
+      updatedNodes.push(newZoneNode);
+    } else {
+      updatedNodes = updatedNodes.map(n => {
+        if (n.id === zoneId) {
+          return {
+            ...n,
+            label: zoneForm.label.trim(),
+            color: zoneForm.color || "blue",
+          };
+        }
+        return n;
+      });
+    }
+
+    // Atualiza pertinência exclusiva:
+    // Nós em selected_node_ids recebem zone_id = zoneId (desvincula de qualquer outra zona)
+    // Nós que tinham zone_id === zoneId mas foram desmarcados recebem zone_id = null
+    updatedNodes = updatedNodes.map(n => {
+      if (n.id === zoneId || n.icon_type === 'Zone') return n;
+      const isSelected = zoneForm.selected_node_ids.includes(n.id);
+      if (isSelected) {
+        return { ...n, zone_id: zoneId };
+      } else if (n.zone_id === zoneId) {
+        return { ...n, zone_id: null };
+      }
+      return n;
+    });
+
+    setMapData(prev => ({
+      ...prev,
+      nodes_data: updatedNodes,
+    }));
+    setIsZoneModalOpen(false);
+
+    if (mapData.id) {
+      try {
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: updatedNodes,
+          edges_data: mapData.edges_data,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        const res = await api.put(`/network-maps/${mapData.id}`, payload);
+        if (res.data) {
+          setMapData(res.data);
+          setHasUnsavedChanges(false);
+        }
+      } catch (err) {
+        console.error("Erro ao salvar área/bloco:", err);
+      }
+    }
+  };
+
+  const handleDeleteZone = async (zoneId) => {
+    const zone = mapData.nodes_data.find(n => n.id === zoneId);
+    if (!zone) return;
+    if (!window.confirm(`Tem certeza que deseja remover a área "${zone.label}"? Os equipamentos pertencentes não serão excluídos, apenas desvinculados.`)) return;
+
+    const updatedNodes = mapData.nodes_data
+      .filter(n => n.id !== zoneId)
+      .map(n => n.zone_id === zoneId ? { ...n, zone_id: null } : n);
+
+    setMapData(prev => ({
+      ...prev,
+      nodes_data: updatedNodes,
+    }));
+
+    if (mapData.id) {
+      try {
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: updatedNodes,
+          edges_data: mapData.edges_data,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        const res = await api.put(`/network-maps/${mapData.id}`, payload);
+        if (res.data) {
+          setMapData(res.data);
+          setHasUnsavedChanges(false);
+        }
+      } catch (err) {
+        console.error("Erro ao remover área:", err);
+      }
+    }
+  };
+
+  const handleMouseDownZone = (zoneId, e) => {
+    if (isPublicView) return;
+    e.stopPropagation();
+    setDraggingZoneId(zoneId);
+    setSelectedNodeId(zoneId);
+
+    const zone = mapData.nodes_data.find(n => n.id === zoneId);
+    const members = mapData.nodes_data.filter(n => n.zone_id === zoneId && n.id !== zoneId && n.icon_type !== 'Zone');
+
+    const memberPositions = {};
+    members.forEach(m => {
+      memberPositions[m.id] = { x: m.x, y: m.y };
+    });
+
+    setZoneDragStart({
+      x: e.clientX,
+      y: e.clientY,
+      zoneX: zone?.x || 0,
+      zoneY: zone?.y || 0,
+      memberPositions,
+    });
+  };
+
   // Adicionar Nó ao Mapa
   const handleAddNode = async () => {
     const selectedAsset = assetsList.find(a => String(a.id) === String(newNodeForm.asset_id));
@@ -981,6 +1282,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       asset_id: selectedAsset ? selectedAsset.id : null,
       label: newNodeForm.label || (selectedAsset ? selectedAsset.name : "Novo Equipamento"),
       icon_type: newNodeForm.icon_type,
+      zone_id: newNodeForm.zone_id || null,
       x: Math.round(centerX),
       y: Math.round(centerY),
       width: newNodeForm.width ? parseInt(newNodeForm.width, 10) : null,
@@ -1009,6 +1311,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       label: "", 
       ip_address: "", 
       icon_type: "Switch", 
+      zone_id: "",
       width: "", 
       height: "", 
       sound_alert_offline: false,
@@ -1063,6 +1366,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       asset_id: node.asset_id ? String(node.asset_id) : "",
       label: node.label,
       icon_type: node.icon_type,
+      zone_id: node.zone_id || "",
       ip_address: node.ip_address || "",
       width: node.width !== undefined && node.width !== null ? String(node.width) : "",
       height: node.height !== undefined && node.height !== null ? String(node.height) : "",
@@ -1124,6 +1428,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
           rack_display_options: displayOpts,
           label: editNodeForm.label || (selectedAsset ? selectedAsset.name : n.label),
           icon_type: editNodeForm.icon_type,
+          zone_id: editNodeForm.zone_id || null,
           ip_address: editNodeForm.ip_address || (selectedAsset ? selectedAsset.ip_address : n.ip_address),
           zabbix_selected_metrics: [...editNodeForm.zabbix_selected_metrics],
           icmp_status: selectedAsset ? selectedAsset.icmp_status : n.icmp_status,
@@ -1193,7 +1498,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     if (!selectedNodeId) return;
     setMapData((prev) => ({
       ...prev,
-      nodes_data: prev.nodes_data.filter((n) => n.id !== selectedNodeId),
+      nodes_data: prev.nodes_data
+        .filter((n) => n.id !== selectedNodeId)
+        .map((n) => n.zone_id === selectedNodeId ? { ...n, zone_id: null } : n),
       edges_data: prev.edges_data.filter((e) => e.source_id !== selectedNodeId && e.target_id !== selectedNodeId),
     }));
     setSelectedNodeId(null);
@@ -1253,6 +1560,34 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       return;
     }
 
+    if (draggingZoneId) {
+      const diffX = Math.round((e.clientX - zoneDragStart.x) / zoom);
+      const diffY = Math.round((e.clientY - zoneDragStart.y) / zoom);
+
+      setHasUnsavedChanges(true);
+      setMapData((prev) => ({
+        ...prev,
+        nodes_data: prev.nodes_data.map((n) => {
+          if (n.id === draggingZoneId) {
+            return {
+              ...n,
+              x: zoneDragStart.zoneX + diffX,
+              y: zoneDragStart.zoneY + diffY,
+            };
+          }
+          if (zoneDragStart.memberPositions[n.id]) {
+            return {
+              ...n,
+              x: zoneDragStart.memberPositions[n.id].x + diffX,
+              y: zoneDragStart.memberPositions[n.id].y + diffY,
+            };
+          }
+          return n;
+        }),
+      }));
+      return;
+    }
+
     if (!draggingNodeId || isPublicView) return;
     
     const newX = Math.round((e.clientX - pan.x) / zoom - dragOffset.x);
@@ -1269,6 +1604,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   const handleMouseUp = () => {
     setDraggingNodeId(null);
+    setDraggingZoneId(null);
     setIsPanning(false);
     setResizingNodeId(null);
   };
@@ -1493,6 +1829,14 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             </button>
 
             <button
+              onClick={openAddZoneModal}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-indigo-600/20"
+              title="Criar uma Área / Bloco para agrupar e delimitar equipamentos (ex: Bloco ADM, Bloco UH)"
+            >
+              <Layers size={15} /> Nova Área / Bloco
+            </button>
+
+            <button
               onClick={() => setIsAddEdgeModalOpen(true)}
               className="bg-purple-600 hover:bg-purple-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
             >
@@ -1579,6 +1923,22 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
           isPanMode ? "cursor-grab active:cursor-grabbing" : ""
         }`}
       >
+        {/* Badge Flutuante de Identificação do Fluxograma (Canto Superior Esquerdo) */}
+        {mapData.name && (
+          <div className="absolute top-4 left-4 z-40 pointer-events-none flex flex-col gap-1 bg-slate-900/85 backdrop-blur-md border border-slate-800/80 px-4 py-2.5 rounded-2xl shadow-2xl max-w-md select-none transition-all duration-300">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <h2 className="text-xs sm:text-sm font-black text-white tracking-wide uppercase truncate" title={mapData.name}>
+                {mapData.name}
+              </h2>
+            </div>
+            {mapData.description && (
+              <p className="text-[11px] text-slate-400 font-medium line-clamp-1" title={mapData.description}>
+                {mapData.description}
+              </p>
+            )}
+          </div>
+        )}
         
         {/* Floating Zoom & Pan Control Bar (Bottom Right) */}
         <div className="absolute bottom-4 right-4 z-40 bg-slate-900/90 border border-slate-800 rounded-2xl p-1.5 backdrop-blur-md shadow-2xl flex items-center gap-1.5 text-slate-300 text-xs">
@@ -1788,9 +2148,76 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               })}
             </svg>
 
+            {/* Layer de Áreas / Blocos com Contorno Adaptativo (z-10) */}
+            <div className="absolute inset-0 pointer-events-none">
+              {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map((zone) => {
+                const bounds = getZoneBounds(zone, mapData.nodes_data);
+                const theme = ZONE_COLOR_THEMES[zone.color] || ZONE_COLOR_THEMES.blue;
+                const isSelected = selectedNodeId === zone.id;
+
+                return (
+                  <div
+                    key={zone.id}
+                    style={{
+                      left: `${bounds.x}px`,
+                      top: `${bounds.y}px`,
+                      width: `${bounds.width}px`,
+                      height: `${bounds.height}px`,
+                    }}
+                    className={`absolute rounded-3xl border-2 border-dashed ${theme.border} ${theme.bg} transition-[width,height,left,top] duration-75 z-10 ${
+                      isSelected ? `ring-2 ${theme.ring}` : ''
+                    }`}
+                  >
+                    {/* Cabeçalho da Área / Bloco */}
+                    <div
+                      onMouseDown={(e) => handleMouseDownZone(zone.id, e)}
+                      onDoubleClick={() => !isPublicView && openEditZoneModal(zone.id)}
+                      className={`absolute -top-3.5 left-6 px-3 py-1 rounded-full border shadow-lg flex items-center gap-2 pointer-events-auto cursor-grab active:cursor-grabbing ${theme.headerBg} backdrop-blur-md select-none`}
+                      title={!isPublicView ? "Arraste pelo cabeçalho para mover todo o bloco ou clique duas vezes para editar" : ""}
+                    >
+                      <Layers size={13} className={theme.accent} />
+                      <span className="text-xs font-black tracking-wide uppercase">
+                        {zone.label}
+                      </span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-black/50 text-slate-300 font-mono">
+                        {bounds.membersCount} {bounds.membersCount === 1 ? 'item' : 'itens'}
+                      </span>
+
+                      {!isPublicView && (
+                        <div className="flex items-center gap-1 ml-1 border-l border-white/20 pl-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditZoneModal(zone.id);
+                            }}
+                            className="p-1 hover:bg-white/20 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
+                            title="Editar configurações e membros desta área"
+                          >
+                            <Edit3 size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteZone(zone.id);
+                            }}
+                            className="p-1 hover:bg-red-500/40 rounded text-red-300 hover:text-red-200 transition-colors cursor-pointer"
+                            title="Excluir esta área (mantém os equipamentos)"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
             {/* DOM Layer for Network Nodes / Hardware Cards */}
             <div className="absolute inset-0">
-              {mapData.nodes_data.map((node) => {
+              {mapData.nodes_data.filter(n => n.icon_type !== 'Zone').map((node) => {
                 const isOffline = getIsNodeOffline(node);
                 const isSelected = selectedNodeId === node.id;
                 const nodeWidth = node.width || (node.icon_type === 'Rack' || node.icon_type === 'Zone' ? 280 : 220);
@@ -1904,6 +2331,21 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         <p className="text-[10px] font-mono text-slate-400 font-bold truncate">
                           {node.ip_address}
                         </p>
+                      )}
+                      {node.zone_id && (
+                        (() => {
+                          const parentZone = mapData.nodes_data.find(z => z.id === node.zone_id);
+                          if (!parentZone) return null;
+                          const zTheme = ZONE_COLOR_THEMES[parentZone.color] || ZONE_COLOR_THEMES.blue;
+                          return (
+                            <div className="mt-1">
+                              <span className={`inline-flex items-center gap-1 text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-md ${zTheme.badge} truncate max-w-full`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${zTheme.dot}`} />
+                                {parentZone.label}
+                              </span>
+                            </div>
+                          );
+                        })()
                       )}
                       {node.child_asset_ids && node.child_asset_ids.length > 0 && (
                         <div className="mt-2 w-full">
@@ -2094,6 +2536,22 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
                 />
               </div>
+
+              {mapData.nodes_data.some(n => n.icon_type === 'Zone') && (
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Área / Bloco de Agrupamento:</label>
+                  <select
+                    value={newNodeForm.zone_id || ""}
+                    onChange={(e) => setNewNodeForm(prev => ({ ...prev, zone_id: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                  >
+                    <option value="">Nenhuma (Equipamento Fora de Blocos)</option>
+                    {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map(z => (
+                      <option key={z.id} value={z.id}>🏢 {z.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-slate-400 font-bold mb-1">Tipo de Ícone:</label>
@@ -2475,6 +2933,22 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 />
               </div>
 
+              {mapData.nodes_data.some(n => n.icon_type === 'Zone' && n.id !== editNodeForm.id) && (
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Área / Bloco de Agrupamento:</label>
+                  <select
+                    value={editNodeForm.zone_id || ""}
+                    onChange={(e) => setEditNodeForm(prev => ({ ...prev, zone_id: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-blue-500"
+                  >
+                    <option value="">Nenhuma (Equipamento Fora de Blocos)</option>
+                    {mapData.nodes_data.filter(n => n.icon_type === 'Zone' && n.id !== editNodeForm.id).map(z => (
+                      <option key={z.id} value={z.id}>🏢 {z.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-slate-400 font-bold mb-1">Tipo de Ícone:</label>
                 <select
@@ -2812,7 +3286,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-purple-500"
                 >
                   <option value="">Selecione o Nó Origem...</option>
-                  {mapData.nodes_data.map((n) => (
+                  {mapData.nodes_data.filter(n => n.icon_type !== 'Zone').map((n) => (
                     <option key={n.id} value={n.id}>{n.label}</option>
                   ))}
                 </select>
@@ -2826,7 +3300,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-purple-500"
                 >
                   <option value="">Selecione o Nó Destino...</option>
-                  {mapData.nodes_data.map((n) => (
+                  {mapData.nodes_data.filter(n => n.icon_type !== 'Zone').map((n) => (
                     <option key={n.id} value={n.id}>{n.label}</option>
                   ))}
                 </select>
@@ -2959,6 +3433,157 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
           </div>
         </div>
       )}
+
+      {/* Modal Criar / Editar Área ou Bloco de Agrupamento */}
+      {isZoneModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Layers size={18} className="text-indigo-400" />
+                {zoneForm.id ? "Editar Área / Bloco" : "Nova Área / Bloco de Agrupamento"}
+              </h3>
+              <button onClick={() => setIsZoneModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs max-h-[65vh] overflow-y-auto pr-1">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">
+                  Nome da Área / Bloco:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Bloco ADM, Bloco UH - Apartamentos, Recepção..."
+                  value={zoneForm.label}
+                  onChange={(e) => setZoneForm(prev => ({ ...prev, label: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-indigo-500"
+                  autoFocus
+                />
+              </div>
+
+              {/* Seletor de Cores da Área */}
+              <div>
+                <label className="block text-slate-300 font-bold mb-1.5">
+                  Cor do Contorno da Área:
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.values(ZONE_COLOR_THEMES).map((theme) => {
+                    const isSelected = (zoneForm.color || "blue") === theme.key;
+                    return (
+                      <button
+                        key={theme.key}
+                        type="button"
+                        onClick={() => setZoneForm(prev => ({ ...prev, color: theme.key }))}
+                        className={`px-3 py-2 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all cursor-pointer ${
+                          isSelected
+                            ? `${theme.border} ${theme.bg} ${theme.accent} ring-2 ring-indigo-500/50`
+                            : "border-slate-800 bg-slate-950 hover:bg-slate-800/60 text-slate-400"
+                        }`}
+                      >
+                        <span className={`w-3 h-3 rounded-full ${theme.dot} shrink-0`} />
+                        <span className="truncate">{theme.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Seleção de Equipamentos que Pertencem a esta Área */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-bold flex items-center gap-1.5">
+                    <CheckCircle size={14} className="text-indigo-400" />
+                    Equipamentos Vinculados a esta Área:
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {zoneForm.selected_node_ids.length} selecionado(s)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mb-2 leading-tight">
+                  Selecione os equipamentos que estarão dentro deste contorno. Se um equipamento já estiver em outra área, será transferido para esta (cada item só pode pertencer a uma área).
+                </p>
+
+                <div className="max-h-56 overflow-y-auto bg-slate-950 border border-slate-800 rounded-xl p-2 space-y-1.5">
+                  {mapData.nodes_data.filter(n => n.id !== zoneForm.id && n.icon_type !== 'Zone').length === 0 ? (
+                    <div className="p-3 text-center text-slate-500 text-xs">
+                      Nenhum equipamento adicionado neste fluxograma ainda.
+                    </div>
+                  ) : (
+                    mapData.nodes_data
+                      .filter(n => n.id !== zoneForm.id && n.icon_type !== 'Zone')
+                      .map((node) => {
+                        const isChecked = zoneForm.selected_node_ids.includes(node.id);
+                        const otherZone = !isChecked && node.zone_id 
+                          ? mapData.nodes_data.find(z => z.id === node.zone_id && z.icon_type === 'Zone')
+                          : null;
+
+                        return (
+                          <label
+                            key={node.id}
+                            className={`flex items-center gap-2.5 text-xs p-2 rounded-xl cursor-pointer transition-all ${
+                              isChecked
+                                ? "bg-indigo-950/40 border border-indigo-500/40 text-white"
+                                : "text-slate-300 hover:bg-slate-900 border border-transparent"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setZoneForm(prev => ({
+                                  ...prev,
+                                  selected_node_ids: checked
+                                    ? [...prev.selected_node_ids, node.id]
+                                    : prev.selected_node_ids.filter(id => id !== node.id)
+                                }));
+                              }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <span className="font-bold block truncate">{node.label}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {node.ip_address || "Sem IP"} • {node.icon_type}
+                              </span>
+                            </div>
+
+                            {otherZone && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 shrink-0">
+                                em: {otherZone.label}
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsZoneModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold cursor-pointer hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveZone}
+                disabled={!zoneForm.label.trim()}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-indigo-600/30"
+              >
+                <Save size={14} />
+                <span>Salvar Área</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
     {/* Modal Planta Baixa */}
       {isFloorplanModalOpen && (
