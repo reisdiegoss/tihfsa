@@ -2806,21 +2806,6 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                           {node.ip_address}
                         </p>
                       )}
-                      {node.zone_id && (
-                        (() => {
-                          const parentZone = mapData.nodes_data.find(z => z.id === node.zone_id);
-                          if (!parentZone) return null;
-                          const zTheme = ZONE_COLOR_THEMES[parentZone.color] || ZONE_COLOR_THEMES.blue;
-                          return (
-                            <div className="mt-1">
-                              <span className={`inline-flex items-center gap-1 text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-md ${zTheme.badge} truncate max-w-full`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${zTheme.dot}`} />
-                                {parentZone.label}
-                              </span>
-                            </div>
-                          );
-                        })()
-                      )}
                       {node.child_asset_ids && node.child_asset_ids.length > 0 && (
                         <div className="mt-2 w-full">
                           <div className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">

@@ -140,7 +140,7 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
     - **Persistência Imediata**: Qualquer alteração de rótulo de porta ou nós de ligação é salva imediatamente no backend (`/network-maps/{id}`).
   - **Edição Imediata de Hardware e Equipamentos**:
     - **1-Clique no Card**: O card de cada equipamento mantém seu botão de lápis (✏️) dedicado para editar dados de hardware/CMDB, endereço IP e métricas UniFi/Zabbix.
-    - **Vínculo com Áreas**: O campo *Área / Bloco de Agrupamento* permanece acessível para organizar o equipamento em blocos espaciais.
+    - **Vínculo com Áreas & Cards Compactos**: O campo *Área / Bloco de Agrupamento* permite vincular o equipamento, mas o nome da área não é exibido dentro do card, mantendo o tamanho do equipamento compacto e preservando espaço útil no fluxograma conforme configurado pelo usuário.
   - **Sanitização Automática de Coordenadas (Prevenção de Nós Invisíveis)**:
     - Qualquer nó ou área criada é posicionado de forma segura dentro dos limites visíveis do canvas (`safeX >= 80, safeY >= 80`), impedindo coordenadas negativas decorrentes de arrastos extremos de câmera ou TVs de alta resolução.
     - No carregamento do mapa, coordenadas fora do padrão são sanitizadas automaticamente para garantir visibilidade imediata.
