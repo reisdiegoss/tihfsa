@@ -1685,18 +1685,43 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       newNodes.push(node);
     });
 
+    const updatedNodes = [...mapData.nodes_data, ...newNodes];
     setMapData(prev => ({
       ...prev,
-      nodes_data: [...prev.nodes_data, ...newNodes]
+      nodes_data: updatedNodes
     }));
 
-    setHasUnsavedChanges(true);
     setIsBatchAddModalOpen(false);
     setBatchAddForm(prev => ({
       ...prev,
       selected_asset_ids: [],
       search_filter: "",
     }));
+
+    if (mapData.id) {
+      try {
+        setSaving(true);
+        const payload = {
+          name: mapData.name,
+          description: mapData.description,
+          nodes_data: updatedNodes,
+          edges_data: mapData.edges_data,
+          zoom_level: zoom,
+          pan_x: Math.round(pan.x),
+          pan_y: Math.round(pan.y),
+          background_image_url: mapData.background_image_url,
+        };
+        const res = await api.put(`/network-maps/${mapData.id}`, payload);
+        if (res.data) {
+          setMapData(res.data);
+          setHasUnsavedChanges(false);
+        }
+      } catch (err) {
+        console.error("Erro ao salvar equipamentos em lote no mapa:", err);
+      } finally {
+        setSaving(false);
+      }
+    }
   };
 
   // Adicionar Nó ao Mapa
@@ -3606,11 +3631,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 <button
                   type="button"
                   onClick={handleBatchAddNodes}
-                  disabled={batchAddForm.selected_asset_ids.length === 0}
+                  disabled={batchAddForm.selected_asset_ids.length === 0 || saving}
                   className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-black cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-cyan-600/30 transition-all"
                 >
                   <Copy size={15} />
-                  <span>Adicionar {batchAddForm.selected_asset_ids.length > 0 ? `(${batchAddForm.selected_asset_ids.length})` : ''} ao Mapa</span>
+                  <span>{saving ? "Salvando..." : `Adicionar ${batchAddForm.selected_asset_ids.length > 0 ? `(${batchAddForm.selected_asset_ids.length})` : ''} ao Mapa`}</span>
                 </button>
               </div>
             </div>
