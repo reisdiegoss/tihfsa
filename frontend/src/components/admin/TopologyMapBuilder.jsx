@@ -1874,251 +1874,98 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               </button>
             )}
 
-            {/* Botão e Menu Suspenso de Localização & Gerenciamento de Nós e Áreas */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsNodeListOpen(prev => !prev)}
-                className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm border ${
-                  isNodeListOpen
-                    ? "bg-blue-600 text-white border-blue-500 shadow-blue-500/20"
-                    : "bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700"
-                }`}
-                title="Ver lista de todos os nós/áreas do mapa, focar na tela ou editar o nome imediatamente"
-              >
-                <ListFilter size={15} className={isNodeListOpen ? "text-white" : "text-blue-400"} />
-                <span>Localizar Nó ({mapData.nodes_data.length})</span>
-                <ChevronDown size={13} className={`transition-transform duration-200 ${isNodeListOpen ? 'rotate-180' : ''}`} />
-              </button>
+            {/* 1. Adicionar Equipamento */}
+            <button
+              onClick={() => setIsAddNodeModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              title="Adicionar um novo equipamento (Switch, AP, Servidor, Rack...)"
+            >
+              <Plus size={15} /> Adicionar Equipamento
+            </button>
 
-              {isNodeListOpen && (
-                <div 
-                  className="absolute left-0 mt-2 w-80 max-h-[420px] bg-slate-900/95 backdrop-blur-2xl border border-slate-700 rounded-2xl shadow-2xl p-2.5 z-50 flex flex-col gap-2"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex items-center justify-between px-1 pb-1.5 border-b border-slate-800">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                      <ListFilter size={13} className="text-blue-400" />
-                      Nós & Áreas ({mapData.nodes_data.length})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsNodeListOpen(false)}
-                      className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
+            {/* 2. Nova Área / Bloco */}
+            <button
+              onClick={openAddZoneModal}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-indigo-600/20"
+              title="Criar uma Área / Bloco para agrupar e delimitar equipamentos (ex: Bloco ADM, Bloco UH)"
+            >
+              <Layers size={15} /> Nova Área / Bloco
+            </button>
 
-                  <input
-                    type="text"
-                    placeholder="🔍 Buscar por nome ou tipo..."
-                    value={nodeSearchTerm}
-                    onChange={(e) => setNodeSearchTerm(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500"
-                    autoFocus
-                  />
+            {/* 3. Conectar Nós (Cabos) */}
+            <button
+              onClick={() => {
+                if (selectedNodeId) {
+                  setNewEdgeForm({ source_id: selectedNodeId, target_id: "", label: "" });
+                }
+                setIsAddEdgeModalOpen(true);
+              }}
+              className="bg-purple-600 hover:bg-purple-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Criar conexão de cabo entre dois equipamentos"
+            >
+              <LinkIcon size={15} /> Conectar Nós (Cabos)
+            </button>
 
-                  <div className="overflow-y-auto max-h-[300px] space-y-1 pr-1 custom-scrollbar">
-                    {mapData.nodes_data
-                      .filter(n => {
-                        if (!nodeSearchTerm.trim()) return true;
-                        const term = nodeSearchTerm.toLowerCase();
-                        return (n.label || "").toLowerCase().includes(term) || (n.icon_type || "").toLowerCase().includes(term);
-                      })
-                      .map((n) => {
-                        const isZone = n.icon_type === 'Zone';
-                        const isSelected = String(selectedNodeId) === String(n.id);
-                        return (
-                          <div
-                            key={n.id}
-                            className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-xs transition-colors ${
-                              isSelected
-                                ? 'bg-blue-600/25 border border-blue-500/50 text-white font-bold'
-                                : 'hover:bg-slate-800/80 text-slate-300 border border-transparent'
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                focusOnNode(n.id);
-                                setIsNodeListOpen(false);
-                              }}
-                              className="flex items-center gap-2 text-left truncate flex-1 cursor-pointer"
-                              title={`Clique para focar na tela em ${n.label}`}
-                            >
-                              <span className="shrink-0 text-base">
-                                {isZone ? '🏢' : n.icon_type === 'Rack' ? '🖥️' : n.icon_type === 'Switch' ? '🔀' : n.icon_type === 'AccessPoint' ? '📡' : '📟'}
-                              </span>
-                              <div className="truncate">
-                                <div className="truncate font-bold leading-tight text-white">{n.label || 'Sem Nome'}</div>
-                                <div className="text-[10px] text-slate-400 font-medium leading-none mt-0.5">
-                                  {isZone ? 'Área / Bloco' : n.icon_type} • ({Math.round(n.x)}, {Math.round(n.y)})
-                                </div>
-                              </div>
-                            </button>
-
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  focusOnNode(n.id);
-                                  setIsNodeListOpen(false);
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700/50 rounded-lg cursor-pointer transition-colors"
-                                title="Focar e centralizar na tela"
-                              >
-                                <Crosshair size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  focusOnNode(n.id);
-                                  if (isZone) {
-                                    openEditZoneModal(n.id);
-                                  } else {
-                                    openEditNodeModal(n.id);
-                                  }
-                                  setIsNodeListOpen(false);
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-white hover:bg-blue-600 rounded-lg cursor-pointer transition-colors"
-                                title="Editar Nome deste nó"
-                              >
-                                <Edit3 size={13} />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    {mapData.nodes_data.length === 0 && (
-                      <div className="py-4 text-center text-xs text-slate-500 font-medium">
-                        Nenhum nó neste mapa
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Barra de Ferramentas Dinâmica Conforme Seleção */}
+            {/* 4. Editar Nó / Editar Área (conforme os demais botões da barra) */}
             {(() => {
               const selectedNode = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
+              const isZone = selectedNode && selectedNode.icon_type === 'Zone';
 
-              // 1. NADA SELECIONADO: Botões de Criação
-              if (!selectedNode) {
+              if (selectedNode) {
                 return (
-                  <>
-                    <button
-                      onClick={() => setIsAddNodeModalOpen(true)}
-                      className="bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                      title="Adicionar um novo equipamento (Switch, AP, Servidor, Rack...)"
-                    >
-                      <Plus size={15} /> Adicionar Equipamento
-                    </button>
-
-                    <button
-                      onClick={openAddZoneModal}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-indigo-600/20"
-                      title="Criar uma Área / Bloco para agrupar e delimitar equipamentos (ex: Bloco ADM, Bloco UH)"
-                    >
-                      <Layers size={15} /> Nova Área / Bloco
-                    </button>
-
-                    <button
-                      onClick={() => setIsAddEdgeModalOpen(true)}
-                      className="bg-purple-600 hover:bg-purple-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                      title="Criar conexão de cabo entre dois equipamentos"
-                    >
-                      <LinkIcon size={15} /> Conectar Nós (Cabos)
-                    </button>
-                  </>
-                );
-              }
-
-              // 2. UMA ÁREA / BLOCO ESTÁ SELECIONADA:
-              if (selectedNode.icon_type === 'Zone') {
-                return (
-                  <div className="flex items-center gap-2 bg-indigo-950/50 border border-indigo-500/40 p-1.5 rounded-2xl shadow-lg">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300 px-2 py-0.5 border-r border-indigo-500/30">
-                      <Layers size={14} className="text-indigo-400 shrink-0" />
-                      <span className="font-extrabold truncate max-w-[140px]" title={selectedNode.label}>
-                        {selectedNode.label}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => openEditZoneModal(selectedNode.id)}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-indigo-600/30"
-                      title="Editar nome, cor e equipamentos desta área"
-                    >
-                      <Edit3 size={14} /> Editar Área / Bloco
-                    </button>
-
-                    <button
-                      onClick={() => handleDeleteZone(selectedNode.id)}
-                      className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-red-500/30"
-                      title="Excluir esta área (mantém os equipamentos intactos)"
-                    >
-                      <Trash2 size={14} /> Excluir Área
-                    </button>
-
-                    <button
-                      onClick={() => setSelectedNodeId(null)}
-                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer"
-                      title="Deselecionar área"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                );
-              }
-
-              // 3. UM EQUIPAMENTO (Switch, AP, Servidor, Rack, etc.) ESTÁ SELECIONADO:
-              return (
-                <div className="flex items-center gap-2 bg-slate-900 border border-blue-500/40 p-1.5 rounded-2xl shadow-lg">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-300 px-2 py-0.5 border-r border-slate-800">
-                    <span className="font-extrabold truncate max-w-[140px]" title={selectedNode.label}>
-                      {selectedNode.label}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => openEditNodeModal(selectedNode.id)}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
-                    title="Editar configurações e métricas deste equipamento"
-                  >
-                    <Edit3 size={14} /> Editar Equipamento
-                  </button>
-
                   <button
                     onClick={() => {
-                      setNewEdgeForm({ source_id: selectedNode.id, target_id: "", label: "" });
-                      setIsAddEdgeModalOpen(true);
+                      if (isZone) {
+                        openEditZoneModal(selectedNode.id);
+                      } else {
+                        openEditNodeModal(selectedNode.id);
+                      }
                     }}
-                    className="bg-purple-600/20 hover:bg-purple-600 hover:text-white text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
-                    title="Conectar cabo a partir deste nó"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-600/30"
+                    title={isZone ? `Editar nome da área: ${selectedNode.label}` : `Editar nome e configurações do nó: ${selectedNode.label}`}
                   >
-                    <LinkIcon size={13} /> Conectar Cabo
+                    <Edit3 size={15} /> {isZone ? "Editar Área" : "Editar Nó"}
                   </button>
+                );
+              }
 
-                  <button
-                    onClick={handleDeleteSelectedNode}
-                    className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-red-500/30"
-                    title="Excluir equipamento selecionado"
-                  >
-                    <Trash2 size={14} /> Excluir Nó
-                  </button>
-
-                  <button
-                    onClick={() => setSelectedNodeId(null)}
-                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer"
-                    title="Deselecionar equipamento"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
+              return (
+                <button
+                  onClick={() => alert("Clique em um equipamento ou área no mapa para selecioná-lo e depois clique em Editar Nó.")}
+                  className="bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-700/60 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Clique em um equipamento no mapa para selecionar e editar seu nome"
+                >
+                  <Edit3 size={15} /> Editar Nó
+                </button>
               );
             })()}
+
+            {/* 5. Excluir Nó / Área */}
+            {(() => {
+              const selectedNode = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
+              const isZone = selectedNode && selectedNode.icon_type === 'Zone';
+
+              if (selectedNode) {
+                return (
+                  <button
+                    onClick={() => {
+                      if (isZone) {
+                        handleDeleteZone(selectedNode.id);
+                      } else {
+                        handleDeleteSelectedNode();
+                      }
+                    }}
+                    className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-red-500/30"
+                    title={isZone ? `Excluir área: ${selectedNode.label}` : `Excluir equipamento: ${selectedNode.label}`}
+                  >
+                    <Trash2 size={15} /> {isZone ? "Excluir Área" : "Excluir Nó"}
+                  </button>
+                );
+              }
+
+              return null;
+            })()}
+
 
             {hasUnsavedChanges && (
               <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-xl text-xs font-black animate-pulse flex items-center gap-1">
@@ -2522,6 +2369,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 return (
                   <div
                     key={node.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedNodeId(node.id);
+                    }}
                     onMouseDown={(e) => handleMouseDownNode(node.id, e)}
                     onDoubleClick={() => {
                       if (!isPublicView) {

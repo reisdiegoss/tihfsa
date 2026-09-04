@@ -123,26 +123,22 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
     - Cada equipamento só pode pertencer a uma única área/zona simultaneamente.
     - Pode ser vinculado pelo modal da Área (checklist com detecção de transferência) ou pelo modal individual do próprio equipamento (dropdown com seleção de bloco).
   - **Movimentação em Bloco**: Ao arrastar a etiqueta de cabeçalho da área, todos os equipamentos vinculados se movimentam conjuntamente pelo canvas. Ao arrastar uma antena avulsa, apenas ela se move e o perímetro da área se recalcula e se expande/contrai dinamicamente.
-  - **Barra de Ações Dinâmica Contextual**: A barra superior agora adapta seus botões automaticamente de acordo com o elemento selecionado:
-    - **Nenhum item selecionado**: Exibe os botões de criação: *Adicionar Equipamento*, *Nova Área / Bloco* e *Conectar Nós (Cabos)*.
-    - **Área / Bloco selecionada** (ao clicar na área ou no cabeçalho): Exibe o nome da área selecionada com os botões *Editar Área / Bloco* (abrindo diretamente a configuração de nome, cor e equipamentos do bloco), *Excluir Área* e botão de deselecionar.
-    - **Equipamento selecionado**: Exibe o nome do dispositivo com *Editar Equipamento*, *Conectar Cabo*, *Excluir Nó* e botão de deselecionar.
+  - **Barra de Ferramentas com Botões Diretos e Alinhados**:
+    - A barra de ferramentas mantém todos os botões principais organizados lado a lado:
+      1. `[ + Adicionar Equipamento ]`
+      2. `[ 🏢 Nova Área / Bloco ]`
+      3. `[ 🔗 Conectar Nós (Cabos) ]`
+      4. `[ ✏️ Editar Nó ]`: Botão direto presente na barra conforme os demais. Ao clicar em qualquer equipamento no mapa, ele se destaca em verde (`Editar Nó` ou `Editar Área`) e abre imediatamente o modal para alterar o nome e parâmetros.
+      5. `[ 🗑️ Excluir Nó ]`: Botão para exclusão do nó ou área selecionada.
   - **Edição Imediata de Nós Existentes**:
-    - **1-Clique no Card**: Cada equipamento no canvas agora possui um botão de lápis (✏️) em seu cabeçalho que abre imediatamente o modal de edição sem necessitar de duplo clique nem de ir até a barra superior.
+    - **Ao Clicar no Equipamento**: O clique seleciona o nó no canvas e ativa o botão `[ ✏️ Editar Nó ]` na barra superior.
+    - **1-Clique no Card**: Cada equipamento no canvas também possui um botão de lápis (✏️) em seu cabeçalho e permite clicar no próprio nome para abrir o modal de edição.
     - **Vínculo com Áreas**: O campo *Área / Bloco de Agrupamento* fica permanentemente visível no modal de edição do equipamento, permitindo associá-lo a um bloco existente (ex: Bloco ADM ou Bloco UH) ou desvinculá-lo a qualquer momento.
-    - **Seleção Robusta**: Tratamento de identificadores de nós como string, garantindo que equipamentos do CMDB ou banco de dados com IDs numéricos sejam selecionados e editados sem falhas.
-- **Localizador e Gerenciador Rápido de Nós & Áreas (Barra Superior)**:
-  - Menu suspenso permanente `[ Localizar Nó (X) ▾ ]` na barra superior com filtro de busca em tempo real por nome ou tipo.
-  - Lista completa de todos os equipamentos (Racks, Switches, APs, Servidores) e Áreas/Blocos do mapa ativo.
-  - **Botão Focar (🎯)**: Centraliza suavemente a câmera e o zoom do canvas exatamente no centro do nó ou da área selecionada, selecionando-o no mesmo instante.
-  - **Botão Editar Nome (✏️)**: Abre diretamente o modal de edição (com cursor focado no campo de nome) para renomear qualquer nó ou bloco em 1 clique, sem precisar caçar o item no canvas.
   - **Sanitização Automática de Coordenadas (Prevenção de Nós Invisíveis)**:
     - Qualquer nó ou área criada é posicionado de forma segura dentro dos limites visíveis do canvas (`safeX >= 80, safeY >= 80`), impedindo coordenadas negativas decorrentes de arrastos extremos de câmera ou TVs de alta resolução.
     - No carregamento do mapa, coordenadas fora do padrão são sanitizadas automaticamente para garantir visibilidade imediata.
   - **Card Central em Áreas Vazias**:
     - Áreas/Blocos recém-criados que ainda não possuem equipamentos associados agora exibem um card central intuitivo com o ícone, o nome da área e o botão `[ ✏️ Editar Nome & Vincular Itens ]`, eliminando caixas vazias ou imperceptíveis.
-  - **Clique Direto no Nome para Edição**:
-    - Clicar diretamente no rótulo de texto de qualquer equipamento ou no cabeçalho de uma área abre imediatamente o modal de edição do nome.
 - **Badge Flutuante de Identificação do Fluxograma (Modo TV & Edição)**:
   - Overlay em estilo Glassmorphism fixado no canto superior esquerdo do canvas (`absolute top-4 left-4 z-40 pointer-events-none`).
   - Exibe o nome do fluxograma ativo (`mapData.name`) com indicador luminoso pulsante e descrição do ambiente, garantindo que em monitores de TV (mesmo no modo trancado) e durante o carrossel a equipe saiba no primeiro segundo qual andar ou setor está sendo exibido.
