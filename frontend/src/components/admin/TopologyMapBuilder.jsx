@@ -1609,7 +1609,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   };
 
   // Adicionar Múltiplos Nós em Lote ao Mapa com Configurações Padrão
-  const handleBatchAddNodes = () => {
+  const handleBatchAddNodes = async () => {
     if (batchAddForm.selected_asset_ids.length === 0) {
       alert("Selecione ao menos um equipamento para adicionar ao fluxograma.");
       return;
