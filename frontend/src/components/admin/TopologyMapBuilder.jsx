@@ -274,6 +274,14 @@ const ZONE_COLOR_THEMES = {
 
 // Calcula as dimensões reais e precisas de um card no canvas de acordo com seu conteúdo e métricas
 const getNodeRealDimensions = (node) => {
+  // Leitura direta do elemento DOM para precisão absoluta pixel a pixel
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById(`topology-node-card-${node.id}`);
+    if (el && el.offsetHeight > 50) {
+      return { w: el.offsetWidth || 220, h: el.offsetHeight };
+    }
+  }
+
   const isRack = node.icon_type === 'Rack';
   const isZone = node.icon_type === 'Zone';
   const childCount = node.child_asset_ids?.length || 0;
@@ -287,98 +295,14 @@ const getNodeRealDimensions = (node) => {
     return { w, h: Math.max(160, 100 + childCount * 48) };
   }
   
-  const showIp = node.display_options?.show_ip ?? node.rack_display_options?.show_ip ?? true;
-  const unifiMetrics = node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? [];
-  const zabbixMetrics = node.zabbix_selected_metrics || [];
-  
-  let h = 95;
-  if (node.label && node.label.length > 24) h += 20;
-  if (node.ip_address && showIp) h += 18;
-  if (node.zone_id) h += 26;
-  
-  if (unifiMetrics.length > 0) {
-    h += 45;
-    if (unifiMetrics.includes('wifi_experience') || unifiMetrics.includes('cpu') || unifiMetrics.includes('ram') || unifiMetrics.includes('uptime') || unifiMetrics.includes('fw')) {
-      h += 35;
-    }
-    if (unifiMetrics.includes('clients') || unifiMetrics.includes('channel_utilization') || unifiMetrics.includes('lan_experience') || unifiMetrics.includes('rx_tx')) {
-      h += 35;
-    }
-  } else if (zabbixMetrics.length > 0) {
-    h += 30 + zabbixMetrics.length * 20;
+  // Fallback seguro: cartões UniFi AP/Switch têm altura real de ~330px no DOM com métricas ativas
+  const isAP = node.icon_type === 'AccessPoint';
+  const isSwitch = node.icon_type === 'Switch';
+  if (isAP || isSwitch) {
+    return { w, h: 340 };
   }
   
-  if (childCount > 0) {
-    h += 25 + childCount * 42;
-  }
-  
-  return { w, h: Math.max(130, h) };
-};
-
-// Algoritmo Convex Hull (Envoltória Convexa 2D - Monotone Chain)
-const computeConvexHull = (points) => {
-  if (!points || points.length <= 2) return points || [];
-  const sorted = [...points].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
-  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  
-  const lower = [];
-  for (const p of sorted) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-      lower.pop();
-    }
-    lower.push(p);
-  }
-  
-  const upper = [];
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const p = sorted[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-      upper.pop();
-    }
-    upper.push(p);
-  }
-  
-  lower.pop();
-  upper.pop();
-  return lower.concat(upper);
-};
-
-// Gera um caminho SVG suavizado com curvas Bezier quadráticas arredondando os vértices do polígono
-const getRoundedPolygonPath = (points, radius = 28) => {
-  if (!points || points.length < 3) return "";
-  
-  const n = points.length;
-  const path = [];
-  
-  for (let i = 0; i < n; i++) {
-    const pPrev = points[(i - 1 + n) % n];
-    const pCurr = points[i];
-    const pNext = points[(i + 1) % n];
-    
-    const v1 = { x: pPrev.x - pCurr.x, y: pPrev.y - pCurr.y };
-    const v2 = { x: pNext.x - pCurr.x, y: pNext.y - pCurr.y };
-    
-    const d1 = Math.hypot(v1.x, v1.y);
-    const d2 = Math.hypot(v2.x, v2.y);
-    
-    if (d1 === 0 || d2 === 0) continue;
-    
-    const r = Math.min(radius, d1 / 2, d2 / 2);
-    
-    const c1 = { x: pCurr.x + (v1.x / d1) * r, y: pCurr.y + (v1.y / d1) * r };
-    const c2 = { x: pCurr.x + (v2.x / d2) * r, y: pCurr.y + (v2.y / d2) * r };
-    
-    if (path.length === 0) {
-      path.push(`M ${c1.x.toFixed(1)} ${c1.y.toFixed(1)}`);
-      path.push(`Q ${pCurr.x.toFixed(1)} ${pCurr.y.toFixed(1)} ${c2.x.toFixed(1)} ${c2.y.toFixed(1)}`);
-    } else {
-      path.push(`L ${c1.x.toFixed(1)} ${c1.y.toFixed(1)}`);
-      path.push(`Q ${pCurr.x.toFixed(1)} ${pCurr.y.toFixed(1)} ${c2.x.toFixed(1)} ${c2.y.toFixed(1)}`);
-    }
-  }
-  
-  path.push("Z");
-  return path.join(" ");
+  return { w, h: 220 };
 };
 
 // Calcula a geometria dinâmica adaptativa da Área / Bloco (molda-se aos dispositivos em tempo real)
@@ -393,6 +317,8 @@ const getZoneGeometry = (zone, allNodes) => {
     const w = zone.width || 380;
     const h = zone.height || 240;
     return {
+      x,
+      y,
       minX: x,
       minY: y,
       maxX: x + w,
@@ -403,15 +329,13 @@ const getZoneGeometry = (zone, allNodes) => {
       headerY: y - 18,
       membersCount: 0,
       hasMembers: false,
-      path: "",
     };
   }
 
-  const padX = 30;
-  const padTop = 48;
-  const padBottom = 30;
+  const padX = 35;
+  const padTop = 50; // Espaço reservado para o cabeçalho superior da área
+  const padBottom = 35;
 
-  const allPoints = [];
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -428,29 +352,24 @@ const getZoneGeometry = (zone, allNodes) => {
     if (my1 < minY) minY = my1;
     if (mx2 > maxX) maxX = mx2;
     if (my2 > maxY) maxY = my2;
-
-    allPoints.push({ x: mx1, y: my1 });
-    allPoints.push({ x: mx2, y: my1 });
-    allPoints.push({ x: mx2, y: my2 });
-    allPoints.push({ x: mx1, y: my2 });
   });
 
-  const hull = computeConvexHull(allPoints);
-  const path = getRoundedPolygonPath(hull, 32);
+  const width = Math.max(220, maxX - minX);
+  const height = Math.max(140, maxY - minY);
 
   return {
+    x: minX,
+    y: minY,
     minX,
     minY,
     maxX,
     maxY,
-    width: maxX - minX,
-    height: maxY - minY,
+    width,
+    height,
     headerX: minX + 24,
     headerY: minY - 18,
     membersCount: members.length,
     hasMembers: true,
-    hull,
-    path,
   };
 };
 
@@ -458,8 +377,8 @@ const getZoneGeometry = (zone, allNodes) => {
 const getZoneBounds = (zone, allNodes) => {
   const geom = getZoneGeometry(zone, allNodes);
   return {
-    x: geom.minX,
-    y: geom.minY,
+    x: geom.x,
+    y: geom.y,
     width: geom.width,
     height: geom.height,
     membersCount: geom.membersCount,
@@ -2491,7 +2410,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               {/* Contornos Geométricos Adaptativos das Áreas / Blocos (moldam-se aos nós em tempo real) */}
               {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map((zone) => {
                 const geom = getZoneGeometry(zone, mapData.nodes_data);
-                if (!geom.hasMembers || !geom.path) return null;
+                if (!geom.hasMembers) return null;
                 const theme = ZONE_COLOR_THEMES[zone.color] || ZONE_COLOR_THEMES.blue;
                 const isSelected = String(selectedNodeId) === String(zone.id);
 
@@ -2499,17 +2418,27 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   <g key={zone.id} className="pointer-events-auto cursor-pointer">
                     {/* Linha de brilho externa quando selecionado */}
                     {isSelected && (
-                      <path
-                        d={geom.path}
+                      <rect
+                        x={geom.x - 3}
+                        y={geom.y - 3}
+                        width={geom.width + 6}
+                        height={geom.height + 6}
+                        rx="30"
+                        ry="30"
                         fill="none"
                         stroke={theme.stroke}
-                        strokeWidth="8"
+                        strokeWidth="6"
                         opacity="0.25"
                       />
                     )}
                     {/* Contorno Adaptativo com Borda Tracejada e Preenchimento Translúcido */}
-                    <path
-                      d={geom.path}
+                    <rect
+                      x={geom.x}
+                      y={geom.y}
+                      width={geom.width}
+                      height={geom.height}
+                      rx="28"
+                      ry="28"
                       fill={isSelected ? theme.fillSelected : theme.fill}
                       stroke={theme.stroke}
                       strokeWidth={isSelected ? "3" : "2"}
@@ -2740,6 +2669,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 return (
                   <div
                     key={node.id}
+                    id={`topology-node-card-${node.id}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedNodeId(node.id);
