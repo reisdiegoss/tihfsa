@@ -2496,12 +2496,21 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedNodeIds, isPublicView, isAddNodeModalOpen, isEditNodeModalOpen, isAddEdgeModalOpen, isZoneModalOpen, isFloorplanModalOpen, isBatchAddModalOpen, mapData]);
 
-  // Eventos de Mouse, Zoom e Navegação Panorâmica no Canvas
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.1 : -0.1;
-    setZoom((prev) => parseFloat(Math.min(5.0, Math.max(0.2, prev + delta)).toFixed(2)));
-  };
+  // Eventos de Zoom e Mouse no Canvas com listener nativo não-passivo ({ passive: false })
+  // para permitir preventDefault() sem warnings do navegador e sem rolar a página
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheelNative = (e) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      setZoom((prev) => parseFloat(Math.min(5.0, Math.max(0.2, prev + delta)).toFixed(2)));
+    };
+
+    el.addEventListener("wheel", handleWheelNative, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheelNative);
+  }, []);
 
   const handleCanvasMouseDown = (e) => {
     if (!e.ctrlKey && !e.metaKey) {
@@ -3132,7 +3141,6 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       {/* Interactive Topology Canvas Container */}
       <div 
         ref={containerRef}
-        onWheel={handleWheel}
         onMouseDown={handleCanvasMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
