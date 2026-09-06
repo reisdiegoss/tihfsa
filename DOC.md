@@ -210,5 +210,13 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
     - **Indicador de PoE Ativo**: Exibe badge sutil `⚡ Z PoE` indicando a quantidade de portas que estão ativamente alimentando dispositivos PoE (como antenas UniFi AP e telefones IP).
     - **Barra de Ocupação Visual**: Mini barra horizontal de ocupação indicando graficamente o percentual de portas ocupadas vs. livres com tooltip explicativo.
     - **Configuração Flexível**: Disponível nas *Opções de Exibição / Métricas UniFi* com o checkbox **"Portas Up/Down (SW)"** nos modais de criação, edição individual e adição/atualização em lote (incluído por padrão no preset rápido `[ 🔀 Switches ]`).
+- **Segregação Contextual Estrita de Métricas UniFi (Switches vs. Antenas/APs)**:
+  - **Cards de Switches**: Exibem exclusivamente métricas pertinentes a comutação e infraestrutura: CPU, RAM, Uptime, Firmware, Portas Up/Down (Conectadas e Livres com PoE), Taxas RX/TX das portas físicas e Experiência LAN (%). Bloqueio absoluto de dados irrelevantes de Wi-Fi (como WiFi Experience, Clientes conectados e Uso de canais 2.4G/5G).
+  - **Cards de Antenas / Access Points (APs)**: Exibem exclusivamente métricas pertinentes à rede sem fio e rádio: CPU, RAM, Uptime, Firmware, WiFi Experience (%), Clientes Conectados, Uso de Canais (2.4G / 5G / 6G com canal e % de ocupação), Taxas RX/TX de Wi-Fi e Uplink LAN (velocidade e duplex do cabo de rede do AP). Bloqueio absoluto de métricas de portas físicas de switch.
+  - **Cards de Racks e Equipamentos Agregados**: No caso de Racks contendo switches e APs internos, cada ativo filho renderiza suas métricas contextuais de acordo com sua categoria individual, e as opções de exibição no modal apresentam rótulos claros discriminando itens de Switch e itens de AP.
+  - **Filtro Dinâmico nos Formulários e Modais de Configuração (`batchAddForm`, `newNodeForm`, `editNodeForm`)**:
+    - As opções de seleção de métricas são filtradas dinamicamente com base no tipo de equipamento selecionado (`icon_type`), garantindo que o usuário visualize e configure apenas as métricas cabíveis para aquele tipo de hardware.
+    - Presets rápidos em 1 clique (`[ 📡 Wi-Fi (AP) ]`, `[ 🔀 Switches ]`, `[ ⚡ Todas ]`, `[ 🚫 Nenhuma ]`) ajustam instantaneamente as métricas recomendadas para cada perfil.
+
 
 

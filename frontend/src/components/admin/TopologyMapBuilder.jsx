@@ -6,7 +6,53 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown
 } from "lucide-react";
 import api from "../../api/client";
-const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
+
+// Helper para retornar métricas UniFi exclusivas por tipo de equipamento
+const getMetricsForIconType = (iconType) => {
+  const common = [
+    { id: 'cpu', label: 'Uso de CPU' },
+    { id: 'ram', label: 'Uso de RAM' },
+    { id: 'uptime', label: 'Uptime' },
+    { id: 'fw', label: 'Firmware' },
+  ];
+
+  if (iconType === 'AccessPoint') {
+    return [
+      ...common,
+      { id: 'wifi_experience', label: 'WiFi Experience (%)' },
+      { id: 'clients', label: 'Clientes Conectados' },
+      { id: 'channel_utilization', label: 'Uso de Canal (2.4G / 5G)' },
+      { id: 'rx_tx', label: 'Taxas RX / TX (Wi-Fi)' },
+      { id: 'lan_experience', label: 'Uplink LAN (Cabo Rede)' },
+    ];
+  }
+
+  if (iconType === 'Switch') {
+    return [
+      ...common,
+      { id: 'ports_status', label: 'Portas Up / Down (Conectadas e Livres)' },
+      { id: 'rx_tx', label: 'Taxas RX / TX (Portas)' },
+      { id: 'lan_experience', label: 'Experiência LAN (%)' },
+    ];
+  }
+
+  if (iconType === 'Rack' || iconType === 'Zone') {
+    return [
+      ...common,
+      { id: 'ports_status', label: 'Portas Up / Down (Switches)' },
+      { id: 'rx_tx', label: 'Taxas RX / TX (Tráfego)' },
+      { id: 'lan_experience', label: 'Experiência LAN' },
+      { id: 'wifi_experience', label: 'WiFi Experience (APs)' },
+      { id: 'clients', label: 'Clientes Conectados (APs)' },
+      { id: 'channel_utilization', label: 'Uso de Canal (APs)' },
+    ];
+  }
+
+  // Outros dispositivos (Server, Firewall, Phone, etc.)
+  return common;
+};
+
+const UnifiMetricsBlock = ({ unifiDev, selectedMetrics, iconType }) => {
   if (!unifiDev) return null;
   // If selectedMetrics array is explicitly empty, don't render the block at all
   if (selectedMetrics && selectedMetrics.length === 0) return null;
@@ -14,13 +60,16 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
   // Default to all metrics if not specified (retro-compatibility)
   const showMetric = (metric) => !selectedMetrics || selectedMetrics.includes(metric);
   
+  // Determina categoricamente se o dispositivo é AP ou Switch para não misturar dados
+  const isAP = iconType === 'AccessPoint' || (iconType !== 'Switch' && unifiDev.type === 'uap');
+  const isSwitch = iconType === 'Switch' || (iconType !== 'AccessPoint' && unifiDev.type === 'usw');
+
   // Parse metrics
   const cpu = unifiDev.system_stats?.cpu || unifiDev['system-stats']?.cpu || 0;
   const mem = unifiDev.system_stats?.mem || unifiDev['system-stats']?.mem || 0;
   const fw = unifiDev.version || "N/A";
   const uptimeSecs = unifiDev.uptime || 0;
   const uptimeDays = Math.floor(uptimeSecs / 86400);
-  const isAP = unifiDev.type === 'uap';
   
   // Suporte a taxas RX / TX tanto para Switches quanto Access Points (Uplink / Portas)
   let totalRxRate = 0;
@@ -60,7 +109,7 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
         <div className="flex items-center justify-between font-bold border-b border-blue-900/50 pb-1 mb-0.5 text-blue-300">
           <span className="flex items-center gap-1">
             <svg className="w-3 h-3 text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-            UniFi {isAP ? 'AP' : 'Switch'}
+            UniFi {isAP ? 'AP' : (isSwitch ? 'Switch' : (unifiDev.type?.toUpperCase() || 'Device'))}
           </span>
           <span className={unifiDev.state === 1 ? "text-emerald-400 flex items-center gap-1" : "text-amber-400 flex items-center gap-1"}>
             <span className={`w-1.5 h-1.5 rounded-full ${unifiDev.state === 1 ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`} />
@@ -141,7 +190,7 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
         )}
 
         {/* Switch Specific */}
-        {!isAP && (showMetric('lan_experience') || showMetric('rx_tx') || showMetric('ports_status')) && (
+        {isSwitch && (showMetric('lan_experience') || showMetric('rx_tx') || showMetric('ports_status')) && (
           <div className="mt-1 pt-1 border-t border-blue-900/30 flex flex-col gap-1">
             {showMetric('lan_experience') && (
             <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
@@ -3906,7 +3955,13 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                                     <span className="font-bold text-white break-words line-clamp-2 flex-1" title={child.name}>{child.name}</span>
                                     {showIp && <span className="font-mono text-slate-400 text-[9px] shrink-0">{child.ip_address || ''}</span>}
                                   </div>
-                                  {childUnifiDev && <UnifiMetricsBlock unifiDev={childUnifiDev} selectedMetrics={unifiMetricsSelected} />}
+                                  {childUnifiDev && (
+                                    <UnifiMetricsBlock 
+                                      unifiDev={childUnifiDev} 
+                                      selectedMetrics={unifiMetricsSelected} 
+                                      iconType={child.type === 'AccessPoint' ? 'AccessPoint' : (child.type === 'Switch' ? 'Switch' : (childUnifiDev.type === 'uap' ? 'AccessPoint' : 'Switch'))} 
+                                    />
+                                  )}
                                 </div>
                               );
                             })}
@@ -3972,6 +4027,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       <UnifiMetricsBlock 
                         unifiDev={unifiMetrics.find(u => u.ip === (node.ip_address || assetsList.find(a => String(a.id) === String(node.asset_id))?.ip_address))} 
                         selectedMetrics={node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? DEFAULT_DISPLAY_OPTIONS.unifi_metrics} 
+                        iconType={node.icon_type}
                       />
                     )}
 
@@ -4235,19 +4291,12 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     Mostrar Endereço IP
                   </label>
 
-                  <div className="grid grid-cols-2 gap-1.5 pt-1">
-                    {[
-                      { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
-                      { id: 'clients', label: 'Clientes (AP)' },
-                      { id: 'channel_utilization', label: 'Uso Canal (AP)' },
-                      { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                      { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
-                      { id: 'ports_status', label: 'Portas Up/Down (SW)' },
-                      { id: 'uptime', label: 'Uptime' },
-                      { id: 'cpu', label: 'CPU' },
-                      { id: 'ram', label: 'RAM' },
-                      { id: 'fw', label: 'Firmware' },
-                    ].map(metric => {
+                  <div className="border-t border-slate-800/80 pt-2">
+                    <label className="block text-slate-400 font-bold mb-1.5 text-xs">
+                      Métricas UniFi ({batchAddForm.icon_type === 'AccessPoint' ? 'Antena Wi-Fi' : (batchAddForm.icon_type === 'Switch' ? 'Switch' : 'Detalhes Avançados')}):
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {getMetricsForIconType(batchAddForm.icon_type).map(metric => {
                       const currentMetrics = Array.isArray(batchAddForm.display_options?.unifi_metrics)
                         ? batchAddForm.display_options.unifi_metrics
                         : (Array.isArray(batchAddForm.rack_display_options?.unifi_metrics)
@@ -4277,8 +4326,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     })}
                   </div>
                 </div>
-
               </div>
+            </div>
 
               {/* COLUNA DIREITA: Seleção de Ativos do CMDB (7 colunas) */}
               <div className="md:col-span-7 space-y-3 flex flex-col">
@@ -4791,20 +4840,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   </label>
 
                   <div className="border-t border-slate-800 mt-2 pt-2">
-                    <label className="block text-slate-400 font-bold mb-2 text-xs">Métricas UniFi (Detalhes Avançados):</label>
+                    <label className="block text-slate-400 font-bold mb-2 text-xs">
+                      Métricas UniFi ({newNodeForm.icon_type === 'AccessPoint' ? 'Antena Wi-Fi' : (newNodeForm.icon_type === 'Switch' ? 'Switch' : (newNodeForm.icon_type === 'Rack' ? 'Itens do Rack' : 'Detalhes Avançados'))}):
+                    </label>
                     <div className="grid grid-cols-2 gap-2 pl-2">
-                      {[
-                        { id: 'cpu', label: 'CPU' },
-                        { id: 'ram', label: 'RAM' },
-                        { id: 'uptime', label: 'Uptime' },
-                        { id: 'fw', label: 'Firmware' },
-                        { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
-                        { id: 'clients', label: 'Clientes (AP)' },
-                        { id: 'channel_utilization', label: 'Uso Canal (AP)' },
-                        { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
-                        { id: 'ports_status', label: 'Portas Up/Down (SW)' }
-                      ].map(metric => {
+                      {getMetricsForIconType(newNodeForm.icon_type).map(metric => {
                         const currentOpts = newNodeForm.display_options || newNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
                         const isMetricChecked = (currentOpts.unifi_metrics || []).includes(metric.id);
                         return (
@@ -5195,20 +5235,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   </label>
 
                   <div className="border-t border-slate-800 mt-2 pt-2">
-                    <label className="block text-slate-400 font-bold mb-2 text-xs">Métricas UniFi (Detalhes Avançados):</label>
+                    <label className="block text-slate-400 font-bold mb-2 text-xs">
+                      Métricas UniFi ({editNodeForm.icon_type === 'AccessPoint' ? 'Antena Wi-Fi' : (editNodeForm.icon_type === 'Switch' ? 'Switch' : (editNodeForm.icon_type === 'Rack' ? 'Itens do Rack' : 'Detalhes Avançados'))}):
+                    </label>
                     <div className="grid grid-cols-2 gap-2 pl-2">
-                      {[
-                        { id: 'cpu', label: 'CPU' },
-                        { id: 'ram', label: 'RAM' },
-                        { id: 'uptime', label: 'Uptime' },
-                        { id: 'fw', label: 'Firmware' },
-                        { id: 'wifi_experience', label: 'WiFi Exp. (AP)' },
-                        { id: 'clients', label: 'Clientes (AP)' },
-                        { id: 'channel_utilization', label: 'Uso Canal (AP)' },
-                        { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
-                        { id: 'ports_status', label: 'Portas Up/Down (SW)' }
-                      ].map(metric => {
+                      {getMetricsForIconType(editNodeForm.icon_type).map(metric => {
                         const currentMetrics = Array.isArray(editNodeForm.display_options?.unifi_metrics)
                           ? editNodeForm.display_options.unifi_metrics
                           : (Array.isArray(editNodeForm.rack_display_options?.unifi_metrics)
