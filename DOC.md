@@ -203,4 +203,12 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
     - Ao salvar, os dados são enviados em lote via `PUT /api/v1/network-maps/carousel/batch`, atualizando o atributo `carousel_order` de cada mapa.
     - A nova sequência é refletida instantaneamente no dropdown de seleção do topo da página e na playlist de rotação da TV.
     - O backend passa a listar os mapas de forma rigorosamente estável por `NetworkMap.carousel_order.asc(), NetworkMap.id.asc()`. Ao criar um novo mapa em branco ou clonar um mapa existente, o sistema atribui automaticamente a próxima ordem disponível (`func.max(NetworkMap.carousel_order) + 1`), evitando colisão de posições e preservando a organização já definida pelo usuário.
+- **Métrica UniFi de Portas de Switches (Portas Conectadas e Livres)**:
+  - Integração nativa com a API UniFi para leitura em tempo real do array `port_table` de cada switch gerenciado na rede do hotel.
+  - **Exibição Visual no Card do Switch**:
+    - **Contador Dinâmico**: Exibe o total de portas do switch com contagem exata de portas conectadas (`● X up` em verde) e desconectadas/livres (`○ Y down` em cinza escuro).
+    - **Indicador de PoE Ativo**: Exibe badge sutil `⚡ Z PoE` indicando a quantidade de portas que estão ativamente alimentando dispositivos PoE (como antenas UniFi AP e telefones IP).
+    - **Barra de Ocupação Visual**: Mini barra horizontal de ocupação indicando graficamente o percentual de portas ocupadas vs. livres com tooltip explicativo.
+    - **Configuração Flexível**: Disponível nas *Opções de Exibição / Métricas UniFi* com o checkbox **"Portas Up/Down (SW)"** nos modais de criação, edição individual e adição/atualização em lote (incluído por padrão no preset rápido `[ 🔀 Switches ]`).
+
 

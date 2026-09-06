@@ -141,7 +141,7 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
         )}
 
         {/* Switch Specific */}
-        {!isAP && (showMetric('lan_experience') || showMetric('rx_tx')) && (
+        {!isAP && (showMetric('lan_experience') || showMetric('rx_tx') || showMetric('ports_status')) && (
           <div className="mt-1 pt-1 border-t border-blue-900/30 flex flex-col gap-1">
             {showMetric('lan_experience') && (
             <div className="flex justify-between items-center text-slate-400 font-mono text-[8.5px]">
@@ -163,6 +163,55 @@ const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
                 </div>
               </>
             )}
+            {/* Status de Portas Conectadas e Desconectadas */}
+            {showMetric('ports_status') && unifiDev.port_table && unifiDev.port_table.length > 0 && (() => {
+              const ports = unifiDev.port_table;
+              const totalPorts = ports.length;
+              const connectedPorts = ports.filter(p => p.up).length;
+              const disconnectedPorts = totalPorts - connectedPorts;
+              const percentConnected = totalPorts > 0 ? Math.round((connectedPorts / totalPorts) * 100) : 0;
+              const poeActiveCount = ports.filter(p => p.poe_power && p.poe_power > 0).length;
+
+              return (
+                <div className="bg-slate-900/60 rounded p-1.5 border border-blue-900/40 flex flex-col gap-1">
+                  <div className="flex justify-between items-center font-mono text-[8.5px]">
+                    <span className="font-bold text-blue-200 flex items-center gap-1">
+                      <span>Portas ({totalPorts})</span>
+                      {poeActiveCount > 0 && (
+                        <span className="text-[7.5px] bg-amber-500/20 text-amber-300 px-1 py-0.5 rounded font-bold" title={`${poeActiveCount} porta(s) fornecendo energia PoE`}>
+                          ⚡{poeActiveCount} PoE
+                        </span>
+                      )}
+                    </span>
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <span className="text-emerald-400 flex items-center gap-0.5" title={`${connectedPorts} portas com link ativo`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        {connectedPorts} up
+                      </span>
+                      <span className="text-slate-600">/</span>
+                      <span className="text-slate-400 flex items-center gap-0.5" title={`${disconnectedPorts} portas livres/desconectadas`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-600 inline-block" />
+                        {disconnectedPorts} down
+                      </span>
+                    </div>
+                  </div>
+                  {/* Barra de Ocupação de Portas */}
+                  <div 
+                    className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden flex border border-slate-800"
+                    title={`${connectedPorts} de ${totalPorts} conectadas (${percentConnected}% ocupação)`}
+                  >
+                    <div 
+                      className="bg-emerald-500 h-full transition-all duration-300" 
+                      style={{ width: `${percentConnected}%` }} 
+                    />
+                    <div 
+                      className="bg-slate-800 h-full transition-all duration-300" 
+                      style={{ width: `${100 - percentConnected}%` }} 
+                    />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -746,7 +795,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   const DEFAULT_DISPLAY_OPTIONS = {
     show_ip: true,
-    unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx']
+    unifi_metrics: ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx', 'ports_status']
   };
 
   const [isBatchAddModalOpen, setIsBatchAddModalOpen] = useState(false);
@@ -3848,7 +3897,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                               const childOffline = child.icmp_status === "offline" || (childUnifiDev && childUnifiDev.state === 0);
                               
                               const showIp = node.display_options?.show_ip ?? node.rack_display_options?.show_ip ?? true;
-                              const unifiMetricsSelected = node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'];
+                              const unifiMetricsSelected = node.display_options?.unifi_metrics ?? node.rack_display_options?.unifi_metrics ?? DEFAULT_DISPLAY_OPTIONS.unifi_metrics;
                               
                               return (
                                 <div key={cid} className={`flex flex-col gap-1.5 px-2 py-1.5 rounded-lg text-[10px] ${childOffline ? 'bg-red-900/40 border border-red-500/30' : 'bg-slate-800/60'}`}>
@@ -4126,7 +4175,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         <button
                           type="button"
                           onClick={() => {
-                            const swM = ['lan_experience', 'rx_tx', 'uptime'];
+                            const swM = ['lan_experience', 'rx_tx', 'ports_status', 'uptime'];
                             setBatchAddForm(prev => ({
                               ...prev,
                               display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: swM, show_ip: true },
@@ -4134,14 +4183,14 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                             }));
                           }}
                           className="px-1.5 py-0.5 bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 hover:text-white rounded font-bold cursor-pointer transition-colors"
-                          title="Selecionar apenas métricas de Switch (LAN Exp, RX/TX Rates e Uptime)"
+                          title="Selecionar apenas métricas de Switch (LAN Exp, RX/TX Rates, Portas Up/Down e Uptime)"
                         >
                           Switches
                         </button>
                         <button
                           type="button"
                           onClick={() => {
-                            const allM = ['cpu', 'ram', 'uptime', 'fw', 'wifi_experience', 'clients', 'channel_utilization', 'lan_experience', 'rx_tx'];
+                            const allM = [...DEFAULT_DISPLAY_OPTIONS.unifi_metrics];
                             setBatchAddForm(prev => ({
                               ...prev,
                               display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: allM, show_ip: true },
@@ -4193,6 +4242,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       { id: 'channel_utilization', label: 'Uso Canal (AP)' },
                       { id: 'lan_experience', label: 'LAN Exp. (SW)' },
                       { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
+                      { id: 'ports_status', label: 'Portas Up/Down (SW)' },
                       { id: 'uptime', label: 'Uptime' },
                       { id: 'cpu', label: 'CPU' },
                       { id: 'ram', label: 'RAM' },
@@ -4752,7 +4802,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         { id: 'clients', label: 'Clientes (AP)' },
                         { id: 'channel_utilization', label: 'Uso Canal (AP)' },
                         { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
+                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
+                        { id: 'ports_status', label: 'Portas Up/Down (SW)' }
                       ].map(metric => {
                         const currentOpts = newNodeForm.display_options || newNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
                         const isMetricChecked = (currentOpts.unifi_metrics || []).includes(metric.id);
@@ -5155,7 +5206,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         { id: 'clients', label: 'Clientes (AP)' },
                         { id: 'channel_utilization', label: 'Uso Canal (AP)' },
                         { id: 'lan_experience', label: 'LAN Exp. (SW)' },
-                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' }
+                        { id: 'rx_tx', label: 'RX/TX Rates (SW)' },
+                        { id: 'ports_status', label: 'Portas Up/Down (SW)' }
                       ].map(metric => {
                         const currentMetrics = Array.isArray(editNodeForm.display_options?.unifi_metrics)
                           ? editNodeForm.display_options.unifi_metrics
