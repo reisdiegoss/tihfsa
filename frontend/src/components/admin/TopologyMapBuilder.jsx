@@ -2358,9 +2358,64 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }
   };
 
-  // Remover Nó Selecionado
+  // Excluir Conexão / Nó de cabo associado ao equipamento selecionado
+  const handleDeleteNodeConnection = async (nodeId) => {
+    if (!nodeId) return;
+    const nodeEdges = mapData.edges_data.filter(
+      e => String(e.source_id) === String(nodeId) || String(e.target_id) === String(nodeId)
+    );
+    if (nodeEdges.length === 0) return;
+
+    if (nodeEdges.length === 1) {
+      const edge = nodeEdges[0];
+      const srcNode = mapData.nodes_data.find(n => String(n.id) === String(edge.source_id));
+      const tgtNode = mapData.nodes_data.find(n => String(n.id) === String(edge.target_id));
+      const srcLabel = srcNode?.label || edge.source_id;
+      const tgtLabel = tgtNode?.label || edge.target_id;
+
+      if (!window.confirm(`Deseja realmente excluir o nó de conexão (cabo) entre "${srcLabel}" e "${tgtLabel}"?`)) return;
+
+      const updatedEdges = mapData.edges_data.filter(e => e.id !== edge.id);
+      setMapData(prev => ({
+        ...prev,
+        edges_data: updatedEdges,
+      }));
+      setHasUnsavedChanges(true);
+
+      if (mapData.id) {
+        try {
+          const payload = {
+            name: mapData.name,
+            description: mapData.description,
+            nodes_data: mapData.nodes_data,
+            edges_data: updatedEdges,
+            zoom_level: zoom,
+            pan_x: Math.round(pan.x),
+            pan_y: Math.round(pan.y),
+            background_image_url: mapData.background_image_url,
+          };
+          const res = await api.put(`/network-maps/${mapData.id}`, payload);
+          if (res.data) {
+            setMapData(res.data);
+            setHasUnsavedChanges(false);
+          }
+        } catch (err) {
+          console.error("Erro ao excluir nó de conexão:", err);
+        }
+      }
+    } else {
+      // Se houver mais de uma conexão, abre o modal de conexão para selecionar qual excluir
+      handleOpenEditNodeConnection(nodeId);
+    }
+  };
+
+  // Remover Equipamento Selecionado do Mapa
   const handleDeleteSelectedNode = () => {
     if (!selectedNodeId) return;
+    const nodeToDelete = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
+    const label = nodeToDelete?.label || "este equipamento";
+    if (!window.confirm(`Deseja realmente excluir o equipamento "${label}" deste fluxograma?`)) return;
+
     setHasUnsavedChanges(true);
     setMapData((prev) => ({
       ...prev,
@@ -2812,64 +2867,82 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               <LinkIcon size={15} /> Conectar Nós (Cabos)
             </button>
 
-            {/* 4. Editar Nó / Editar Área (conforme os demais botões da barra) */}
+            {/* 4. Editar Equipamento / Área */}
             {(() => {
               const selectedNode = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
-              const isZone = selectedNode && selectedNode.icon_type === 'Zone';
-
-              if (selectedNode) {
-                return (
-                  <button
-                    onClick={() => {
-                      if (isZone) {
-                        openEditZoneModal(selectedNode.id);
-                      } else {
-                        handleOpenEditNodeConnection(selectedNode.id);
-                      }
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-600/30"
-                    title={isZone ? `Editar nome da área: ${selectedNode.label}` : `Editar nome e configurações do nó: ${selectedNode.label}`}
-                  >
-                    <Edit3 size={15} /> {isZone ? "Editar Área" : "Editar Nó"}
-                  </button>
-                );
-              }
+              if (!selectedNode) return null;
+              const isZone = selectedNode.icon_type === 'Zone';
 
               return (
                 <button
-                  onClick={() => alert("Clique em um equipamento ou área no mapa para selecioná-lo e depois clique em Editar Nó.")}
-                  className="bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-700/60 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                  title="Clique em um equipamento no mapa para selecionar e editar seu nome"
+                  onClick={() => {
+                    if (isZone) {
+                      openEditZoneModal(selectedNode.id);
+                    } else {
+                      openEditNodeModal(selectedNode.id);
+                    }
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-600/30"
+                  title={isZone ? `Editar configurações da área: ${selectedNode.label}` : `Editar configurações do equipamento: ${selectedNode.label}`}
                 >
-                  <Edit3 size={15} /> Editar Nó
+                  <Edit3 size={15} /> {isZone ? "Editar Área" : "Editar Equipamento"}
                 </button>
               );
             })()}
 
-            {/* 5. Excluir Nó / Área */}
+            {/* 4.1 Editar Nó e Excluir Nó (APENAS quando o equipamento selecionado possui conexões/nós de cabo ligados a ele) */}
+            {(() => {
+              if (!selectedNodeId) return null;
+              const selectedNode = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
+              if (selectedNode && selectedNode.icon_type === 'Zone') return null;
+
+              const nodeEdges = mapData.edges_data.filter(
+                e => String(e.source_id) === String(selectedNodeId) || String(e.target_id) === String(selectedNodeId)
+              );
+              if (nodeEdges.length === 0) return null;
+
+              return (
+                <>
+                  <button
+                    onClick={() => handleOpenEditNodeConnection(selectedNodeId)}
+                    className="bg-purple-600 hover:bg-purple-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                    title={`Editar conexão do nó deste equipamento (${nodeEdges.length} ligação(ões))`}
+                  >
+                    <LinkIcon size={15} /> Editar Nó {nodeEdges.length > 1 ? `(${nodeEdges.length})` : ''}
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteNodeConnection(selectedNodeId)}
+                    className="bg-purple-950/80 hover:bg-red-600 text-purple-200 hover:text-white border border-purple-500/50 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                    title={nodeEdges.length === 1 ? "Excluir nó de conexão (cabo) deste equipamento" : "Gerenciar e remover conexões de nós deste equipamento"}
+                  >
+                    <Trash2 size={15} /> Excluir Nó {nodeEdges.length > 1 ? `(${nodeEdges.length})` : ''}
+                  </button>
+                </>
+              );
+            })()}
+
+            {/* 5. Excluir Equipamento / Área */}
             {(() => {
               const selectedNode = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
-              const isZone = selectedNode && selectedNode.icon_type === 'Zone';
+              if (!selectedNode) return null;
+              const isZone = selectedNode.icon_type === 'Zone';
 
-              if (selectedNode) {
-                return (
-                  <button
-                    onClick={() => {
-                      if (isZone) {
-                        handleDeleteZone(selectedNode.id);
-                      } else {
-                        handleDeleteSelectedNode();
-                      }
-                    }}
-                    className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-red-500/30"
-                    title={isZone ? `Excluir área: ${selectedNode.label}` : `Excluir equipamento: ${selectedNode.label}`}
-                  >
-                    <Trash2 size={15} /> {isZone ? "Excluir Área" : "Excluir Nó"}
-                  </button>
-                );
-              }
-
-              return null;
+              return (
+                <button
+                  onClick={() => {
+                    if (isZone) {
+                      handleDeleteZone(selectedNode.id);
+                    } else {
+                      handleDeleteSelectedNode();
+                    }
+                  }}
+                  className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-red-500/30"
+                  title={isZone ? `Excluir área: ${selectedNode.label}` : `Excluir equipamento: ${selectedNode.label}`}
+                >
+                  <Trash2 size={15} /> {isZone ? "Excluir Área" : "Excluir Equipamento"}
+                </button>
+              );
             })()}
 
 
