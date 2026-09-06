@@ -7,8 +7,65 @@ import {
 } from "lucide-react";
 import api from "../../api/client";
 
-// Helper para retornar métricas UniFi exclusivas por tipo de equipamento
-const getMetricsForIconType = (iconType) => {
+// Helpers para identificação rigorosa de tipo de equipamento (Switch vs. AP)
+const isAssetOrDeviceSwitch = (asset, unifiDev) => {
+  if (unifiDev) {
+    if (unifiDev.type === 'usw') return true;
+    if (unifiDev.type === 'uap') return false;
+    if (Array.isArray(unifiDev.port_table) && unifiDev.port_table.length > 4) return true;
+    if (unifiDev.radio_table_stats || unifiDev.radio_table) return false;
+  }
+  if (asset) {
+    if (asset.type === 'Switch') return true;
+    if (asset.type === 'AccessPoint') return false;
+    const n = (asset.name || '').toLowerCase();
+    if (n.includes('switch') || n.includes('sw-') || n.includes('sw ') || n.startsWith('sw')) return true;
+    if (n.includes('antena') || n.includes('ap-') || n.includes('ap ') || n.startsWith('ap') || n.includes('uap')) return false;
+  }
+  return false;
+};
+
+const isAssetOrDeviceAP = (asset, unifiDev) => {
+  if (unifiDev) {
+    if (unifiDev.type === 'uap') return true;
+    if (unifiDev.type === 'usw') return false;
+    if (unifiDev.radio_table_stats || unifiDev.radio_table) return true;
+    if (Array.isArray(unifiDev.port_table) && unifiDev.port_table.length > 4) return false;
+  }
+  if (asset) {
+    if (asset.type === 'AccessPoint') return true;
+    if (asset.type === 'Switch') return false;
+    const n = (asset.name || '').toLowerCase();
+    if (n.includes('antena') || n.includes('ap-') || n.includes('ap ') || n.startsWith('ap') || n.includes('uap') || n.includes('access point')) return true;
+    if (n.includes('switch') || n.includes('sw-') || n.includes('sw ') || n.startsWith('sw')) return false;
+  }
+  return false;
+};
+
+const getRackChildrenTypes = (childIds = [], assetsList = [], unifiMetrics = []) => {
+  if (!Array.isArray(childIds) || childIds.length === 0) {
+    return { hasSwitches: true, hasAPs: true, isUnknown: true };
+  }
+
+  let hasSwitches = false;
+  let hasAPs = false;
+
+  childIds.forEach(id => {
+    const asset = assetsList.find(a => String(a.id) === String(id));
+    const unifiDev = asset?.ip_address ? unifiMetrics?.find(u => u.ip === asset.ip_address) : null;
+    if (isAssetOrDeviceSwitch(asset, unifiDev)) hasSwitches = true;
+    if (isAssetOrDeviceAP(asset, unifiDev)) hasAPs = true;
+  });
+
+  if (!hasSwitches && !hasAPs) {
+    return { hasSwitches: false, hasAPs: false, isUnknown: true };
+  }
+
+  return { hasSwitches, hasAPs, isUnknown: false };
+};
+
+// Helper para retornar métricas UniFi exclusivas e contextuais por tipo de equipamento
+const getMetricsForIconType = (iconType, childAssetIds = [], assetsList = [], unifiMetrics = []) => {
   const common = [
     { id: 'cpu', label: 'Uso de CPU' },
     { id: 'ram', label: 'Uso de RAM' },
@@ -37,15 +94,49 @@ const getMetricsForIconType = (iconType) => {
   }
 
   if (iconType === 'Rack' || iconType === 'Zone') {
-    return [
-      ...common,
-      { id: 'ports_status', label: 'Portas Up / Down (Switches)' },
-      { id: 'rx_tx', label: 'Taxas RX / TX (Tráfego)' },
-      { id: 'lan_experience', label: 'Experiência LAN' },
-      { id: 'wifi_experience', label: 'WiFi Experience (APs)' },
-      { id: 'clients', label: 'Clientes Conectados (APs)' },
-      { id: 'channel_utilization', label: 'Uso de Canal (APs)' },
-    ];
+    const { hasSwitches, hasAPs, isUnknown } = getRackChildrenTypes(childAssetIds, assetsList, unifiMetrics);
+
+    const metrics = [...common];
+
+    // Se o Rack só tem Switch (hasSwitches && !hasAPs)
+    if (hasSwitches && !hasAPs) {
+      metrics.push(
+        { id: 'ports_status', label: 'Portas Up / Down (Switches)' },
+        { id: 'rx_tx', label: 'Taxas RX / TX (Portas)' },
+        { id: 'lan_experience', label: 'Experiência LAN (%)' }
+      );
+      return metrics;
+    }
+
+    // Se o Rack só tem Antenas (!hasSwitches && hasAPs)
+    if (!hasSwitches && hasAPs) {
+      metrics.push(
+        { id: 'wifi_experience', label: 'WiFi Experience (APs)' },
+        { id: 'clients', label: 'Clientes Conectados (APs)' },
+        { id: 'channel_utilization', label: 'Uso de Canal (APs)' },
+        { id: 'rx_tx', label: 'Taxas RX / TX (Wi-Fi)' },
+        { id: 'lan_experience', label: 'Uplink LAN' }
+      );
+      return metrics;
+    }
+
+    // Se tem ambos ou se não tem nenhum ainda definido (isUnknown)
+    if (hasSwitches || isUnknown) {
+      metrics.push(
+        { id: 'ports_status', label: 'Portas Up / Down (Switches)' },
+        { id: 'rx_tx', label: 'Taxas RX / TX (Tráfego)' },
+        { id: 'lan_experience', label: 'Experiência LAN' }
+      );
+    }
+    if (hasAPs || isUnknown) {
+      metrics.push(
+        { id: 'wifi_experience', label: 'WiFi Experience (APs)' },
+        { id: 'clients', label: 'Clientes Conectados (APs)' },
+        { id: 'channel_utilization', label: 'Uso de Canal (APs)' }
+      );
+    }
+
+    return metrics;
   }
 
   // Outros dispositivos (Server, Firewall, Phone, etc.)
@@ -3959,7 +4050,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                                     <UnifiMetricsBlock 
                                       unifiDev={childUnifiDev} 
                                       selectedMetrics={unifiMetricsSelected} 
-                                      iconType={child.type === 'AccessPoint' ? 'AccessPoint' : (child.type === 'Switch' ? 'Switch' : (childUnifiDev.type === 'uap' ? 'AccessPoint' : 'Switch'))} 
+                                      iconType={isAssetOrDeviceAP(child, childUnifiDev) ? 'AccessPoint' : (isAssetOrDeviceSwitch(child, childUnifiDev) ? 'Switch' : 'Device')} 
                                     />
                                   )}
                                 </div>
@@ -4246,7 +4337,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         <button
                           type="button"
                           onClick={() => {
-                            const allM = [...DEFAULT_DISPLAY_OPTIONS.unifi_metrics];
+                            const allM = getMetricsForIconType(batchAddForm.icon_type, batchAddForm.selected_asset_ids, assetsList, unifiMetrics).map(m => m.id);
                             setBatchAddForm(prev => ({
                               ...prev,
                               display_options: { ...(prev.display_options || DEFAULT_DISPLAY_OPTIONS), unifi_metrics: allM, show_ip: true },
@@ -4293,10 +4384,21 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
                   <div className="border-t border-slate-800/80 pt-2">
                     <label className="block text-slate-400 font-bold mb-1.5 text-xs">
-                      Métricas UniFi ({batchAddForm.icon_type === 'AccessPoint' ? 'Antena Wi-Fi' : (batchAddForm.icon_type === 'Switch' ? 'Switch' : 'Detalhes Avançados')}):
+                      {(() => {
+                        if (batchAddForm.icon_type === 'AccessPoint') return 'Métricas UniFi (Antena Wi-Fi):';
+                        if (batchAddForm.icon_type === 'Switch') return 'Métricas UniFi (Switch):';
+                        if (batchAddForm.icon_type === 'Rack' || batchAddForm.icon_type === 'Zone') {
+                          const { hasSwitches, hasAPs } = getRackChildrenTypes(batchAddForm.selected_asset_ids, assetsList, unifiMetrics);
+                          if (hasSwitches && !hasAPs) return 'Métricas UniFi (Switches no Rack):';
+                          if (!hasSwitches && hasAPs) return 'Métricas UniFi (Antenas no Rack):';
+                          if (hasSwitches && hasAPs) return 'Métricas UniFi (Switches e Antenas no Rack):';
+                          return 'Métricas UniFi (Itens do Rack):';
+                        }
+                        return 'Métricas UniFi (Detalhes Avançados):';
+                      })()}
                     </label>
                     <div className="grid grid-cols-2 gap-1.5">
-                      {getMetricsForIconType(batchAddForm.icon_type).map(metric => {
+                      {getMetricsForIconType(batchAddForm.icon_type, batchAddForm.selected_asset_ids, assetsList, unifiMetrics).map(metric => {
                       const currentMetrics = Array.isArray(batchAddForm.display_options?.unifi_metrics)
                         ? batchAddForm.display_options.unifi_metrics
                         : (Array.isArray(batchAddForm.rack_display_options?.unifi_metrics)
@@ -4840,11 +4942,53 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   </label>
 
                   <div className="border-t border-slate-800 mt-2 pt-2">
-                    <label className="block text-slate-400 font-bold mb-2 text-xs">
-                      Métricas UniFi ({newNodeForm.icon_type === 'AccessPoint' ? 'Antena Wi-Fi' : (newNodeForm.icon_type === 'Switch' ? 'Switch' : (newNodeForm.icon_type === 'Rack' ? 'Itens do Rack' : 'Detalhes Avançados'))}):
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-slate-400 font-bold text-xs">
+                        {(() => {
+                          if (newNodeForm.icon_type === 'AccessPoint') return 'Métricas UniFi (Antena Wi-Fi):';
+                          if (newNodeForm.icon_type === 'Switch') return 'Métricas UniFi (Switch):';
+                          if (newNodeForm.icon_type === 'Rack' || newNodeForm.icon_type === 'Zone') {
+                            const { hasSwitches, hasAPs } = getRackChildrenTypes(newNodeForm.child_asset_ids, assetsList, unifiMetrics);
+                            if (hasSwitches && !hasAPs) return 'Métricas UniFi (Switches no Rack):';
+                            if (!hasSwitches && hasAPs) return 'Métricas UniFi (Antenas no Rack):';
+                            if (hasSwitches && hasAPs) return 'Métricas UniFi (Switches e Antenas no Rack):';
+                            return 'Métricas UniFi (Itens do Rack):';
+                          }
+                          return 'Métricas UniFi (Detalhes Avançados):';
+                        })()}
+                      </label>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const avail = getMetricsForIconType(newNodeForm.icon_type, newNodeForm.child_asset_ids, assetsList, unifiMetrics).map(m => m.id);
+                            setNewNodeForm(prev => {
+                              const base = prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+                              const newOpts = { ...base, unifi_metrics: avail };
+                              return { ...prev, display_options: newOpts, rack_display_options: newOpts };
+                            });
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded font-bold cursor-pointer transition-colors"
+                        >
+                          Todas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewNodeForm(prev => {
+                              const base = prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+                              const newOpts = { ...base, unifi_metrics: [] };
+                              return { ...prev, display_options: newOpts, rack_display_options: newOpts };
+                            });
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded font-bold cursor-pointer transition-colors"
+                        >
+                          Nenhuma
+                        </button>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-2 pl-2">
-                      {getMetricsForIconType(newNodeForm.icon_type).map(metric => {
+                      {getMetricsForIconType(newNodeForm.icon_type, newNodeForm.child_asset_ids, assetsList, unifiMetrics).map(metric => {
                         const currentOpts = newNodeForm.display_options || newNodeForm.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
                         const isMetricChecked = (currentOpts.unifi_metrics || []).includes(metric.id);
                         return (
@@ -5235,11 +5379,53 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   </label>
 
                   <div className="border-t border-slate-800 mt-2 pt-2">
-                    <label className="block text-slate-400 font-bold mb-2 text-xs">
-                      Métricas UniFi ({editNodeForm.icon_type === 'AccessPoint' ? 'Antena Wi-Fi' : (editNodeForm.icon_type === 'Switch' ? 'Switch' : (editNodeForm.icon_type === 'Rack' ? 'Itens do Rack' : 'Detalhes Avançados'))}):
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-slate-400 font-bold text-xs">
+                        {(() => {
+                          if (editNodeForm.icon_type === 'AccessPoint') return 'Métricas UniFi (Antena Wi-Fi):';
+                          if (editNodeForm.icon_type === 'Switch') return 'Métricas UniFi (Switch):';
+                          if (editNodeForm.icon_type === 'Rack' || editNodeForm.icon_type === 'Zone') {
+                            const { hasSwitches, hasAPs } = getRackChildrenTypes(editNodeForm.child_asset_ids, assetsList, unifiMetrics);
+                            if (hasSwitches && !hasAPs) return 'Métricas UniFi (Switches no Rack):';
+                            if (!hasSwitches && hasAPs) return 'Métricas UniFi (Antenas no Rack):';
+                            if (hasSwitches && hasAPs) return 'Métricas UniFi (Switches e Antenas no Rack):';
+                            return 'Métricas UniFi (Itens do Rack):';
+                          }
+                          return 'Métricas UniFi (Detalhes Avançados):';
+                        })()}
+                      </label>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const avail = getMetricsForIconType(editNodeForm.icon_type, editNodeForm.child_asset_ids, assetsList, unifiMetrics).map(m => m.id);
+                            setEditNodeForm(prev => {
+                              const base = prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+                              const newOpts = { ...base, unifi_metrics: avail };
+                              return { ...prev, display_options: newOpts, rack_display_options: newOpts };
+                            });
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded font-bold cursor-pointer transition-colors"
+                        >
+                          Todas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditNodeForm(prev => {
+                              const base = prev.display_options || prev.rack_display_options || DEFAULT_DISPLAY_OPTIONS;
+                              const newOpts = { ...base, unifi_metrics: [] };
+                              return { ...prev, display_options: newOpts, rack_display_options: newOpts };
+                            });
+                          }}
+                          className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded font-bold cursor-pointer transition-colors"
+                        >
+                          Nenhuma
+                        </button>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-2 pl-2">
-                      {getMetricsForIconType(editNodeForm.icon_type).map(metric => {
+                      {getMetricsForIconType(editNodeForm.icon_type, editNodeForm.child_asset_ids, assetsList, unifiMetrics).map(metric => {
                         const currentMetrics = Array.isArray(editNodeForm.display_options?.unifi_metrics)
                           ? editNodeForm.display_options.unifi_metrics
                           : (Array.isArray(editNodeForm.rack_display_options?.unifi_metrics)

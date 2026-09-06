@@ -213,10 +213,13 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Segregação Contextual Estrita de Métricas UniFi (Switches vs. Antenas/APs)**:
   - **Cards de Switches**: Exibem exclusivamente métricas pertinentes a comutação e infraestrutura: CPU, RAM, Uptime, Firmware, Portas Up/Down (Conectadas e Livres com PoE), Taxas RX/TX das portas físicas e Experiência LAN (%). Bloqueio absoluto de dados irrelevantes de Wi-Fi (como WiFi Experience, Clientes conectados e Uso de canais 2.4G/5G).
   - **Cards de Antenas / Access Points (APs)**: Exibem exclusivamente métricas pertinentes à rede sem fio e rádio: CPU, RAM, Uptime, Firmware, WiFi Experience (%), Clientes Conectados, Uso de Canais (2.4G / 5G / 6G com canal e % de ocupação), Taxas RX/TX de Wi-Fi e Uplink LAN (velocidade e duplex do cabo de rede do AP). Bloqueio absoluto de métricas de portas físicas de switch.
-  - **Cards de Racks e Equipamentos Agregados**: No caso de Racks contendo switches e APs internos, cada ativo filho renderiza suas métricas contextuais de acordo com sua categoria individual, e as opções de exibição no modal apresentam rótulos claros discriminando itens de Switch e itens de AP.
+  - **Cards de Racks e Equipamentos Agregados**:
+    - Detecção dinâmica baseada nos ativos contidos no Rack (`child_asset_ids`): caso o Rack possua apenas Switches, o painel e os modais exibem exclusivamente métricas pertinentes a Switches (`Métricas UniFi (Switches no Rack)`), suprimindo totalmente opções de AP. Caso possua apenas Antenas, exibe exclusivamente métricas de Antenas/Wi-Fi (`Métricas UniFi (Antenas no Rack)`), suprimindo contadores de portas. Caso possua ambos, categoriza e exibe ambos.
+    - No canvas, cada ativo filho renderiza suas métricas contextuais de acordo com sua categoria individual (`isAssetOrDeviceSwitch` vs `isAssetOrDeviceAP`).
   - **Filtro Dinâmico nos Formulários e Modais de Configuração (`batchAddForm`, `newNodeForm`, `editNodeForm`)**:
-    - As opções de seleção de métricas são filtradas dinamicamente com base no tipo de equipamento selecionado (`icon_type`), garantindo que o usuário visualize e configure apenas as métricas cabíveis para aquele tipo de hardware.
-    - Presets rápidos em 1 clique (`[ 📡 Wi-Fi (AP) ]`, `[ 🔀 Switches ]`, `[ ⚡ Todas ]`, `[ 🚫 Nenhuma ]`) ajustam instantaneamente as métricas recomendadas para cada perfil.
+    - As opções de seleção de métricas são filtradas dinamicamente com base no tipo de equipamento selecionado (`icon_type`) e nos ativos contidos no Rack em tempo real.
+    - Botões rápidos `[ Todas ]` e `[ Nenhuma ]` adicionados aos modais de criação e edição individual para aplicar ou limpar opções contextuais em 1 clique.
+    - Presets rápidos em 1 clique no lote (`[ 📡 Wi-Fi (AP) ]`, `[ 🔀 Switches ]`, `[ ⚡ Todas ]`, `[ 🚫 Nenhuma ]`).
 
 
 
