@@ -681,8 +681,40 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Estados de edição / seleção
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
+  // Estados de edição / seleção múltipla
+  const [selectedNodeIds, setSelectedNodeIds] = useState([]);
+  const selectedNodeId = selectedNodeIds.length > 0 ? selectedNodeIds[selectedNodeIds.length - 1] : null;
+
+  const setSelectedNodeId = (idOrFn) => {
+    if (typeof idOrFn === 'function') {
+      setSelectedNodeIds(prev => {
+        const currentSingle = prev.length > 0 ? prev[prev.length - 1] : null;
+        const next = idOrFn(currentSingle);
+        if (next === null || next === undefined) return [];
+        return [next];
+      });
+    } else if (idOrFn === null || idOrFn === undefined) {
+      setSelectedNodeIds([]);
+    } else {
+      setSelectedNodeIds([idOrFn]);
+    }
+  };
+
+  const handleToggleNodeSelection = (nodeId, isMulti = false) => {
+    if (isMulti) {
+      setSelectedNodeIds((prev) => {
+        const strId = String(nodeId);
+        const exists = prev.some((id) => String(id) === strId);
+        if (exists) {
+          return prev.filter((id) => String(id) !== strId);
+        } else {
+          return [...prev, nodeId];
+        }
+      });
+    } else {
+      setSelectedNodeIds([nodeId]);
+    }
+  };
   const [isAddNodeModalOpen, setIsAddNodeModalOpen] = useState(false);
   const [isEditNodeModalOpen, setIsEditNodeModalOpen] = useState(false);
   const [isAddEdgeModalOpen, setIsAddEdgeModalOpen] = useState(false);
@@ -808,6 +840,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const audioCtxRef = useRef(null);
 
   const draggingNodeIdRef = useRef(null);
+  const multiDragStartRef = useRef(null);
   const draggingZoneIdRef = useRef(null);
   const resizingNodeIdRef = useRef(null);
   const isPanningRef = useRef(false);
@@ -2409,10 +2442,28 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }
   };
 
-  // Remover Equipamento Selecionado do Mapa
+  // Remover Equipamento(s) Selecionado(s) do Mapa (Individual ou em Lote via Seleção Múltipla)
   const handleDeleteSelectedNode = () => {
-    if (!selectedNodeId) return;
-    const nodeToDelete = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
+    if (selectedNodeIds.length === 0) return;
+
+    if (selectedNodeIds.length > 1) {
+      if (!window.confirm(`Deseja realmente excluir os ${selectedNodeIds.length} equipamentos selecionados deste fluxograma?`)) return;
+
+      const idsSet = new Set(selectedNodeIds.map(String));
+      setHasUnsavedChanges(true);
+      setMapData((prev) => ({
+        ...prev,
+        nodes_data: prev.nodes_data
+          .filter((n) => !idsSet.has(String(n.id)))
+          .map((n) => idsSet.has(String(n.zone_id)) ? { ...n, zone_id: null } : n),
+        edges_data: prev.edges_data.filter((e) => !idsSet.has(String(e.source_id)) && !idsSet.has(String(e.target_id))),
+      }));
+      setSelectedNodeIds([]);
+      return;
+    }
+
+    const singleId = selectedNodeIds[0];
+    const nodeToDelete = mapData.nodes_data.find(n => String(n.id) === String(singleId));
     const label = nodeToDelete?.label || "este equipamento";
     if (!window.confirm(`Deseja realmente excluir o equipamento "${label}" deste fluxograma?`)) return;
 
@@ -2420,12 +2471,30 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     setMapData((prev) => ({
       ...prev,
       nodes_data: prev.nodes_data
-        .filter((n) => n.id !== selectedNodeId)
-        .map((n) => n.zone_id === selectedNodeId ? { ...n, zone_id: null } : n),
-      edges_data: prev.edges_data.filter((e) => e.source_id !== selectedNodeId && e.target_id !== selectedNodeId),
+        .filter((n) => String(n.id) !== String(singleId))
+        .map((n) => String(n.zone_id) === String(singleId) ? { ...n, zone_id: null } : n),
+      edges_data: prev.edges_data.filter((e) => String(e.source_id) !== String(singleId) && String(e.target_id) !== String(singleId)),
     }));
-    setSelectedNodeId(null);
+    setSelectedNodeIds([]);
   };
+
+  // Suporte a atalhos de teclado (Delete / Backspace para exclusão rápida dos selecionados)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (isPublicView) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+        if (isAddNodeModalOpen || isEditNodeModalOpen || isAddEdgeModalOpen || isZoneModalOpen || isFloorplanModalOpen || isBatchAddModalOpen) return;
+
+        if (selectedNodeIds.length > 0) {
+          e.preventDefault();
+          handleDeleteSelectedNode();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedNodeIds, isPublicView, isAddNodeModalOpen, isEditNodeModalOpen, isAddEdgeModalOpen, isZoneModalOpen, isFloorplanModalOpen, isBatchAddModalOpen, mapData]);
 
   // Eventos de Mouse, Zoom e Navegação Panorâmica no Canvas
   const handleWheel = (e) => {
@@ -2435,7 +2504,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   };
 
   const handleCanvasMouseDown = (e) => {
-    setSelectedNodeId(null);
+    if (!e.ctrlKey && !e.metaKey) {
+      setSelectedNodeIds([]);
+    }
     setIsNodeListOpen(false);
     if (e.target === containerRef.current || isPanMode || e.button === 1) {
       setIsPanning(true);
@@ -2447,7 +2518,20 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const handleMouseDownNode = (nodeId, e) => {
     if (isPublicView || isPanMode) return;
     e.stopPropagation();
-    setSelectedNodeId(nodeId);
+
+    const isMultiKey = e.ctrlKey || e.metaKey;
+    if (isMultiKey) {
+      handleToggleNodeSelection(nodeId, true);
+    } else {
+      setSelectedNodeIds(prev => {
+        const isAlreadySelected = prev.some(id => String(id) === String(nodeId));
+        if (isAlreadySelected && prev.length > 1) {
+          return prev;
+        }
+        return [nodeId];
+      });
+    }
+
     setDraggingNodeId(nodeId);
     draggingNodeIdRef.current = nodeId;
     
@@ -2457,6 +2541,16 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         x: (e.clientX - pan.x) / zoom - node.x,
         y: (e.clientY - pan.y) / zoom - node.y,
       });
+
+      const startPositions = {};
+      mapData.nodes_data.forEach(n => {
+        startPositions[n.id] = { x: n.x, y: n.y };
+      });
+      multiDragStartRef.current = {
+        primaryId: nodeId,
+        primaryStart: { x: node.x, y: node.y },
+        positions: startPositions,
+      };
     }
   };
 
@@ -2554,18 +2648,36 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       }
     }
 
+    const origStart = multiDragStartRef.current?.primaryStart || (draggedNode ? { x: draggedNode.x, y: draggedNode.y } : { x: newX, y: newY });
+    const deltaX = newX - origStart.x;
+    const deltaY = newY - origStart.y;
+    const isMultiple = selectedNodeIds.length > 1 && selectedNodeIds.some(id => String(id) === String(draggingNodeId));
+    const selectedSet = isMultiple ? new Set(selectedNodeIds.map(String)) : null;
+
     setHasUnsavedChanges(true);
     setMapData((prev) => ({
       ...prev,
-      nodes_data: prev.nodes_data.map((n) => 
-        n.id === draggingNodeId ? { ...n, x: newX, y: newY } : n
-      ),
+      nodes_data: prev.nodes_data.map((n) => {
+        if (isMultiple) {
+          if (selectedSet.has(String(n.id))) {
+            const initialPos = multiDragStartRef.current?.positions?.[n.id] || { x: n.x, y: n.y };
+            return {
+              ...n,
+              x: initialPos.x + deltaX,
+              y: initialPos.y + deltaY,
+            };
+          }
+          return n;
+        }
+        return n.id === draggingNodeId ? { ...n, x: newX, y: newY } : n;
+      }),
     }));
   };
 
   const handleMouseUp = () => {
     setDraggingNodeId(null);
     draggingNodeIdRef.current = null;
+    multiDragStartRef.current = null;
     setDraggingZoneId(null);
     draggingZoneIdRef.current = null;
     setIsPanning(false);
@@ -2867,8 +2979,36 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               <LinkIcon size={15} /> Conectar Nós (Cabos)
             </button>
 
-            {/* 4. Editar Equipamento / Área */}
-            {(() => {
+            {/* Bloco de Ações para Múltiplos Equipamentos Selecionados (Ctrl+Clique) */}
+            {selectedNodeIds.length > 1 && (
+              <div className="flex items-center gap-2 bg-slate-900/95 border border-blue-500/50 px-3 py-1.5 rounded-xl shadow-lg">
+                <span className="text-xs font-black text-blue-400 flex items-center gap-1.5">
+                  <CheckSquare size={14} className="text-blue-400" />
+                  {selectedNodeIds.length} selecionados
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedNode}
+                  className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-red-600/30"
+                  title={`Excluir os ${selectedNodeIds.length} equipamentos selecionados deste fluxograma`}
+                >
+                  <Trash2 size={14} /> Excluir Selecionados ({selectedNodeIds.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedNodeIds([])}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                  title="Desmarcar todos"
+                >
+                  <X size={13} /> Limpar
+                </button>
+              </div>
+            )}
+
+            {/* 4. Editar Equipamento / Área (Quando exatamente 1 item estiver selecionado) */}
+            {selectedNodeIds.length === 1 && (() => {
               const selectedNode = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
               if (!selectedNode) return null;
               const isZone = selectedNode.icon_type === 'Zone';
@@ -2890,8 +3030,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               );
             })()}
 
-            {/* 4.1 Editar Nó e Excluir Nó (APENAS quando o equipamento selecionado possui conexões/nós de cabo ligados a ele) */}
-            {(() => {
+            {/* 4.1 Editar Nó e Excluir Nó (APENAS quando exatamente 1 equipamento selecionado possuir conexões/nós de cabo ligados a ele) */}
+            {selectedNodeIds.length === 1 && (() => {
               if (!selectedNodeId) return null;
               const selectedNode = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
               if (selectedNode && selectedNode.icon_type === 'Zone') return null;
@@ -2922,8 +3062,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               );
             })()}
 
-            {/* 5. Excluir Equipamento / Área */}
-            {(() => {
+            {/* 5. Excluir Equipamento / Área (Quando exatamente 1 item estiver selecionado) */}
+            {selectedNodeIds.length === 1 && (() => {
               const selectedNode = mapData.nodes_data.find(n => String(n.id) === String(selectedNodeId));
               if (!selectedNode) return null;
               const isZone = selectedNode.icon_type === 'Zone';
@@ -3182,7 +3322,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 const geom = getZoneGeometry(zone, mapData.nodes_data);
                 if (!geom.hasMembers) return null;
                 const theme = ZONE_COLOR_THEMES[zone.color] || ZONE_COLOR_THEMES.blue;
-                const isSelected = String(selectedNodeId) === String(zone.id);
+                const isSelected = selectedNodeIds.some(id => String(id) === String(zone.id));
 
                 return (
                   <g key={zone.id} className="pointer-events-auto cursor-pointer">
@@ -3206,7 +3346,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                       onMouseDown={(e) => handleMouseDownZone(zone.id, e)}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedNodeId(zone.id);
+                        if (e.ctrlKey || e.metaKey) {
+                          handleToggleNodeSelection(zone.id, true);
+                        } else {
+                          setSelectedNodeIds([zone.id]);
+                        }
                       }}
                       onDoubleClick={(e) => {
                         e.stopPropagation();
@@ -3309,7 +3453,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
               {mapData.nodes_data.filter(n => n.icon_type === 'Zone').map((zone) => {
                 const geom = getZoneGeometry(zone, mapData.nodes_data);
                 const theme = ZONE_COLOR_THEMES[zone.color] || ZONE_COLOR_THEMES.blue;
-                const isSelected = String(selectedNodeId) === String(zone.id);
+                const isSelected = selectedNodeIds.some(id => String(id) === String(zone.id));
 
                 // ÁREA COM MEMBROS: Cabeçalho flutuante que acompanha o topo do contorno
                 if (geom.hasMembers) {
@@ -3326,7 +3470,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                         onMouseDown={(e) => handleMouseDownZone(zone.id, e)}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedNodeId(zone.id);
+                          if (e.ctrlKey || e.metaKey) {
+                            handleToggleNodeSelection(zone.id, true);
+                          } else {
+                            setSelectedNodeIds([zone.id]);
+                          }
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
@@ -3394,7 +3542,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     onMouseDown={(e) => handleMouseDownNode(zone.id, e)}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedNodeId(zone.id);
+                      if (e.ctrlKey || e.metaKey) {
+                        handleToggleNodeSelection(zone.id, true);
+                      } else {
+                        setSelectedNodeIds([zone.id]);
+                      }
                     }}
                     onDoubleClick={(e) => {
                       e.stopPropagation();
@@ -3436,7 +3588,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
             <div className="absolute inset-0 pointer-events-none">
               {mapData.nodes_data.filter(n => n.icon_type !== 'Zone').map((node) => {
                 const isOffline = getIsNodeOffline(node);
-                const isSelected = String(selectedNodeId) === String(node.id);
+                const isSelected = selectedNodeIds.some(id => String(id) === String(node.id));
                 const nodeWidth = node.width || (node.icon_type === 'Rack' || node.icon_type === 'Zone' ? 280 : 220);
                 const nodeHeight = node.height || null;
 
@@ -3446,7 +3598,11 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                     id={`topology-node-card-${node.id}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedNodeId(node.id);
+                      if (e.ctrlKey || e.metaKey) {
+                        handleToggleNodeSelection(node.id, true);
+                      } else {
+                        setSelectedNodeIds([node.id]);
+                      }
                     }}
                     onMouseDown={(e) => handleMouseDownNode(node.id, e)}
                     onDoubleClick={() => {
@@ -3482,10 +3638,17 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                   >
                     {/* Node Icon Header */}
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <div className={`p-2 rounded-xl ${
-                        isOffline ? "bg-red-500/20 border border-red-500/30" : "bg-slate-800"
-                      }`}>
-                        {renderNodeIcon(node.icon_type, false, isOffline)}
+                      <div className="flex items-center gap-1.5">
+                        <div className={`p-2 rounded-xl ${
+                          isOffline ? "bg-red-500/20 border border-red-500/30" : "bg-slate-800"
+                        }`}>
+                          {renderNodeIcon(node.icon_type, false, isOffline)}
+                        </div>
+                        {isSelected && selectedNodeIds.length > 1 && (
+                          <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-black shadow-md" title="Equipamento selecionado em lote">
+                            <Check size={11} strokeWidth={3} />
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5">

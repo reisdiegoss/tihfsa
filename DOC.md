@@ -148,9 +148,16 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
       2. `[ 📑 Adicionar em Lote ]`: Adiciona múltiplos equipamentos do CMDB de uma só vez (ex: várias antenas UniFi ou switches de um andar) com configurações padrão compartilhadas (área/bloco de destino, tipo de ícone, métricas UniFi e alerta sonoro), organizando-os automaticamente em grade no canvas sem sobreposição.
       3. `[ 🏢 Nova Área / Bloco ]`
       4. `[ 🔗 Conectar Nós (Cabos) ]`
-      5. `[ ✏️ Editar Equipamento ]` / `[ ✏️ Editar Área ]`: Botão contextual na barra. Ao clicar em qualquer equipamento no mapa, abre o modal de edição de hardware do equipamento (nome, IP, dimensões, métricas UniFi/Zabbix, som de alerta, ativo vinculado). Se uma área for selecionada, abre a edição da área.
+      5. `[ ✏️ Editar Equipamento ]` / `[ ✏️ Editar Área ]`: Botão contextual na barra quando exatamente 1 item está selecionado. Ao clicar em qualquer equipamento no mapa, abre o modal de edição de hardware do equipamento (nome, IP, dimensões, métricas UniFi/Zabbix, som de alerta, ativo vinculado). Se uma área for selecionada, abre a edição da área.
       6. `[ 🔗 Editar Nó ]` e `[ ✂️ Excluir Nó ]`: Exibidos dinamicamente apenas quando o equipamento selecionado possuir conexões/nós de cabo ligados a ele (`nodeEdges.length > 0`). Permitem editar portas, destino ou remover com segurança a conexão do nó de cabo sem apagar o equipamento. Se o equipamento não possuir nós conectados, esses botões não são exibidos.
       7. `[ 🗑️ Excluir Equipamento ]` / `[ 🗑️ Excluir Área ]`: Botão contextual com confirmação para excluir com segurança o equipamento ou a área selecionada do fluxograma.
+      8. `[ 🗹 X selecionados ]` + `[ 🗑️ Excluir Selecionados (X) ]` + `[ ✕ Limpar ]`: Painel de ações em lote exibido quando múltiplos equipamentos são selecionados simultaneamente (segurando `Ctrl` ou `Cmd`).
+  - **Seleção Múltipla com Ctrl / Cmd e Operações em Bloco**:
+    - **Seleção com `Ctrl + Clique`**: Segure a tecla `Ctrl` (ou `Cmd` no macOS) e clique em múltiplos equipamentos ou áreas para adicioná-los ou removê-los da seleção ativa.
+    - **Feedback Visual Claro**: Cards selecionados recebem anel de destaque em azul brilhante e um badge circular com ícone de `Check` no cabeçalho quando fazem parte de uma seleção múltipla.
+    - **Exclusão em Lote**: Botão dedicado `Excluir Selecionados (X)` na barra superior e atalhos rápidos de teclado (`Delete` ou `Backspace`) com caixa de diálogo de confirmação detalhada para remover múltiplos equipamentos e suas respectivas conexões de cabo de uma só vez.
+    - **Arrasto e Movimentação Sincronizada em Grupo**: Ao clicar e arrastar qualquer um dos equipamentos pertencentes à seleção múltipla, todos os itens selecionados se deslocam juntos em tempo real mantendo o alinhamento e distâncias relativas intactas.
+    - **Desmarcação Rápida**: Clique no botão `Limpar` ou em qualquer área vazia do canvas (sem Ctrl) para desmarcar todos os equipamentos.
   - **Adicionar e Atualizar Equipamentos em Lote (Batch Import com Dimensões e Métricas Personalizadas)**:
     - Permite selecionar múltiplos equipamentos através de filtros rápidos de tipo (`Antenas / APs`, `Switches`, `Servidores`, `Todos`) e busca por texto/IP.
     - **Ajuste de Dimensões em Lote (Largura e Altura)**:
