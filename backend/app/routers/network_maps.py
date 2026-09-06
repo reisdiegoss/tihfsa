@@ -1,7 +1,9 @@
 """
 Router NetworkMaps — CRUD de mapas de topologia de rede com enriquececimento Zabbix/ICMP em tempo real.
 """
+import copy
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -51,8 +53,8 @@ def list_network_maps(
     if location_id:
         query = query.filter(NetworkMap.location_id == location_id)
 
-    # Ordena por ordem do carrossel, e depois data de atualização
-    maps = query.order_by(NetworkMap.carousel_order.asc(), NetworkMap.updated_at.desc()).all()
+    # Ordena por ordem do carrossel (posição definida), e desempata por ID de criação
+    maps = query.order_by(NetworkMap.carousel_order.asc(), NetworkMap.id.asc()).all()
 
     # Coleta todos os IDs de ativos referenciados nos nós de todos os mapas
     all_asset_ids = set()
@@ -174,7 +176,12 @@ def create_network_map(
     map_data: NetworkMapCreate,
     db: Session = Depends(get_db),
 ):
-    """Cria um novo mapa de topologia de rede."""
+    if map_data.carousel_order is not None and map_data.carousel_order > 0:
+        target_order = map_data.carousel_order
+    else:
+        max_order = db.query(func.max(NetworkMap.carousel_order)).scalar() or 0
+        target_order = max_order + 1
+
     net_map = NetworkMap(
         name=map_data.name,
         description=map_data.description,
@@ -186,7 +193,7 @@ def create_network_map(
         pan_x=map_data.pan_x if map_data.pan_x is not None else 0,
         pan_y=map_data.pan_y if map_data.pan_y is not None else 0,
         in_carousel=map_data.in_carousel if map_data.in_carousel is not None else True,
-        carousel_order=map_data.carousel_order if map_data.carousel_order is not None else 0,
+        carousel_order=target_order,
         carousel_seconds=map_data.carousel_seconds if map_data.carousel_seconds is not None else 20,
         background_image_url=map_data.background_image_url,
     )
@@ -269,7 +276,7 @@ def clone_network_map(
     if not source_map:
         raise HTTPException(status_code=404, detail="Mapa de origem não encontrado")
 
-    import copy
+    max_order = db.query(func.max(NetworkMap.carousel_order)).scalar() or 0
     new_map = NetworkMap(
         name=clone_data.name.strip(),
         description=clone_data.description or source_map.description,
@@ -281,7 +288,7 @@ def clone_network_map(
         pan_x=source_map.pan_x,
         pan_y=source_map.pan_y,
         in_carousel=source_map.in_carousel,
-        carousel_order=(source_map.carousel_order or 0) + 1,
+        carousel_order=max_order + 1,
         carousel_seconds=source_map.carousel_seconds or 20,
         background_image_url=source_map.background_image_url,
     )

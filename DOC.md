@@ -191,4 +191,16 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Badge Flutuante de Identificação do Fluxograma (Modo TV & Edição)**:
   - Overlay em estilo Glassmorphism fixado no canto superior esquerdo do canvas (`absolute top-4 left-4 z-40`).
   - Exibe o nome do fluxograma ativo (`mapData.name`) com indicador luminoso pulsante e descrição do ambiente, garantindo que em monitores de TV (mesmo no modo trancado) e durante o carrossel a equipe saiba no primeiro segundo qual andar ou setor está sendo exibido.
+- **Reorganização e Ordenação dos Fluxogramas (Dropdown e Carrossel da TV NOC)**:
+  - Disponível diretamente na barra de ferramentas ao lado do seletor de mapas através do botão **`[ ↕️ Ordenar ]`** no Construtor de Topologia (`TopologyMapBuilder`) e na modal de configuração do carrossel no Painel NOC TV (`PublicNocPanel`).
+  - **Ordenação Rápida Inteligente A → Z (Numérica Natural)**:
+    - Botão **`[ 🔤 A → Z (Numérica) ]`** que reorganiza todos os fluxogramas em 1 clique utilizando ordenação natural (`localeCompare` com `{ numeric: true }`).
+    - Resolve cenários onde fluxogramas foram criados fora de sequência (ex: criou 4º ao 6º Andar e depois 1º ao 3º Andar): o algoritmo agrupa e ordena respeitando os números de cada andar (`1º Andar`, `2º Andar`, ..., `6º Andar`).
+    - Botão **`[ Z → A ]`** para inversão de ordem quando desejado.
+  - **Reordenação Manual Fina (Setas ↑ e ↓)**:
+    - Lista visual com identificadores de posição (`#1`, `#2`, `#3`...), badge indicando o mapa atualmente aberto e botões de subir e descer para posicionar qualquer ambiente na ordem exata desejada.
+  - **Sincronização Imediata e Persistência Determinística no Backend**:
+    - Ao salvar, os dados são enviados em lote via `PUT /api/v1/network-maps/carousel/batch`, atualizando o atributo `carousel_order` de cada mapa.
+    - A nova sequência é refletida instantaneamente no dropdown de seleção do topo da página e na playlist de rotação da TV.
+    - O backend passa a listar os mapas de forma rigorosamente estável por `NetworkMap.carousel_order.asc(), NetworkMap.id.asc()`. Ao criar um novo mapa em branco ou clonar um mapa existente, o sistema atribui automaticamente a próxima ordem disponível (`func.max(NetworkMap.carousel_order) + 1`), evitando colisão de posições e preservando a organização já definida pelo usuário.
 

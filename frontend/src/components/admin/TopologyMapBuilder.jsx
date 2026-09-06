@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Server, HardDrive, Wifi, Phone, Shield, Cloud, Monitor, Activity, Zap,
   Plus, Save, Trash2, Edit3, Move, RefreshCw, AlertCircle, CheckCircle, Link as LinkIcon, X, Maximize2, Search, CheckSquare, Square, Check, LayoutGrid,
-  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy, Layers, ListFilter, ChevronDown, Crosshair
+  ZoomIn, ZoomOut, RotateCcw, Hand, Minimize2, Bell, Volume2, VolumeX, Copy, Layers, ListFilter, ChevronDown, Crosshair,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from "lucide-react";
 import api from "../../api/client";
 const UnifiMetricsBlock = ({ unifiDev, selectedMetrics }) => {
@@ -725,6 +726,9 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const [isEditMapModalOpen, setIsEditMapModalOpen] = useState(false);
   const [editMapForm, setEditMapForm] = useState({ name: "", description: "" });
   const [savingMapInfo, setSavingMapInfo] = useState(false);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [mapsOrderList, setMapsOrderList] = useState([]);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
 
   // Estados para Áreas / Blocos de Agrupamento Dinâmicos (ex: Bloco ADM, Bloco UH)
@@ -1610,6 +1614,61 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       alert("Erro ao salvar alterações no fluxograma.");
     } finally {
       setSavingMapInfo(false);
+    }
+  };
+
+  // Reorganizar / Ordenar Fluxogramas
+  const openOrderModal = () => {
+    const items = [...(mapsList || [])];
+    setMapsOrderList(items);
+    setIsOrderModalOpen(true);
+  };
+
+  const handleMoveMapOrder = (index, direction) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= mapsOrderList.length) return;
+    const copy = [...mapsOrderList];
+    const temp = copy[index];
+    copy[index] = copy[targetIndex];
+    copy[targetIndex] = temp;
+    setMapsOrderList(copy);
+  };
+
+  const handleSortAlphabetical = (asc = true) => {
+    const copy = [...mapsOrderList];
+    copy.sort((a, b) => {
+      const nameA = a.name || "";
+      const nameB = b.name || "";
+      return asc 
+        ? nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: "base" })
+        : nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: "base" });
+    });
+    setMapsOrderList(copy);
+  };
+
+  const handleSaveMapsOrder = async () => {
+    setSavingOrder(true);
+    try {
+      const payload = {
+        items: mapsOrderList.map((m, idx) => ({
+          id: m.id,
+          in_carousel: m.in_carousel !== false,
+          carousel_order: idx + 1,
+          carousel_seconds: m.carousel_seconds || 20,
+        }))
+      };
+      const res = await api.put("/network-maps/carousel/batch", payload);
+      if (res.data) {
+        setMapsList(res.data);
+      } else {
+        fetchMaps();
+      }
+      setIsOrderModalOpen(false);
+    } catch (err) {
+      console.error("Erro ao salvar ordem dos fluxogramas:", err);
+      alert(err.response?.data?.detail || "Erro ao salvar nova ordem dos fluxogramas.");
+    } finally {
+      setSavingOrder(false);
     }
   };
 
@@ -2948,6 +3007,16 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 >
                   <Edit3 size={13} className="text-amber-400" />
                   <span>Renomear</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openOrderModal}
+                  disabled={mapsList.length <= 1}
+                  className="px-2.5 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/50 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                  title="Reorganizar ordem dos fluxogramas (dropdown e rotação da TV NOC)"
+                >
+                  <ArrowUpDown size={13} className="text-indigo-400" />
+                  <span>Ordenar</span>
                 </button>
               </div>
               <p className="text-[11px] font-semibold text-slate-400 mt-1">
@@ -5517,6 +5586,142 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 <Save size={14} />
                 <span>{savingMapInfo ? "Salvando..." : "Salvar Alterações"}</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Reorganizar / Ordenar Ordem dos Fluxogramas */}
+      {isOrderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-white flex items-center gap-2">
+                  <ArrowUpDown size={18} className="text-indigo-400" /> Reorganizar Ordem dos Fluxogramas
+                </h3>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  Organize a sequência do menu dropdown e da exibição no carrossel da TV NOC.
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsOrderModalOpen(false)} 
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Barra de Ordenação Rápida Inteligente */}
+            <div className="flex items-center justify-between gap-2 p-2.5 bg-slate-950/80 border border-slate-800 rounded-2xl">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <span>⚡ Ordenação Automática:</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSortAlphabetical(true)}
+                  className="px-3 py-1.5 bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/40 hover:border-indigo-500/60 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
+                  title="Ordenar automaticamente de 1º a 9º Andar (ordenação natural numérica)"
+                >
+                  <span>🔤 A → Z (Numérica)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSortAlphabetical(false)}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  title="Ordenar de forma decrescente (Z → A)"
+                >
+                  <span>Z → A</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Lista dos Fluxogramas com Drag/Setas */}
+            <div className="max-h-[340px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+              {mapsOrderList.length === 0 ? (
+                <div className="p-4 text-center text-slate-500 text-xs">
+                  Nenhum fluxograma cadastrado.
+                </div>
+              ) : (
+                mapsOrderList.map((m, idx) => (
+                  <div
+                    key={m.id}
+                    className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                      m.id === mapData.id
+                        ? "bg-indigo-950/40 border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.1)]"
+                        : "bg-slate-950 border-slate-800/80 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-7 h-7 rounded-xl bg-slate-800 text-indigo-300 font-mono text-xs font-black flex items-center justify-center shrink-0 border border-slate-700/80">
+                        #{idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-white truncate">{m.name}</span>
+                          {m.id === mapData.id && (
+                            <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full text-[10px] font-extrabold shrink-0">
+                              Atual
+                            </span>
+                          )}
+                        </div>
+                        {m.description && (
+                          <p className="text-[11px] text-slate-400 truncate max-w-[260px] mt-0.5">
+                            {m.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => handleMoveMapOrder(idx, -1)}
+                        className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-20 text-slate-300 hover:text-white rounded-lg cursor-pointer disabled:cursor-default transition-all"
+                        title="Subir posição"
+                      >
+                        <ArrowUp size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === mapsOrderList.length - 1}
+                        onClick={() => handleMoveMapOrder(idx, 1)}
+                        className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-20 text-slate-300 hover:text-white rounded-lg cursor-pointer disabled:cursor-default transition-all"
+                        title="Descer posição"
+                      >
+                        <ArrowDown size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Rodapé de Ações */}
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-medium">
+                Total: <strong className="text-indigo-300">{mapsOrderList.length}</strong> fluxogramas
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsOrderModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold text-xs cursor-pointer hover:bg-slate-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMapsOrder}
+                  disabled={savingOrder}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all"
+                >
+                  <Save size={14} />
+                  <span>{savingOrder ? "Salvando..." : "Salvar Nova Ordem"}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

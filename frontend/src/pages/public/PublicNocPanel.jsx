@@ -1174,6 +1174,39 @@ export default function PublicNocPanel() {
               Marque os fluxogramas que farão parte do loop na TV, use as setas para definir a ordem da fila e estipule os segundos de permanência na tela. Se houver queda/alerta em um diagrama, ele travará automaticamente.
             </p>
 
+            {/* Barra de Ordenação Rápida Inteligente no Carrossel */}
+            <div className="flex items-center justify-between gap-2 p-2.5 bg-slate-950/80 border border-slate-800 rounded-2xl">
+              <span className="text-xs font-bold text-slate-300">
+                ⚡ Ordenação Automática:
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const copy = [...carouselItemsConfig];
+                    copy.sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { numeric: true, sensitivity: "base" }));
+                    setCarouselItemsConfig(copy);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
+                  title="Ordenar automaticamente de 1º a 9º Andar (ordenação natural numérica)"
+                >
+                  <span>🔤 A → Z (Numérica)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const copy = [...carouselItemsConfig];
+                    copy.sort((a, b) => (b.name || "").localeCompare(a.name || "", undefined, { numeric: true, sensitivity: "base" }));
+                    setCarouselItemsConfig(copy);
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  title="Ordenar de forma decrescente (Z → A)"
+                >
+                  <span>Z → A</span>
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
               {carouselItemsConfig.length === 0 ? (
                 <div className="text-center py-8 text-slate-500 text-xs">
