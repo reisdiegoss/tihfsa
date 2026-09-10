@@ -36,7 +36,11 @@ import {
   KeyRound,
   Lock,
   User,
-  ShieldCheck
+  ShieldCheck,
+  Clock,
+  Mail,
+  Send,
+  Bell
 } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -97,12 +101,18 @@ export default function Settings() {
     instance_name: "",
     api_key: "",
     ti_group_jid: "",
-    is_active: false
+    is_active: false,
+    summary_reminder_active: true,
+    summary_reminder_times: "09:00,14:00,18:00",
+    summary_reminder_whatsapp: true,
+    summary_reminder_email: true,
   });
   const [loadingEvolution, setLoadingEvolution] = useState(false);
   const [savingEvolution, setSavingEvolution] = useState(false);
   const [testMessage, setTestMessage] = useState("");
   const [testingEvolution, setTestingEvolution] = useState(false);
+  const [newReminderTime, setNewReminderTime] = useState("10:00");
+  const [triggeringSummary, setTriggeringSummary] = useState(false);
   
   const [fetchedGroups, setFetchedGroups] = useState([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
@@ -227,6 +237,40 @@ export default function Settings() {
     } else {
       currentList.push(jid);
       setEvolutionConfig({ ...evolutionConfig, ti_group_jid: currentList.join(",") });
+    }
+  };
+
+  const handleAddReminderTime = () => {
+    if (!newReminderTime) return;
+    const current = evolutionConfig.summary_reminder_times
+      ? evolutionConfig.summary_reminder_times.split(",").map(t => t.trim()).filter(Boolean)
+      : [];
+    if (current.includes(newReminderTime)) {
+      alert("Este horário já está na lista!");
+      return;
+    }
+    const updated = [...current, newReminderTime].sort();
+    setEvolutionConfig({ ...evolutionConfig, summary_reminder_times: updated.join(",") });
+  };
+
+  const handleRemoveReminderTime = (timeToRemove) => {
+    const current = evolutionConfig.summary_reminder_times
+      ? evolutionConfig.summary_reminder_times.split(",").map(t => t.trim()).filter(Boolean)
+      : [];
+    const updated = current.filter(t => t !== timeToRemove);
+    setEvolutionConfig({ ...evolutionConfig, summary_reminder_times: updated.join(",") });
+  };
+
+  const handleTriggerSummaryNow = async () => {
+    setTriggeringSummary(true);
+    try {
+      const { data } = await api.post("/integrations/evolution/send-summary");
+      alert(data.message || "Resumo disparado com sucesso!");
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao disparar resumo.");
+    } finally {
+      setTriggeringSummary(false);
     }
   };
 
@@ -2170,6 +2214,142 @@ export default function Settings() {
                   </p>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* SEÇÃO: Cobrança & Resumo Periódico dos Chamados */}
+          <div className="mt-8 pt-8 border-t border-slate-100 mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                  <Clock className="text-blue-600" size={18} /> Cobrança & Resumo Periódico de Chamados
+                </h3>
+                <p className="text-xs font-semibold text-slate-500 mt-1">
+                  Envie automaticamente nos horários programados um resumo dos chamados pendentes para cobrar atenção e encerramento pela equipe.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleTriggerSummaryNow}
+                  disabled={triggeringSummary}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                  title="Dispara imediatamente o resumo com os chamados em aberto para teste"
+                >
+                  {triggeringSummary ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                  {triggeringSummary ? "Disparando..." : "Disparar Resumo Agora"}
+                </button>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
+                  <span className="text-xs font-extrabold text-slate-700">Ativar Cobrança</span>
+                  <input
+                    type="checkbox"
+                    checked={evolutionConfig.summary_reminder_active ?? true}
+                    onChange={(e) => setEvolutionConfig({ ...evolutionConfig, summary_reminder_active: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/80 p-5 rounded-2xl border border-slate-200">
+              {/* Horários Escolhidos */}
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-2">
+                  Horários de Envio no Dia (Fuso Salvador / UTC-3)
+                </label>
+                
+                {/* Lista de chips/tags */}
+                <div className="flex flex-wrap gap-2 mb-3 min-h-[44px] items-center p-2.5 bg-white border border-slate-200 rounded-xl">
+                  {(() => {
+                    const times = evolutionConfig.summary_reminder_times
+                      ? evolutionConfig.summary_reminder_times.split(",").map(t => t.trim()).filter(Boolean)
+                      : [];
+                    if (times.length === 0) {
+                      return <span className="text-xs text-slate-400 font-semibold italic">Nenhum horário configurado. Adicione abaixo.</span>;
+                    }
+                    return times.map((t) => (
+                      <span
+                        key={t}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-extrabold"
+                      >
+                        <Clock size={12} />
+                        {t}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveReminderTime(t)}
+                          className="hover:text-red-600 ml-0.5 cursor-pointer"
+                          title="Remover este horário"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ));
+                  })()}
+                </div>
+
+                {/* Adicionar novo horário */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="time"
+                    value={newReminderTime}
+                    onChange={(e) => setNewReminderTime(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddReminderTime}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-extrabold transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus size={14} /> Adicionar Horário
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2 font-semibold">
+                  Adicione múltiplos horários no dia (ex: 08:00, 11:30, 15:00, 18:00). O resumo cobrará a equipe pontualmente.
+                </p>
+              </div>
+
+              {/* Canais de Envio */}
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-2">
+                  Canais de Notificação & Cobrança
+                </label>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={evolutionConfig.summary_reminder_whatsapp ?? true}
+                      onChange={(e) => setEvolutionConfig({ ...evolutionConfig, summary_reminder_whatsapp: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Phone size={14} className="text-emerald-600" /> WhatsApp (Grupo de TI)
+                      </span>
+                      <span className="text-[11px] text-slate-400 block">
+                        Envia no grupo de TI com a lista, prioridades e contadores de chamados.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={evolutionConfig.summary_reminder_email ?? true}
+                      onChange={(e) => setEvolutionConfig({ ...evolutionConfig, summary_reminder_email: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Mail size={14} className="text-blue-600" /> E-mail Corporativo (ti-hfsa@fasano.com.br)
+                      </span>
+                      <span className="text-[11px] text-slate-400 block">
+                        Dispara e-mail formatado com tabela completa de chamados em aberto via SMTP.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
 

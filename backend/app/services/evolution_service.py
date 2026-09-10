@@ -71,6 +71,7 @@ class EvolutionService:
             # Enviar para cada grupo selecionado
             jids = [j.strip() for j in ti_group_jid.split(",") if j.strip()]
             
+            sent_any = False
             for base_jid in jids:
                 jid = base_jid
                 # O JID do grupo geralmente tem o sufixo @g.us
@@ -90,9 +91,12 @@ class EvolutionService:
                 
                 if response.status_code in [200, 201]:
                     print(f"[Evolution API] Mensagem enviada com sucesso para {jid}.")
+                    sent_any = True
                 else:
                     print(f"[Evolution API] Falha ao enviar para {jid}: {response.status_code} - {response.text}")
                 
+            return sent_any
         except Exception as e:
             print(f"[Evolution API] Erro na requisição: {e}")
+            return False
 

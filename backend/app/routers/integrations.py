@@ -16,6 +16,10 @@ class EvolutionConfigSchema(BaseModel):
     api_key: str | None = None
     ti_group_jid: str | None = None
     is_active: bool = False
+    summary_reminder_active: bool = True
+    summary_reminder_times: str = "09:00,14:00,18:00"
+    summary_reminder_whatsapp: bool = True
+    summary_reminder_email: bool = True
 
 @router.get("", response_model=EvolutionConfigSchema)
 def get_evolution_config(
@@ -34,7 +38,11 @@ def get_evolution_config(
         instance_name=config.instance_name,
         api_key=config.api_key,
         ti_group_jid=config.ti_group_jid,
-        is_active=config.is_active
+        is_active=config.is_active,
+        summary_reminder_active=getattr(config, "summary_reminder_active", True) if getattr(config, "summary_reminder_active", None) is not None else True,
+        summary_reminder_times=getattr(config, "summary_reminder_times", "09:00,14:00,18:00") or "09:00,14:00,18:00",
+        summary_reminder_whatsapp=getattr(config, "summary_reminder_whatsapp", True) if getattr(config, "summary_reminder_whatsapp", None) is not None else True,
+        summary_reminder_email=getattr(config, "summary_reminder_email", True) if getattr(config, "summary_reminder_email", None) is not None else True,
     )
 
 @router.post("")
@@ -56,9 +64,25 @@ def save_evolution_config(
     config.api_key = payload.api_key
     config.ti_group_jid = payload.ti_group_jid
     config.is_active = payload.is_active
+    config.summary_reminder_active = payload.summary_reminder_active
+    config.summary_reminder_times = payload.summary_reminder_times
+    config.summary_reminder_whatsapp = payload.summary_reminder_whatsapp
+    config.summary_reminder_email = payload.summary_reminder_email
     
     db.commit()
-    return {"message": "Configurações do Evolution API salvas com sucesso!"}
+    return {"message": "Configurações salvas com sucesso!"}
+
+@router.post("/send-summary")
+def trigger_tickets_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Apenas administradores podem disparar o resumo.")
+
+    from app.services.alert_summary_service import send_open_tickets_summary
+    result = send_open_tickets_summary(db=db, force=True)
+    return result
 
 @router.post("/groups")
 def fetch_evolution_groups(

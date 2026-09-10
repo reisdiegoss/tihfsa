@@ -186,6 +186,48 @@ async def unifi_poller_task():
         except Exception as e:
             print(f"[UniFi Poller] Erro: {e}")
 
+async def ticket_summary_scheduler_task():
+    """
+    Verifica a cada 30 segundos se o horário atual (fuso de Salvador/UTC-3)
+    coincide com algum dos horários configurados para cobrança de chamados.
+    """
+    from datetime import datetime, timezone, timedelta
+    from app.models.integration_config import EvolutionConfig
+    from app.services.alert_summary_service import send_open_tickets_summary
+
+    last_dispatched_key = None
+    tz_br = timezone(timedelta(hours=-3))
+
+    while True:
+        try:
+            await asyncio.sleep(30)
+            now_br = datetime.now(tz_br)
+            current_time_str = now_br.strftime("%H:%M")
+            current_date_str = now_br.strftime("%Y-%m-%d")
+            dispatch_key = f"{current_date_str}_{current_time_str}"
+
+            if dispatch_key == last_dispatched_key:
+                continue
+
+            db = SessionLocal()
+            try:
+                config = db.query(EvolutionConfig).first()
+                if config and getattr(config, "summary_reminder_active", True):
+                    raw_times = getattr(config, "summary_reminder_times", "") or "09:00,14:00,18:00"
+                    target_times = [t.strip() for t in raw_times.split(",") if t.strip()]
+
+                    if current_time_str in target_times:
+                        last_dispatched_key = dispatch_key
+                        print(f"[Summary Scheduler] Disparando resumo de chamados programado para as {current_time_str}...")
+                        await asyncio.to_thread(send_open_tickets_summary, db=db, force=False)
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[Summary Scheduler Error] {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: cria tabelas no banco se não existirem e inicia tarefas em background."""
@@ -199,21 +241,27 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS in_carousel BOOLEAN DEFAULT TRUE NOT NULL;"))
             conn.execute(text("ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS carousel_order INTEGER DEFAULT 0 NOT NULL;"))
             conn.execute(text("ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS carousel_seconds INTEGER DEFAULT 20 NOT NULL;"))
+            conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_active BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_times VARCHAR DEFAULT '09:00,14:00,18:00';"))
+            conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_whatsapp BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_email BOOLEAN DEFAULT TRUE;"))
             conn.commit()
     except Exception as e:
         print(f"[DB Auto-Migration Error] {e}")
     _seed_default_asset_types()
     
-    # Iniciar os background pollers do Zabbix e da UniFi
+    # Iniciar os background pollers do Zabbix, UniFi e Agendador de Resumo
     zabbix_task = asyncio.create_task(zabbix_poller_task())
     unifi_task = asyncio.create_task(unifi_poller_task())
+    summary_task = asyncio.create_task(ticket_summary_scheduler_task())
     
-    print(f"[{settings.app_name}] Backend iniciado. Pollers Zabbix e UniFi ativos. Tabelas e Tipos prontos.")
+    print(f"[{settings.app_name}] Backend iniciado. Pollers Zabbix, UniFi e Agendador de Resumo ativos.")
     yield
     
     # Cancelar tarefas ao encerrar o servidor
     zabbix_task.cancel()
     unifi_task.cancel()
+    summary_task.cancel()
     print(f"[{settings.app_name}] Backend encerrado.")
 
 

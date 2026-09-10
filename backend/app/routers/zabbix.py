@@ -8,7 +8,9 @@ from app.database import get_db
 from app.auth.dependencies import get_current_user, get_optional_user, require_technician
 from app.models.user import User, UserRole
 from app.models.asset import Asset
-from app.models.ticket import Ticket, TicketStatus, TicketPriority
+from datetime import datetime, timezone, timedelta
+from app.models.ticket_interaction import TicketInteraction
+from app.services.email_service import send_noc_dual_notification
 from app.services.zabbix_service import ZabbixService
 from app.services.evolution_service import EvolutionService
 
@@ -110,26 +112,98 @@ def sync_active_zabbix_alerts(db: Session):
 
             ticket_tag = f"[NOC Zabbix] Alertas - {asset.name}"
 
-            # Verificar se já existe chamado em aberto para este equipamento gerado pelo Zabbix
-            existing_ticket = (
+            # 5. Cálculo do Início do Dia no Fuso Horário de Brasília/Salvador (UTC-3)
+            tz_br = timezone(timedelta(hours=-3))
+            now_br = datetime.now(tz_br)
+            today_start_br = datetime(now_br.year, now_br.month, now_br.day, 0, 0, 0, tzinfo=tz_br)
+            today_start_utc = today_start_br.astimezone(timezone.utc)
+            hora_formatada = now_br.strftime("%d/%m/%Y às %H:%M:%S")
+
+            # 6. Buscar chamado criado no DIA DE HOJE para este equipamento
+            today_ticket = (
                 db.query(Ticket)
                 .filter(
                     Ticket.asset_id == asset.id,
                     Ticket.title.like(ticket_tag + "%"),
-                    Ticket.status.in_([
-                        TicketStatus.NEW,
-                        TicketStatus.IN_PROGRESS,
-                        TicketStatus.PENDING_VALIDATION,
-                    ])
+                    Ticket.created_at >= today_start_utc,
                 )
+                .order_by(Ticket.created_at.desc())
                 .first()
             )
 
             # Extrair os trigger_ids atuais vinculados ao ativo
             current_trigger_ids = [str(p.get("triggerid") or p.get("trigger_id") or p.get("eventid")) for p in probs]
             all_alerts_text = "\n".join([f"- {p.get('description') or p.get('name')} (Sev: {p.get('priority') or p.get('severity')})" for p in probs])
+            all_alerts_html = "".join([f"<li>{p.get('description') or p.get('name')} (Severidade: {p.get('priority') or p.get('severity')})</li>" for p in probs])
 
-            if not existing_ticket:
+            if today_ticket:
+                # Se o chamado do dia estava Fechado ou Aguardando Validação, REABRE!
+                if today_ticket.status in [TicketStatus.CLOSED, TicketStatus.REJECTED, TicketStatus.PENDING_VALIDATION]:
+                    today_ticket.status = TicketStatus.IN_PROGRESS
+                    today_ticket.closed_at = None
+                    today_ticket.solved_at = None
+                    today_ticket.updated_at = datetime.now(timezone.utc)
+
+                    reopen_note = (
+                        f"🚨 [NOC Zabbix] Alerta crítico disparou novamente às {hora_formatada}!\n"
+                        f"Principal: {main_event_title} (Severidade: {main_severity})\n"
+                        f"Chamado #{today_ticket.id} reaberto automaticamente pelo monitoramento para atendimento da equipe de TI."
+                    )
+                    interaction = TicketInteraction(
+                        ticket_id=today_ticket.id,
+                        user_id=noc_system_user.id,
+                        message=reopen_note,
+                        is_solution=False,
+                    )
+                    db.add(interaction)
+                    today_ticket.description = str(today_ticket.description) + (
+                        f"\n\n---\n⚠️ **Nova Ocorrência Detectada ({hora_formatada})**:\n{all_alerts_text}\nIds: {','.join(current_trigger_ids)}"
+                    )
+                    db.commit()
+                    print(f"[Zabbix Poller] Chamado #{today_ticket.id} REABERTO para {asset.name} (Alerta reincidente)")
+
+                    # Disparo Dual: WhatsApp + E-mail Corporativo
+                    wa_msg = (
+                        f"⚠️ *ALERTA ZABBIX: NOVO DISPARO CRÍTICO!* ⚠️\n\n"
+                        f"O equipamento *{asset.name}* apresentou nova falha crítica no Zabbix.\n"
+                        f"🔴 *Alerta Principal:* {main_event_title}\n"
+                        f"🌐 *IP:* {asset.ip_address or 'N/A'}\n"
+                        f"🚨 *Severidade:* {main_severity}\n"
+                        f"🕒 *Horário:* {hora_formatada}\n\n"
+                        f"🎫 *Chamado #{today_ticket.id} REABERTO!*\n"
+                        f"👉 Atenção equipe de TI: favor verificar e intervir imediatamente!"
+                    )
+                    mail_html = (
+                        f"<p>O equipamento <strong>{asset.name}</strong> apresentou novo alerta crítico no Zabbix.</p>"
+                        f"<p><strong>IP:</strong> {asset.ip_address or 'N/A'}</p>"
+                        f"<p><strong>Alerta Principal:</strong> {main_event_title} (Severidade: {main_severity})</p>"
+                        f"<p><strong>Horário:</strong> {hora_formatada}</p>"
+                        f"<p><strong>Alertas Ativos:</strong></p><ul>{all_alerts_html}</ul>"
+                        f"<p style='color: #b45309; font-weight: bold;'>O chamado #{today_ticket.id} do dia de hoje foi REABERTO automaticamente e requer atenção imediata do time de TI.</p>"
+                    )
+                    send_noc_dual_notification(
+                        whatsapp_text=wa_msg,
+                        email_subject=f"⚠️ [NOC REABERTO] {asset.name} com Alerta Crítico — Chamado #{today_ticket.id}",
+                        email_title=f"Alerta Crítico Reincidente: {asset.name}",
+                        email_details_html=mail_html,
+                        status_type="warning",
+                        ticket_id=today_ticket.id,
+                    )
+                else:
+                    # Atualizar chamado existente se surgiram novos alertas que não estão na descrição
+                    if today_ticket.description:
+                        for tid in current_trigger_ids:
+                            if "Ids:" in str(today_ticket.description) and tid not in str(today_ticket.description):
+                                for p in probs:
+                                    p_tid = str(p.get("triggerid") or p.get("trigger_id") or p.get("eventid"))
+                                    if p_tid == tid:
+                                        new_alert_desc = p.get('description') or p.get('name')
+                                        today_ticket.description = str(today_ticket.description) + f"\n\n⚠️ Novo alerta detectado: {new_alert_desc} (Sev: {p.get('priority') or p.get('severity')})"
+                                        today_ticket.description += f", {tid}"
+                                        db.commit()
+                                        break
+                existing_ticket = today_ticket
+            else:
                 # Criar um chamado agrupado para o ativo
                 prio = _map_zabbix_severity_to_priority(main_severity)
                 new_ticket = Ticket(
@@ -137,7 +211,8 @@ def sync_active_zabbix_alerts(db: Session):
                     description=(
                         f"Chamado gerado automaticamente pelo NOC via Monitoramento Zabbix.\n\n"
                         f"Equipamento: {asset.name}\n"
-                        f"IP: {asset.ip_address or 'N/A'}\n\n"
+                        f"IP: {asset.ip_address or 'N/A'}\n"
+                        f"Horário de Detecção: {hora_formatada}\n\n"
                         f"**Alertas Ativos:**\n{all_alerts_text}\n\n"
                         f"Ids: {','.join(current_trigger_ids)}"
                     ),
@@ -152,33 +227,43 @@ def sync_active_zabbix_alerts(db: Session):
                 db.commit()
                 db.refresh(new_ticket)
                 existing_ticket = new_ticket
-                
-                # Notificar no WhatsApp que o equipamento caiu e um chamado foi gerado
-                try:
-                    msg_text = (
-                        f"🚨 *ALERTA ZABBIX: {asset.name}* 🚨\n\n"
-                        f"⚠️ Múltiplos ou Novo Alerta Registrado\n"
-                        f"🔴 Principal: {main_event_title}\n"
-                        f"🌐 IP: {asset.ip_address or 'N/A'}\n"
-                        f"🚨 Severidade Máxima: {main_severity}\n\n"
-                        f"🎫 Chamado automático agrupado: *#{new_ticket.id}*"
-                    )
-                    EvolutionService.send_whatsapp_message(msg_text)
-                except Exception as e:
-                    print(f"[Zabbix WhatsApp Notification Error] {e}")
-            else:
-                # Atualizar chamado existente se surgiram novos alertas que não estão na descrição
-                if existing_ticket.description:
-                    for tid in current_trigger_ids:
-                        if "Ids:" in str(existing_ticket.description) and tid not in str(existing_ticket.description):
-                            for p in probs:
-                                p_tid = str(p.get("triggerid") or p.get("trigger_id") or p.get("eventid"))
-                                if p_tid == tid:
-                                    new_alert_desc = p.get('description') or p.get('name')
-                                    existing_ticket.description = str(existing_ticket.description) + f"\n\n⚠️ Novo alerta detectado: {new_alert_desc} (Sev: {p.get('priority') or p.get('severity')})"
-                                    existing_ticket.description += f", {tid}"
-                                    db.commit()
-                                    break
+
+                # Registrar interação inicial
+                first_interaction = TicketInteraction(
+                    ticket_id=new_ticket.id,
+                    user_id=noc_system_user.id,
+                    message=f"🚨 [NOC Zabbix] Chamado aberto automaticamente por alerta crítico às {hora_formatada}: {main_event_title}.",
+                    is_solution=False,
+                )
+                db.add(first_interaction)
+                db.commit()
+
+                # Disparo Dual: WhatsApp + E-mail Corporativo
+                wa_msg = (
+                    f"🚨 *ALERTA ZABBIX: {asset.name}* 🚨\n\n"
+                    f"⚠️ *Alerta Crítico Registrado*\n"
+                    f"🔴 *Principal:* {main_event_title}\n"
+                    f"🌐 *IP:* {asset.ip_address or 'N/A'}\n"
+                    f"🚨 *Severidade:* {main_severity}\n"
+                    f"🕒 *Horário:* {hora_formatada}\n\n"
+                    f"🎫 *Chamado automático aberto:* *#{new_ticket.id}*"
+                )
+                mail_html = (
+                    f"<p>O equipamento <strong>{asset.name}</strong> gerou alerta crítico no monitoramento Zabbix.</p>"
+                    f"<p><strong>IP:</strong> {asset.ip_address or 'N/A'}</p>"
+                    f"<p><strong>Alerta Principal:</strong> {main_event_title} (Severidade: {main_severity})</p>"
+                    f"<p><strong>Horário de Detecção:</strong> {hora_formatada}</p>"
+                    f"<p><strong>Alertas Ativos:</strong></p><ul>{all_alerts_html}</ul>"
+                    f"<p style='color: #b91c1c; font-weight: bold;'>Chamado automático aberto: #{new_ticket.id}. Requer intervenção da equipe de TI.</p>"
+                )
+                send_noc_dual_notification(
+                    whatsapp_text=wa_msg,
+                    email_subject=f"🚨 [ALERTA NOC Zabbix] {asset.name} Crítico — Chamado #{new_ticket.id}",
+                    email_title=f"Alerta Crítico: {asset.name}",
+                    email_details_html=mail_html,
+                    status_type="danger",
+                    ticket_id=new_ticket.id,
+                )
 
             # Alimentar o filtered_alerts pro endpoint /alerts
             filtered_alerts.append({
@@ -195,7 +280,6 @@ def sync_active_zabbix_alerts(db: Session):
             })
 
         # FASE 2: AUTO-RESOLUÇÃO (Atualizar para PENDING_VALIDATION)
-        # Buscar todos os chamados abertos que foram gerados pelo Zabbix de forma agrupada
         open_zabbix_tickets = db.query(Ticket).filter(
             Ticket.title.like("[NOC Zabbix] Alertas - %"),
             Ticket.status.in_([TicketStatus.NEW, TicketStatus.IN_PROGRESS])
@@ -213,19 +297,47 @@ def sync_active_zabbix_alerts(db: Session):
                     
             if not has_critical_problems:
                 ticket.status = TicketStatus.PENDING_VALIDATION
-                ticket.description = str(ticket.description) + "\n\n✅ [SISTEMA] Equipamento Online! Alertas críticos normalizados no Zabbix. Aguardando validação manual para encerramento."
+                ticket.description = str(ticket.description) + f"\n\n✅ **Normalização Detectada ({hora_formatada})**: Equipamento Online! Alertas críticos normalizados no Zabbix. Aguardando validação manual para encerramento."
+                
+                normal_note = (
+                    f"✅ [NOC Zabbix] Alertas críticos normalizados às {hora_formatada}. Equipamento ONLINE!\n"
+                    f"Chamado movido para Aguardando Validação. Favor validar o funcionamento e finalizar o chamado."
+                )
+                interaction = TicketInteraction(
+                    ticket_id=ticket.id,
+                    user_id=noc_system_user.id,
+                    message=normal_note,
+                    is_solution=True,
+                )
+                db.add(interaction)
                 db.commit()
                 
-                try:
-                    asset_name = ticket.asset.name if ticket.asset else "Desconhecido"
-                    msg_text = (
-                        f"✅ *ZABBIX: EQUIPAMENTO ONLINE!* ✅\n\n"
-                        f"O equipamento *{asset_name}* restabeleceu a conexão ou normalizou o alerta crítico.\n\n"
-                        f"🎫 O chamado agrupado *#{ticket.id}* está aguardando validação."
-                    )
-                    EvolutionService.send_whatsapp_message(msg_text)
-                except Exception as e:
-                    print(f"[Zabbix WhatsApp Auto-Resolve Error] {e}")
+                asset_name = ticket.asset.name if ticket.asset else "Desconhecido"
+                asset_ip = ticket.asset.ip_address if ticket.asset else "N/A"
+                print(f"[Zabbix Poller] Chamado #{ticket.id} para {asset_name} atualizado para PENDING_VALIDATION")
+
+                # Disparo Dual: WhatsApp + E-mail Corporativo
+                wa_msg = (
+                    f"✅ *ZABBIX: EQUIPAMENTO ONLINE!* ✅\n\n"
+                    f"O equipamento *{asset_name}* restabeleceu a conexão e normalizou os alertas críticos no Zabbix.\n"
+                    f"🕒 *Horário:* {hora_formatada}\n\n"
+                    f"🎫 O chamado agrupado *#{ticket.id}* está aguardando validação para encerramento.\n"
+                    f"👉 *Atenção equipe de TI: favor validar e finalizar o chamado no painel!*"
+                )
+                mail_html = (
+                    f"<p>O equipamento <strong>{asset_name}</strong> normalizou os alertas críticos no Zabbix e está <strong>ONLINE</strong>.</p>"
+                    f"<p><strong>IP:</strong> {asset_ip}</p>"
+                    f"<p><strong>Horário de Normalização:</strong> {hora_formatada}</p>"
+                    f"<p style='color: #15803d; font-weight: bold;'>O chamado #{ticket.id} foi movido para AGUARDANDO VALIDAÇÃO. Favor validar o funcionamento e finalizar o chamado no painel.</p>"
+                )
+                send_noc_dual_notification(
+                    whatsapp_text=wa_msg,
+                    email_subject=f"✅ [NOC Zabbix Online] {asset_name} Normalizado — Chamado #{ticket.id}",
+                    email_title=f"Equipamento Online: {asset_name}",
+                    email_details_html=mail_html,
+                    status_type="success",
+                    ticket_id=ticket.id,
+                )
 
         return {
             "alerts": filtered_alerts,

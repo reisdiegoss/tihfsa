@@ -247,41 +247,88 @@ def sync_active_unifi_devices(db) -> dict:
             elif name and name.lower() in asset_by_name:
                 matched_asset = asset_by_name[name.lower()]
 
-            ticket_tag = f"[NOC UniFi] Dispositivo Offline - {name}"
+            # 5. Cálculo do Início do Dia no Fuso Horário de Brasília/Salvador (UTC-3)
+            from datetime import datetime, timezone, timedelta
+            from app.models.ticket_interaction import TicketInteraction
+            from app.services.email_service import send_noc_dual_notification
 
-            # Verificar se já existe chamado aberto gerado pelo NOC UniFi para este dispositivo
-            ticket_query = db.query(Ticket).filter(
-                Ticket.status.in_([
-                    TicketStatus.NEW,
-                    TicketStatus.IN_PROGRESS,
-                    TicketStatus.PENDING_VALIDATION,
-                ])
-            )
+            tz_br = timezone(timedelta(hours=-3))
+            now_br = datetime.now(tz_br)
+            today_start_br = datetime(now_br.year, now_br.month, now_br.day, 0, 0, 0, tzinfo=tz_br)
+            today_start_utc = today_start_br.astimezone(timezone.utc)
+            hora_formatada = now_br.strftime("%d/%m/%Y às %H:%M:%S")
 
-            existing_ticket = ticket_query.filter(
+            # 6. Buscar o chamado mais recente deste dispositivo criado no DIA DE HOJE
+            today_ticket = db.query(Ticket).filter(
                 or_(
                     Ticket.title == ticket_tag,
                     Ticket.title.like(f"[NOC UniFi] Dispositivo Offline - {name}%"),
-                )
-            ).first()
+                    (Ticket.asset_id == matched_asset.id) if matched_asset else False,
+                ),
+                Ticket.title.like("[NOC UniFi] %"),
+                Ticket.created_at >= today_start_utc,
+            ).order_by(Ticket.created_at.desc()).first()
 
-            if not existing_ticket and matched_asset:
-                existing_ticket = ticket_query.filter(
-                    Ticket.asset_id == matched_asset.id,
-                    Ticket.title.like("[NOC UniFi]%")
-                ).first()
+            if not noc_user:
+                noc_user = _get_or_create_unifi_system_user(db)
 
-            # CASO A: DISPOSITIVO OFFLINE (state == 0)
+            asset_id = matched_asset.id if matched_asset else None
+            category_id = matched_asset.category_id if matched_asset else None
+            subcategory_id = matched_asset.subcategory_id if matched_asset else None
+            location_name = matched_asset.location.name if (matched_asset and getattr(matched_asset, "location", None)) else "Infraestrutura de Rede"
+
+            # ── CASO A: DISPOSITIVO OFFLINE (state == 0) ──────────────────────────
             if state == 0:
-                if not existing_ticket:
-                    if not noc_user:
-                        noc_user = _get_or_create_unifi_system_user(db)
+                if today_ticket:
+                    # Se o chamado do dia estava Fechado ou Aguardando Validação, REABRE!
+                    if today_ticket.status in [TicketStatus.CLOSED, TicketStatus.REJECTED, TicketStatus.PENDING_VALIDATION]:
+                        today_ticket.status = TicketStatus.IN_PROGRESS
+                        today_ticket.closed_at = None
+                        today_ticket.solved_at = None
+                        today_ticket.updated_at = datetime.now(timezone.utc)
 
-                    asset_id = matched_asset.id if matched_asset else None
-                    category_id = matched_asset.category_id if matched_asset else None
-                    subcategory_id = matched_asset.subcategory_id if matched_asset else None
-                    location_name = matched_asset.location.name if (matched_asset and getattr(matched_asset, "location", None)) else "Infraestrutura de Rede"
+                        reopen_note = (
+                            f"🚨 [NOC UniFi] Dispositivo caiu novamente às {hora_formatada}!\n"
+                            f"Equipamento desconectou na controladora UniFi. Chamado #{today_ticket.id} reaberto automaticamente pelo monitoramento para atendimento da equipe de TI."
+                        )
+                        interaction = TicketInteraction(
+                            ticket_id=today_ticket.id,
+                            user_id=noc_user.id,
+                            message=reopen_note,
+                            is_solution=False,
+                        )
+                        db.add(interaction)
+                        today_ticket.description = str(today_ticket.description) + f"\n\n---\n⚠️ **Nova Queda Detectada ({hora_formatada})**: Equipamento offline novamente na controladora UniFi."
+                        db.commit()
+                        print(f"[UniFi Poller] Chamado #{today_ticket.id} REABERTO para {name} (Caiu novamente)")
 
+                        # Disparo Dual: WhatsApp + E-mail Corporativo
+                        wa_msg = (
+                            f"⚠️ *ALERTA UNIFI: DISPOSITIVO CAIU NOVAMENTE!* ⚠️\n\n"
+                            f"O equipamento *{name}* ({tipo_legivel}) perdeu a conexão com a controladora e caiu novamente.\n"
+                            f"🌐 *IP:* {ip or 'Sem IP'} | *MAC:* {mac or 'N/A'}\n"
+                            f"🕒 *Horário:* {hora_formatada}\n\n"
+                            f"🎫 *Chamado #{today_ticket.id} REABERTO!*\n"
+                            f"👉 Atenção equipe de TI: favor verificar e intervir imediatamente!"
+                        )
+                        mail_html = (
+                            f"<p>O equipamento <strong>{name}</strong> ({tipo_legivel} - {model}) perdeu a conexão com a controladora e <strong>caiu novamente</strong>.</p>"
+                            f"<p><strong>IP:</strong> {ip or 'N/A'} | <strong>MAC:</strong> {mac or 'N/A'}</p>"
+                            f"<p><strong>Horário da Queda:</strong> {hora_formatada}</p>"
+                            f"<p><strong>Localização:</strong> {location_name}</p>"
+                            f"<p style='color: #b45309; font-weight: bold;'>O chamado #{today_ticket.id} do dia de hoje foi REABERTO automaticamente e requer atenção imediata do time de TI.</p>"
+                        )
+                        send_noc_dual_notification(
+                            whatsapp_text=wa_msg,
+                            email_subject=f"⚠️ [NOC REABERTO] {name} Caiu Novamente — Chamado #{today_ticket.id}",
+                            email_title=f"Dispositivo Caiu Novamente: {name}",
+                            email_details_html=mail_html,
+                            status_type="warning",
+                            ticket_id=today_ticket.id,
+                        )
+
+                else:
+                    # Sem chamado no dia de hoje: Criar novo chamado do dia
                     new_ticket = Ticket(
                         title=ticket_tag,
                         description=(
@@ -293,7 +340,8 @@ def sync_active_unifi_devices(db) -> dict:
                             f"- MAC: {mac or 'N/A'}\n"
                             f"- Localização: {location_name}\n"
                             f"- Ativo CMDB Vinculado: #{asset_id} ({matched_asset.name})\n" if matched_asset else ""
-                            f"\nEste chamado foi aberto automaticamente pelo monitoramento para intervenção imediata da equipe de TI."
+                            f"- Horário da Queda: {hora_formatada}\n\n"
+                            f"Este chamado foi aberto automaticamente pelo monitoramento para intervenção imediata da equipe de TI."
                         ),
                         status=TicketStatus.NEW,
                         priority=prio,
@@ -308,43 +356,88 @@ def sync_active_unifi_devices(db) -> dict:
                     new_tickets_count += 1
                     print(f"[UniFi Poller] Chamado #{new_ticket.id} aberto para {name} (Offline)")
 
-                    # Disparo da Notificação de Alerta Imediato no WhatsApp
-                    try:
-                        msg_text = (
-                            f"🚨 *ALERTA UNIFI: DISPOSITIVO OFFLINE* 🚨\n\n"
-                            f"⚠️ *Equipamento:* {name}\n"
-                            f"🏷️ *Tipo:* {tipo_legivel} ({model})\n"
-                            f"🌐 *IP:* {ip or 'Sem IP'} | *MAC:* {mac or 'N/A'}\n"
-                            f"🔴 *Status:* Desconectado na Controladora UniFi\n\n"
-                            f"🎫 *Chamado automático aberto:* #{new_ticket.id}"
-                        )
-                        EvolutionService.send_whatsapp_message(msg_text)
-                    except Exception as err:
-                        print(f"[UniFi Poller WhatsApp Error] {err}")
+                    # Registrar interação inicial
+                    first_interaction = TicketInteraction(
+                        ticket_id=new_ticket.id,
+                        user_id=noc_user.id,
+                        message=f"🚨 [NOC UniFi] Chamado aberto automaticamente por queda do equipamento às {hora_formatada}.",
+                        is_solution=False,
+                    )
+                    db.add(first_interaction)
+                    db.commit()
 
-            # CASO B: DISPOSITIVO RESTABELECIDO / ONLINE (state == 1)
-            elif state == 1 and existing_ticket:
-                # Se o chamado estava aberto e foi gerado pelo NOC UniFi, auto-resolver para PENDING_VALIDATION
-                if existing_ticket.status in [TicketStatus.NEW, TicketStatus.IN_PROGRESS] and "[NOC UniFi]" in existing_ticket.title:
-                    existing_ticket.status = TicketStatus.PENDING_VALIDATION
-                    existing_ticket.description = str(existing_ticket.description) + (
-                        f"\n\n✅ [SISTEMA] Dispositivo Online! Conexão restabelecida com sucesso na controladora UniFi. "
+                    # Disparo Dual: WhatsApp + E-mail Corporativo
+                    wa_msg = (
+                        f"🚨 *ALERTA UNIFI: DISPOSITIVO OFFLINE* 🚨\n\n"
+                        f"⚠️ *Equipamento:* {name}\n"
+                        f"🏷️ *Tipo:* {tipo_legivel} ({model})\n"
+                        f"🌐 *IP:* {ip or 'Sem IP'} | *MAC:* {mac or 'N/A'}\n"
+                        f"🔴 *Status:* Desconectado na Controladora UniFi\n"
+                        f"🕒 *Horário:* {hora_formatada}\n\n"
+                        f"🎫 *Chamado automático aberto:* #{new_ticket.id}"
+                    )
+                    mail_html = (
+                        f"<p>O equipamento <strong>{name}</strong> ({tipo_legivel} - {model}) perdeu a conexão com a controladora UniFi e está <strong>OFFLINE</strong>.</p>"
+                        f"<p><strong>IP:</strong> {ip or 'N/A'} | <strong>MAC:</strong> {mac or 'N/A'}</p>"
+                        f"<p><strong>Localização:</strong> {location_name}</p>"
+                        f"<p><strong>Horário da Queda:</strong> {hora_formatada}</p>"
+                        f"<p style='color: #b91c1c; font-weight: bold;'>Chamado automático aberto: #{new_ticket.id}. Requer intervenção da equipe de TI.</p>"
+                    )
+                    send_noc_dual_notification(
+                        whatsapp_text=wa_msg,
+                        email_subject=f"🚨 [ALERTA NOC UniFi] {name} Offline — Chamado #{new_ticket.id}",
+                        email_title=f"Dispositivo Offline: {name}",
+                        email_details_html=mail_html,
+                        status_type="danger",
+                        ticket_id=new_ticket.id,
+                    )
+
+            # ── CASO B: DISPOSITIVO ONLINE / RESTABELECIDO (state == 1) ───────────
+            elif state == 1 and today_ticket:
+                # Se o chamado estava aberto (NEW ou IN_PROGRESS), avança para PENDING_VALIDATION
+                if today_ticket.status in [TicketStatus.NEW, TicketStatus.IN_PROGRESS]:
+                    today_ticket.status = TicketStatus.PENDING_VALIDATION
+                    today_ticket.description = str(today_ticket.description) + (
+                        f"\n\n✅ **Restabelecimento Detectado ({hora_formatada})**: Dispositivo Online! Conexão restabelecida com sucesso na controladora UniFi. "
                         f"Aguardando validação manual da equipe de TI para encerramento."
                     )
+                    normal_note = (
+                        f"✅ [NOC UniFi] Conexão restabelecida com a controladora às {hora_formatada}. Equipamento ONLINE!\n"
+                        f"Chamado movido para Aguardando Validação. Favor validar o funcionamento e finalizar o chamado."
+                    )
+                    interaction = TicketInteraction(
+                        ticket_id=today_ticket.id,
+                        user_id=noc_user.id,
+                        message=normal_note,
+                        is_solution=True,
+                    )
+                    db.add(interaction)
                     db.commit()
                     resolved_tickets_count += 1
-                    print(f"[UniFi Poller] Chamado #{existing_ticket.id} para {name} atualizado para PENDING_VALIDATION")
+                    print(f"[UniFi Poller] Chamado #{today_ticket.id} para {name} atualizado para PENDING_VALIDATION")
 
-                    # Disparo de Notificação de Normalização no WhatsApp
-                    try:
-                        msg_text = (
-                            f"✅ *UNIFI: DISPOSITIVO ONLINE!* ✅\n\n"
-                            f"O equipamento *{name}* ({model}) restabeleceu a comunicação com a controladora UniFi.\n\n"
-                            f"🎫 O chamado *#{existing_ticket.id}* está aguardando validação para encerramento."
-                        )
-                        EvolutionService.send_whatsapp_message(msg_text)
-                    except Exception as err:
-                        print(f"[UniFi Poller WhatsApp Auto-Resolve Error] {err}")
+                    # Disparo Dual: WhatsApp + E-mail Corporativo
+                    wa_msg = (
+                        f"✅ *UNIFI: DISPOSITIVO ONLINE!* ✅\n\n"
+                        f"O equipamento *{name}* ({model}) restabeleceu a comunicação com a controladora UniFi.\n"
+                        f"🕒 *Horário:* {hora_formatada}\n\n"
+                        f"🎫 O chamado *#{today_ticket.id}* está aguardando validação para encerramento.\n"
+                        f"👉 *Atenção equipe de TI: favor validar e finalizar o chamado no painel!*"
+                    )
+                    mail_html = (
+                        f"<p>O equipamento <strong>{name}</strong> ({tipo_legivel} - {model}) restabeleceu a comunicação com a controladora UniFi e está <strong>ONLINE</strong>.</p>"
+                        f"<p><strong>IP:</strong> {ip or 'N/A'} | <strong>MAC:</strong> {mac or 'N/A'}</p>"
+                        f"<p><strong>Horário de Restabelecimento:</strong> {hora_formatada}</p>"
+                        f"<p style='color: #15803d; font-weight: bold;'>O chamado #{today_ticket.id} foi movido para AGUARDANDO VALIDAÇÃO. Favor validar o equipamento e encerrar o chamado no painel.</p>"
+                    )
+                    send_noc_dual_notification(
+                        whatsapp_text=wa_msg,
+                        email_subject=f"✅ [NOC UniFi Online] {name} Normalizado — Chamado #{today_ticket.id}",
+                        email_title=f"Dispositivo Online: {name}",
+                        email_details_html=mail_html,
+                        status_type="success",
+                        ticket_id=today_ticket.id,
+                    )
 
         return {
             "status": "success",

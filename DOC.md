@@ -386,3 +386,35 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Motivo / justificativa opcional informada pelo técnico.
     - **Disparo Opcional no WhatsApp**: Opção de notificar o grupo de TI sobre a alteração em massa consolidada através da Evolution API.
     - **Segurança e Controle de Permissão**: Endpoint `/api/v1/tickets/batch-status` protegido pela dependência `require_technician`.
+
+11. **Ciclo de Vida de Alertas NOC (UniFi e Zabbix) & Histórico Contínuo no Mesmo Dia**:
+    - **Cenário 1 — Queda Inicial**: Ao detectar um equipamento offline na controladora UniFi ou disparo crítico no Zabbix, o sistema abre automaticamente um chamado (`Novo`), registra a interação inicial na linha do tempo e notifica imediatamente a equipe.
+    - **Cenário 2 — Restabelecimento / Normalização**: Quando o equipamento volta a comunicar (`state == 1` ou recuperação Zabbix), o chamado avança para `Aguardando Validação` (`PENDING_VALIDATION`). Uma interação é registrada solicitando que a equipe de TI valide o pleno funcionamento e execute o encerramento formal.
+    - **Cenário 3 — Nova Queda no Mesmo Dia (Reabertura Automática)**: Caso o equipamento caia novamente no mesmo dia civil (considerando o fuso horário UTC-3 de Salvador), o sistema **reabre o chamado existente daquele dia** (status `Em Andamento`), limpa datas de encerramento e anexa a nova queda à timeline do chamado. Isso evita a proliferação desordenada de múltiplos chamados fragmentados para um dispositivo instável no mesmo dia.
+    - **Comunicação Sem Ruídos**: Toda transição gera alerta imediato, garantindo que o corpo de TI saiba exatamente quando o dispositivo caiu, quando retornou e quando voltou a cair.
+
+12. **Notificações Simultâneas (Dual Dispatch: WhatsApp + E-mail Corporativo)**:
+    - Todas as notificações críticas de NOC e Helpdesk são disparadas em duplicidade e de forma independente:
+      1. **WhatsApp (Evolution API)**: Mensagens estruturadas no grupo corporativo de TI com emojis de gravidade, dados técnicos (IP, MAC, localização) e link direto.
+      2. **E-mail Corporativo (`ti-hfsa@fasano.com.br`)**: Disparo via SMTP corporativo configurado no `.env` (`smtp-mail.outlook.com:587`) com TLS obrigatório.
+    - **Templates HTML Responsivos Fasano**: Layout com cabeçalhos degradê temáticos (vermelho para queda, laranja para reabertura de chamado, verde para restabelecimento e azul para resumos operacionais), tabela de dados técnicos e botão de ação direta para o chamado.
+    - **Desacoplamento e Tolerância a Falhas**: Falhas na API do WhatsApp não interferem no envio do e-mail e vice-versa.
+
+13. **Cobrança Operacional & Resumo Periódico com Múltiplos Horários no Dia**:
+    - **Painel de Configurações (`Configurações &rarr; Integrações &rarr; Cobrança & Resumo Periódico`)**:
+      - **Ativação / Desativação**: Interruptor geral para a rotina de cobrança automática de chamados.
+      - **Múltiplos Horários no Dia**: Permite cadastrar qualquer quantidade de horários ao longo do dia (ex: `08:00`, `11:30`, `15:00`, `18:00`). Gerenciamento visual por tags interativas com inclusão rápida via seletor de hora (`type="time"`).
+      - **Seleção de Canais**: Opção de ativar ou desativar individualmente o envio no WhatsApp (Grupo TI) e por E-mail (`ti-hfsa@fasano.com.br`).
+      - **Disparo Manual Sob Demanda**: Botão **`[ Disparar Resumo Agora ]`** para enviar imediatamente a cobrança atual aos técnicos para testes ou alinhamento rápido de turno.
+    - **Agendador em Background (`ticket_summary_scheduler_task` no `backend/app/main.py`)**:
+      - Monitora a cada 30 segundos o relógio local de Salvador (UTC-3).
+      - Quando o horário coincide com a lista programada, compila todos os chamados não finalizados (`Novo`, `Em Andamento`, `Aguardando Validação`).
+      - Envia o relatório de cobrança enfatizando chamados pendentes há mais tempo e cobrando validação final dos chamados restabelecidos.
+
+14. **Atualização Automatizada do Sistema em Produção (`./start.sh --update`)**:
+    - Adicionado suporte nativo ao parâmetro `--update` no assistente `start.sh`.
+    - Executa em 1 comando no servidor Ubuntu:
+      ```bash
+      ./start.sh --update
+      ```
+    - O comando realiza: `git pull`, checagem de dependências Python, build de produção do frontend (`npm run build`), sincronização do Nginx e reinício gracioso do serviço systemd `tihfsa-backend.service`.

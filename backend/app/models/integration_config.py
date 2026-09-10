@@ -10,6 +10,11 @@ class EvolutionConfig(Base):
     api_key = Column(String, nullable=True)
     ti_group_jid = Column(String, nullable=True)
     is_active = Column(Boolean, default=False)
+    # Parâmetros de Cobrança / Resumo Periódico
+    summary_reminder_active = Column(Boolean, default=True)
+    summary_reminder_times = Column(String, default="09:00,14:00,18:00")
+    summary_reminder_whatsapp = Column(Boolean, default=True)
+    summary_reminder_email = Column(Boolean, default=True)
 
 class UnifiConfig(Base):
     __tablename__ = "unifi_config"
