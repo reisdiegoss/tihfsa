@@ -118,7 +118,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
   const openInternalViewer = (att) => {
     setViewerFile({
       name: att.file_name,
-      url: `http://localhost:8000${att.file_path}`,
+      url: att.file_path,
       type: att.content_type
     });
     setIsViewerOpen(true);
@@ -290,7 +290,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                             >
                               {att.content_type.includes("image") ? (
                                 <div className="h-24 bg-slate-100 relative overflow-hidden">
-                                  <img src={`http://localhost:8000${att.file_path}`} alt={att.file_name} className="w-full h-full object-cover group-hover/att:scale-105 transition-transform" />
+                                  <img src={att.file_path} alt={att.file_name} className="w-full h-full object-cover group-hover/att:scale-105 transition-transform" />
                                   <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold gap-1">
                                     <Eye size={14} /> Visualizar
                                   </div>
@@ -370,7 +370,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                                 >
                                   {att.content_type.includes("image") ? (
                                     <div className="h-24 bg-slate-100 relative overflow-hidden">
-                                      <img src={`http://localhost:8000${att.file_path}`} alt={att.file_name} className="w-full h-full object-cover group-hover/att:scale-105 transition-transform" />
+                                      <img src={att.file_path} alt={att.file_name} className="w-full h-full object-cover group-hover/att:scale-105 transition-transform" />
                                       <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold gap-1">
                                         <Eye size={14} /> Visualizar
                                       </div>

@@ -223,6 +223,61 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
     - As opções de seleção de métricas são filtradas dinamicamente com base no tipo de equipamento selecionado (`icon_type`) e nos ativos contidos no Rack em tempo real.
     - Botões rápidos `[ Todas ]` e `[ Nenhuma ]` adicionados aos modais de criação e edição individual para aplicar ou limpar opções contextuais em 1 clique.
     - Presets rápidos em 1 clique no lote (`[ 📡 Wi-Fi (AP) ]`, `[ 🔀 Switches ]`, `[ ⚡ Todas ]`, `[ 🚫 Nenhuma ]`).
+Deploy e Operação em Produção (Ubuntu / Debian com Nginx e HTTPS)
 
+A infraestrutura foi totalmente profissionalizada para permitir instalação e operação rápida e sem dores de cabeça em qualquer servidor Ubuntu (20.04 / 22.04 / 24.04) ou Debian:
 
+1. **Acesso Direto sem Portas na URL e com HTTPS Obrigatório**:
+   - **Porta 80 (HTTP)**: Redirecionamento automático 301 para HTTPS.
+   - **Porta 443 (HTTPS)**: Servidor Web Nginx como Reverse Proxy central com SSL TLSv1.2 e TLSv1.3.
+   - O usuário e as TVs acessam diretamente através de `https://<IP_OU_DOMINIO>/` (sem portas `:5173` ou `:8000`).
+   - O frontend React/Vite é servido estaticamente pelo Nginx a partir de `frontend/dist` com cache de alta performance para arquivos de assets (`/assets/`).
+   - As chamadas da API são roteadas transparentemente pelo Nginx através de `/api/` para o FastAPI em `127.0.0.1:8000`.
+   - O tráfego de uploads e mídias de chamados é roteado através de `/uploads/`.
+   - A documentação interativa Swagger fica acessível em `https://<IP_OU_DOMINIO>/docs`.
 
+2. **Certificado SSL Automático com Suporte a SAN (Subject Alternative Names)**:
+   - O script `start.sh` gera automaticamente um certificado X.509 v3 autoassinado de 10 anos (3650 dias) em `/etc/ssl/tihfsa/tihfsa.crt` e `tihfsa.key`.
+   - O certificado inclui SAN cobrindo `localhost`, o hostname da máquina e todos os IPs de rede do servidor, eliminando erros de incompatibilidade de certificado em navegadores modernos.
+   - Caso o servidor disponha de certificados comerciais ou corporativos (ex: Let's Encrypt / Wildcard), basta copiá-los para `/etc/ssl/tihfsa/`.
+
+3. **Banco de Dados e Migração Autônoma via `.env` (`backend/init_db.py`)**:
+   - O script conecta ao servidor PostgreSQL utilizando os parâmetros fornecidos no `DATABASE_URL` do `.env`.
+   - Se o banco de dados configurado (ex: `tihfsa`) ainda não existir no servidor, ele é criado automaticamente com codificação UTF-8.
+   - Criação automática de todo o schema (`Base.metadata.create_all`).
+   - Aplicação de todas as migrações estruturais incrementais de forma idempotente (`ADD COLUMN IF NOT EXISTS`, criação da tabela `department_managers`, campos do carrossel e topologia NOC).
+   - Inserção dos 8 tipos de equipamentos padrão do Fasano.
+   - Criação automática do departamento TI e do usuário Administrador Root caso o banco de dados esteja limpo, permitindo login imediato com as credenciais definidas no `.env`.
+
+4. **Guia de Uso do Script `start.sh`**:
+   ```bash
+   chmod +x start.sh
+
+   # 1. Instalação Completa (Instala deps, cria banco, migra, compila frontend e sobe tudo):
+   ./start.sh
+
+   # 2. Inicialização Rápida (Sobe backend e recarrega Nginx):
+   ./start.sh --start
+
+   # 3. Verificar Status dos Serviços (Portas 80, 443 e Backend):
+   ./start.sh --status
+
+   # 4. Acompanhar Logs do Backend em Tempo Real:
+   ./start.sh --logs
+
+   # 5. Executar Apenas Migrações do Banco:
+   ./start.sh --migrate
+
+   # 6. Recompilar o Frontend para Produção:
+   ./start.sh --build
+
+   # 7. Reiniciar Serviços:
+   ./start.sh --restart
+
+   # 8. Encerrar Serviços:
+   ./start.sh --stop
+   ```
+
+5. **Configuração de Ambiente (`.env.example`)**:
+   - Um template completo e documentado foi disponibilizado na raiz como `.env.example`.
+   - Em novas instalações, execute `cp .env.example .env` e configure as credenciais de banco, LDAP, SMTP e Zabbix.
