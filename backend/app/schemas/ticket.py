@@ -39,6 +39,14 @@ class TicketValidate(BaseModel):
     rejection_reason: str | None = None
 
 
+class TicketBatchStatusUpdate(BaseModel):
+    """Payload para atualização de status em massa com auditoria."""
+    ticket_ids: list[int]
+    status: str
+    comment: str | None = None
+    notify_whatsapp: bool = False
+
+
 class InteractionCreate(BaseModel):
     message: str
     is_solution: bool = False

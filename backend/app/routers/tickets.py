@@ -20,8 +20,9 @@ from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.models.ticket_interaction import TicketInteraction
 from app.models.asset import Asset
 from app.models.category import Category, Subcategory
+from datetime import datetime, timezone
 from app.schemas.ticket import (
-    TicketCreate, TicketUpdate, TicketSolve, TicketValidate,
+    TicketCreate, TicketUpdate, TicketSolve, TicketValidate, TicketBatchStatusUpdate,
     TicketResponse, TicketDetail, InteractionCreate, InteractionResponse,
 )
 from app.services.ticket_service import TicketService
@@ -78,14 +79,18 @@ def list_tickets(
     technician_id: int | None = None,
     requester_id: int | None = None,
     category_id: int | None = None,
-    limit: int = 50,
+    priority: str | None = None,
+    search: str | None = None,
+    order_by: str = "created_at",
+    order_dir: str = "desc",
+    limit: int = Query(500, ge=1, le=2000),
     offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Lista chamados com filtros e visibilidade por papel."""
+    """Lista chamados com filtros, ordenação e visibilidade por papel."""
     from sqlalchemy.orm import joinedload
-    from sqlalchemy import or_
+    from sqlalchemy import or_, cast, String
 
     query = db.query(Ticket).options(
         joinedload(Ticket.requester),
@@ -130,6 +135,15 @@ def list_tickets(
         if target_status:
             query = query.filter(Ticket.status == target_status)
 
+    if priority and isinstance(priority, str) and priority.strip():
+        target_prio = None
+        for p in TicketPriority:
+            if p.value.lower() == priority.lower() or p.name.lower() == priority.lower():
+                target_prio = p
+                break
+        if target_prio:
+            query = query.filter(Ticket.priority == target_prio)
+
     if technician_id:
         query = query.filter(Ticket.technician_id == technician_id)
     if requester_id:
@@ -137,7 +151,33 @@ def list_tickets(
     if category_id:
         query = query.filter(Ticket.category_id == category_id)
 
-    tickets = query.order_by(Ticket.created_at.desc()).offset(offset).limit(limit).all()
+    if search and isinstance(search, str) and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Ticket.title.ilike(term),
+                Ticket.description.ilike(term),
+                cast(Ticket.id, String).ilike(term),
+            )
+        )
+
+    # Ordenação flexível
+    sort_column = Ticket.created_at
+    if order_by == "id":
+        sort_column = Ticket.id
+    elif order_by == "title":
+        sort_column = Ticket.title
+    elif order_by == "priority":
+        sort_column = Ticket.priority
+    elif order_by == "status":
+        sort_column = Ticket.status
+
+    if order_dir.lower() == "asc":
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
+
+    tickets = query.offset(offset).limit(limit).all()
 
     return [
         TicketResponse(
@@ -285,6 +325,91 @@ def update_ticket(
         background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
         
     return ticket
+
+
+@router.post("/batch-status")
+def batch_update_status(
+    data: TicketBatchStatusUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Atualiza o status de múltiplos chamados em lote.
+    Garante registro detalhado de auditoria (TicketInteraction) em cada chamado,
+    indicando quem fez a alteração, data/hora e justificativa.
+    Permissão: Apenas administradores e técnicos (require_technician).
+    """
+    if not data.ticket_ids:
+        raise HTTPException(status_code=400, detail="Nenhum chamado informado para atualização")
+
+    target_status = None
+    for s in TicketStatus:
+        if s.value == data.status or s.name == data.status:
+            target_status = s
+            break
+    if not target_status:
+        raise HTTPException(status_code=400, detail=f"Status '{data.status}' inválido")
+
+    now = datetime.now(timezone.utc)
+    updated_tickets = []
+
+    for t_id in data.ticket_ids:
+        ticket = db.query(Ticket).filter(Ticket.id == t_id).first()
+        if not ticket:
+            continue
+
+        old_status_label = ticket.status.value
+        ticket.status = target_status
+        ticket.updated_at = now
+
+        if target_status == TicketStatus.CLOSED:
+            ticket.closed_at = now
+        elif target_status == TicketStatus.PENDING_VALIDATION:
+            ticket.solved_at = now
+            if not ticket.technician_id:
+                ticket.technician_id = current_user.id
+
+        # Registro de Auditoria / Linha do Tempo
+        audit_msg = f"📋 [Atualização em Massa] Status alterado de '{old_status_label}' para '{target_status.value}' por {current_user.display_name}."
+        if data.comment and data.comment.strip():
+            audit_msg += f"\nMotivo/Observação: {data.comment.strip()}"
+
+        interaction = TicketInteraction(
+            ticket_id=ticket.id,
+            user_id=current_user.id,
+            message=audit_msg,
+            is_solution=(target_status == TicketStatus.PENDING_VALIDATION),
+        )
+        db.add(interaction)
+        updated_tickets.append(ticket)
+
+    db.commit()
+
+    # Notificação opcional no WhatsApp
+    if data.notify_whatsapp and updated_tickets:
+        ticket_refs = ", ".join([f"#{t.id}" for t in updated_tickets[:8]])
+        if len(updated_tickets) > 8:
+            ticket_refs += f" e mais {len(updated_tickets) - 8} chamados"
+
+        msg_text = (
+            f"🔄 *[Atualização em Massa de Chamados]*\n\n"
+            f"*Responsável:* {current_user.display_name}\n"
+            f"*Novo Status:* {target_status.value}\n"
+            f"*Quantidade:* {len(updated_tickets)} chamados\n"
+            f"*Tickets:* {ticket_refs}"
+        )
+        if data.comment and data.comment.strip():
+            msg_text += f"\n*Observação:* {data.comment.strip()}"
+
+        background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+
+    return {
+        "success": True,
+        "updated_count": len(updated_tickets),
+        "updated_ids": [t.id for t in updated_tickets],
+        "new_status": target_status.value,
+    }
 
 
 @router.patch("/{ticket_id}/solve", response_model=TicketResponse)

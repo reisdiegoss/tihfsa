@@ -365,3 +365,21 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
    - **Resolvedor Corporativo no Nível de Socket (`dns_resolver.py`)**: Para evitar que contêineres ou servidores Linux falhem com `[Errno -3] Temporary failure in name resolution` devido à ausência do DNS interno ou bloqueio de domínios `.local`, o backend intercepta a chamada de rede no nível de `socket.getaddrinfo`. Ele roteia o tráfego diretamente para o IP correto preservando intactos o hostname, o SNI e o cabeçalho `Host`. Dessa forma, o usuário mantém `https://evo2.fassa26.fasanobr.local` na interface e a conexão é estabelecida com sucesso instantâneo.
    - **Automação no `start.sh`**: O script de inicialização também injeta preventivamente a entrada `192.168.168.26 evo2.fassa26.fasanobr.local` no `/etc/hosts` do servidor hospedeiro.
 
+9. **Fila de Chamados: Filtros Avançados e Ordenação Cronológica (Data & Hora)**:
+    - **Visualização Completa de Data e Hora**: A tabela de chamados exibe tanto a data (`DD/MM/AAAA`) quanto o horário preciso (`HH:mm:ss`) e tempo decorrido relativo (`há X min`, `ontem`, etc.), permitindo acompanhamento exato da abertura de incidentes e alarmes.
+    - **Ordenação Clicável por Coluna**: Alternância ascendente/descendente com setas visuais nas colunas `Data & Hora`, `Chamado / ID`, `Solicitante`, `Categoria`, `Prioridade` e `Status`.
+    - **Filtros Temporais Inteligentes**: Atalhos para filtrar por *Hoje (00h às 23:59)*, *Últimas 24 horas*, *Últimos 7 dias*, *Últimos 30 dias*, *Este Mês* e *Intervalo Personalizado (De/Até)*.
+    - **Filtros por Origem**: Separação clara entre chamados manuais de usuários e alertas automatizados do NOC (*Zabbix NOC*, *UniFi NOC* e *Auto-Alertas de Ativos*).
+    - **Contadores em Tempo Real**: As abas de status exibem a quantidade exata de chamados em cada estágio (`Todos`, `Novo`, `Em Andamento`, `Aguardando Validação`, `Fechado`).
+    - **Limpeza de Filtros**: Botão de reset rápido que restaura a visualização padrão com um clique.
+
+10. **Atualização de Status em Massa com Rastreabilidade & Auditoria**:
+    - **Seleção Múltipla**: Disponível exclusivamente para a equipe de TI (Admins e Técnicos), permitindo selecionar um, vários ou todos os chamados da lista filtrada com checkbox mestre.
+    - **Barra de Ações Flutuante**: Exibe a contagem de itens selecionados e atalho para o modal de alteração em massa.
+    - **Registro de Auditoria Individual na Timeline**: Toda alteração em lote registra uma interação no histórico (`TicketInteraction`) de cada chamado afetado, gravando:
+      - Nome completo e perfil do responsável pela alteração.
+      - Data e hora exatas da operação.
+      - Status anterior e novo status aplicado.
+      - Motivo / justificativa opcional informada pelo técnico.
+    - **Disparo Opcional no WhatsApp**: Opção de notificar o grupo de TI sobre a alteração em massa consolidada através da Evolution API.
+    - **Segurança e Controle de Permissão**: Endpoint `/api/v1/tickets/batch-status` protegido pela dependência `require_technician`.
