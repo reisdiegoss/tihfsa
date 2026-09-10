@@ -320,13 +320,16 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
    # 1. Instalação Completa / Inicialização Geral:
    ./start.sh
 
-   # 2. Executar o Assistente de Clone e Setup:
+   # 2. Atualizar Aplicação (Git Pull + Recompilar Frontend + Reiniciar Backend):
+   ./start.sh --update
+
+   # 3. Executar o Assistente de Clone e Setup:
    ./start.sh --setup
 
-   # 3. Inicialização Rápida (Sobe backend e recarrega Nginx):
+   # 4. Inicialização Rápida (Sobe backend e recarrega Nginx):
    ./start.sh --start
 
-   # 4. Verificar Status dos Serviços (Portas 80, 443 e Backend):
+   # 5. Verificar Status dos Serviços (Portas 80, 443 e Backend):
    ./start.sh --status
 
    # 5. Acompanhar Logs do Backend em Tempo Real:

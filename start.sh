@@ -809,6 +809,16 @@ main() {
             ;;
         --build|-b)
             build_frontend
+            sudo systemctl reload nginx 2>/dev/null || sudo service nginx reload 2>/dev/null || true
+            ;;
+        --update|-u)
+            log_step "UPDATE" "Atualizando repositório do Git e recompilando..."
+            git pull || true
+            build_frontend
+            stop_services
+            sleep 1
+            start_services
+            log_success "Aplicação atualizada, compilada e reiniciada com sucesso!"
             ;;
         --logs|-l)
             if [[ -f "$LOG_DIR/backend.log" ]]; then
@@ -827,6 +837,7 @@ main() {
             echo ""
             echo "Opções:"
             echo "  (sem opção)     Instalação / Deploy completo da aplicação"
+            echo "  --update, -u    Atualizar via Git, recompilar frontend e reiniciar serviços"
             echo "  --setup, -w     Executar o assistente interativo de clone e configuração"
             echo "  --start, -s     Iniciar backend e Nginx (rápido)"
             echo "  --stop, -x      Parar o backend"
