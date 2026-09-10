@@ -47,6 +47,7 @@ LOG_DIR="$SCRIPT_DIR/logs"
 PID_DIR="$SCRIPT_DIR/.pids"
 ENV_FILE="$SCRIPT_DIR/.env"
 ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
+WEB_ROOT="/var/www/tihfsa"
 
 # ── Portas e Endereços ───────────────────────────────────────
 INTERNAL_BACKEND_PORT=8000
@@ -301,8 +302,8 @@ server {
     # Limite de Upload para anexos e imagens (50MB)
     client_max_body_size 50M;
 
-    # Diretório dos arquivos compilados do Frontend SPA
-    root $frontend_dist;
+    # Diretório dos arquivos compilados do Frontend SPA (/var/www/tihfsa)
+    root $WEB_ROOT;
     index index.html;
 
     # SPA (Single Page Application) Routing
@@ -390,14 +391,29 @@ run_database_migrations() {
 }
 
 # ══════════════════════════════════════════════════════════════
-#  6. BUILD DO FRONTEND
+#  6. BUILD E PUBLICAÇÃO DO FRONTEND
 # ══════════════════════════════════════════════════════════════
+deploy_frontend() {
+    log_step "DEPLOY" "Publicando Frontend compilado em $WEB_ROOT para o Nginx..."
+    sudo mkdir -p "$WEB_ROOT"
+    if [[ -d "$FRONTEND_DIR/dist" ]]; then
+        sudo cp -r "$FRONTEND_DIR/dist/." "$WEB_ROOT/"
+        sudo chown -R www-data:www-data "$WEB_ROOT" 2>/dev/null || true
+        sudo chmod -R 755 "$WEB_ROOT"
+        log_success "Frontend publicado em $WEB_ROOT com permissões 755 para www-data."
+    else
+        log_warn "Diretório $FRONTEND_DIR/dist não encontrado. Executando build primeiro..."
+        build_frontend
+    fi
+}
+
 build_frontend() {
     log_step "BUILD" "Compilando Frontend para produção (Vite)..."
     cd "$FRONTEND_DIR"
     npm run build
     cd "$SCRIPT_DIR"
     log_success "Frontend compilado com sucesso em: $FRONTEND_DIR/dist"
+    deploy_frontend
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -410,9 +426,11 @@ start_services() {
     # 1. Garantir que o banco de dados está pronto
     run_database_migrations
 
-    # 2. Se a pasta dist do frontend não existir, compila
+    # 2. Se a pasta dist do frontend não existir, compila; caso contrário, sincroniza com /var/www/tihfsa
     if [[ ! -d "$FRONTEND_DIR/dist" ]]; then
         build_frontend
+    else
+        deploy_frontend
     fi
 
     # 3. Encerrar instâncias anteriores do backend interno
@@ -467,6 +485,15 @@ start_services() {
     setup_ssl_certificate
     configure_nginx
     sudo systemctl restart nginx 2>/dev/null || sudo service nginx restart 2>/dev/null || true
+
+    local http_code
+    http_code=$(curl -k -s -o /dev/null -w "%{http_code}" --max-time 3 "https://localhost/" 2>/dev/null || echo "000")
+    if [[ "$http_code" == "200" || "$http_code" == "301" || "$http_code" == "302" ]]; then
+        log_success "Nginx respondendo com sucesso (HTTP $http_code em https://localhost/)."
+    else
+        log_warn "Nginx respondeu com código $http_code. Últimas linhas de erro do Nginx:"
+        sudo tail -n 6 /var/log/nginx/error.log 2>/dev/null || true
+    fi
 
     # 7. Exibir informações de acesso
     local server_ip
