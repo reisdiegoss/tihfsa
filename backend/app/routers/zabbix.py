@@ -8,6 +8,7 @@ from app.database import get_db
 from app.auth.dependencies import get_current_user, get_optional_user, require_technician
 from app.models.user import User, UserRole
 from app.models.asset import Asset
+from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from datetime import datetime, timezone, timedelta
 from app.models.ticket_interaction import TicketInteraction
 from app.services.email_service import send_noc_dual_notification
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/api/v1/zabbix", tags=["Zabbix"])
 def _map_zabbix_severity_to_priority(severity: str) -> TicketPriority:
     s = severity.lower()
     if s in ["disaster", "high"]:
-        return TicketPriority.URGENT
+        return TicketPriority.CRITICAL
     if s in ["average", "warning"]:
         return TicketPriority.HIGH
     return TicketPriority.MEDIUM
