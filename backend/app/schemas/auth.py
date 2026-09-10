@@ -14,3 +14,9 @@ class TokenResponse(BaseModel):
     display_name: str
     role: str
     roles: list[str] = ["user"]
+    can_change_password: bool = False
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str

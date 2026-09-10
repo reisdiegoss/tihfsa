@@ -44,6 +44,7 @@ class UserResponse(UserBase):
     manager_id: int | None = None
     managed_department_ids: list[int] = []
     managed_department_names: list[str] = []
+    can_change_password: bool = False
     created_at: datetime
 
 

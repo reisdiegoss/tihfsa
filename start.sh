@@ -38,7 +38,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 BOLD='\033[1m'
 
-# ── Diretórios ───────────────────────────────────────────────
+# ── Diretórios & Nome do Projeto (100% Dinâmico) ─────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/backend"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
@@ -47,14 +47,22 @@ LOG_DIR="$SCRIPT_DIR/logs"
 PID_DIR="$SCRIPT_DIR/.pids"
 ENV_FILE="$SCRIPT_DIR/.env"
 ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
-WEB_ROOT="/var/www/tihfsa"
+
+# Identifica o nome da pasta em que o repositório foi baixado do Git
+PROJECT_NAME="$(basename "$SCRIPT_DIR")"
+PROJECT_NAME="${PROJECT_NAME//[^a-zA-Z0-9_-]/_}"
+if [[ -z "$PROJECT_NAME" || "$PROJECT_NAME" == "_" ]]; then
+    PROJECT_NAME="tihfsa"
+fi
+
+WEB_ROOT="/var/www/$PROJECT_NAME"
+SSL_DIR="/etc/ssl/$PROJECT_NAME"
+NGINX_CONF_AVAILABLE="/etc/nginx/sites-available/$PROJECT_NAME"
+NGINX_CONF_ENABLED="/etc/nginx/sites-enabled/$PROJECT_NAME"
 
 # ── Portas e Endereços ───────────────────────────────────────
 INTERNAL_BACKEND_PORT=8000
 INTERNAL_BACKEND_URL="http://127.0.0.1:$INTERNAL_BACKEND_PORT"
-SSL_DIR="/etc/ssl/tihfsa"
-NGINX_CONF_AVAILABLE="/etc/nginx/sites-available/tihfsa"
-NGINX_CONF_ENABLED="/etc/nginx/sites-enabled/tihfsa"
 
 # ── Funções de Mensagem ──────────────────────────────────────
 banner() {
@@ -206,15 +214,15 @@ ensure_nginx_installed() {
 setup_ssl_certificate() {
     ensure_nginx_installed
 
-    local cert_file="$SSL_DIR/tihfsa.crt"
-    local key_file="$SSL_DIR/tihfsa.key"
+    local cert_file="$SSL_DIR/${PROJECT_NAME}.crt"
+    local key_file="$SSL_DIR/${PROJECT_NAME}.key"
 
     if [[ -f "$cert_file" && -f "$key_file" ]]; then
         log_info "Certificado SSL existente detectado em $SSL_DIR."
         return 0
     fi
 
-    log_info "Gerando certificado SSL autoassinado de 10 anos (3650 dias)..."
+    log_info "Gerando certificado SSL autoassinado de 10 anos (3650 dias) para $PROJECT_NAME..."
 
     local server_ip
     server_ip=$(get_server_ip)
@@ -222,7 +230,7 @@ setup_ssl_certificate() {
     hostname_val=$(hostname)
 
     # Configuração temporária OpenSSL para incluir SAN (Subject Alternative Names)
-    local openssl_cnf="/tmp/tihfsa_openssl.cnf"
+    local openssl_cnf="/tmp/${PROJECT_NAME}_openssl.cnf"
     cat > "$openssl_cnf" <<EOF
 [req]
 default_bits       = 2048
@@ -268,13 +276,11 @@ EOF
 # ══════════════════════════════════════════════════════════════
 configure_nginx() {
     ensure_nginx_installed
-    log_info "Gerando configuração de produção do Nginx..."
-
-    local frontend_dist="$FRONTEND_DIR/dist"
+    log_info "Gerando configuração de produção do Nginx para [$PROJECT_NAME]..."
 
     sudo tee "$NGINX_CONF_AVAILABLE" > /dev/null <<EOF
 # ============================================================
-#  TIHFSA — Configuração Nginx (Porta 80 -> 443 + Reverse Proxy)
+#  $PROJECT_NAME — Configuração Nginx (Porta 80 -> 443 + Reverse Proxy)
 # ============================================================
 
 # ── Redirecionamento HTTP (80) -> HTTPS (443) ────────────────
@@ -293,8 +299,8 @@ server {
     server_name _;
 
     # Certificados SSL
-    ssl_certificate $SSL_DIR/tihfsa.crt;
-    ssl_certificate_key $SSL_DIR/tihfsa.key;
+    ssl_certificate $SSL_DIR/${PROJECT_NAME}.crt;
+    ssl_certificate_key $SSL_DIR/${PROJECT_NAME}.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
@@ -302,7 +308,7 @@ server {
     # Limite de Upload para anexos e imagens (50MB)
     client_max_body_size 50M;
 
-    # Diretório dos arquivos compilados do Frontend SPA (/var/www/tihfsa)
+    # Diretório dos arquivos compilados do Frontend SPA ($WEB_ROOT)
     root $WEB_ROOT;
     index index.html;
 

@@ -281,3 +281,14 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
 5. **Configuração de Ambiente (`.env.example`)**:
    - Um template completo e documentado foi disponibilizado na raiz como `.env.example`.
    - Em novas instalações, execute `cp .env.example .env` e configure as credenciais de banco, LDAP, SMTP e Zabbix.
+
+6. **Deploy Multi-Unidades Dinâmico (Sem Nomes ou Pastas Fixas)**:
+   - O script `start.sh` detecta automaticamente o nome do diretório em que o repositório foi clonado do Git (`basename "$SCRIPT_DIR"`).
+   - **Nginx Web Root**: Publicado em `/var/www/<nome_da_pasta>` com permissões automáticas `755` para o usuário `www-data`.
+   - **Certificados SSL**: Gerados e armazenados isoladamente em `/etc/ssl/<nome_da_pasta>/`.
+   - **Configuração Nginx**: Registrada isoladamente em `/etc/nginx/sites-available/<nome_da_pasta>` e linkada em `sites-enabled/`.
+   - Permite a instalação em qualquer servidor ou unidade hoteleira sem necessidade de alterar caminhos ou scripts.
+
+7. **Governança de Senhas (Admin Local vs. Usuários LDAP)**:
+   - **Administrador Local (.env)**: Possui permissão exclusiva para alterar sua senha de emergência diretamente pela interface web (botão de chave no cabeçalho ou em *Configurações &rarr; Parâmetros Gerais &rarr; Credenciais & Segurança*).
+   - **Usuários do Domínio (Active Directory / LDAP)**: Utilizam a autenticação corporativa centralizada da empresa. O sistema bloqueia a alteração local de senha para contas LDAP, garantindo que as políticas de senha e expiração do domínio Windows sejam preservadas.

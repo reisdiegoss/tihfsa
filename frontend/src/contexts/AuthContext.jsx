@@ -15,7 +15,22 @@ export function AuthProvider({ children }) {
     const storedUser = localStorage.getItem("tihfsa_user");
     const token = localStorage.getItem("tihfsa_token");
     if (storedUser && token) {
-      setUser(JSON.parse(storedUser));
+      const parsed = JSON.parse(storedUser);
+      setUser(parsed);
+      
+      // Sincronizar permissões caso canChangePassword não esteja no cache
+      if (parsed.canChangePassword === undefined) {
+        api.get("/auth/me")
+          .then((res) => {
+            const updated = {
+              ...parsed,
+              canChangePassword: Boolean(res.data?.can_change_password),
+            };
+            setUser(updated);
+            localStorage.setItem("tihfsa_user", JSON.stringify(updated));
+          })
+          .catch(() => {});
+      }
     }
     setLoading(false);
   }, []);
@@ -34,6 +49,7 @@ export function AuthProvider({ children }) {
       displayName: data.display_name,
       role: data.role,
       roles: data.roles || [data.role],
+      canChangePassword: Boolean(data.can_change_password),
     };
 
     localStorage.setItem("tihfsa_token", data.access_token);
@@ -53,9 +69,10 @@ export function AuthProvider({ children }) {
   const isTechnician = userRoles.includes("tecnico") || userRoles.includes("technician");
   const isManager = userRoles.includes("manager") || userRoles.includes("gerente");
   const isStaff = isAdmin || isTechnician || isManager;
+  const canChangePassword = Boolean(user?.canChangePassword);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin, isTechnician, isManager, isStaff }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin, isTechnician, isManager, isStaff, canChangePassword }}>
       {children}
     </AuthContext.Provider>
   );

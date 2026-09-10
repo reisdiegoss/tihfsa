@@ -32,12 +32,20 @@ import {
   Wifi,
   Printer,
   Monitor,
-  HardDrive
+  HardDrive,
+  KeyRound,
+  Lock,
+  User,
+  ShieldCheck
 } from "lucide-react";
 import api from "../../api/client";
+import { useAuth } from "../../contexts/AuthContext";
+import ChangePasswordModal from "../../components/common/ChangePasswordModal";
 
 export default function Settings() {
+  const { user, canChangePassword } = useAuth();
   const [activeTab, setActiveTab] = useState("ad");
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
   // Asset Types States
   const [assetTypes, setAssetTypes] = useState([]);
@@ -2291,6 +2299,93 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* TAB CONTENT: Parâmetros Gerais & Segurança */}
+      {activeTab === "general" && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs">
+            <div className="flex items-center justify-between gap-4 pb-6 border-b border-slate-100 flex-wrap">
+              <div>
+                <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <ShieldCheck className="text-blue-600" size={20} /> Credenciais & Segurança do Administrador
+                </h2>
+                <p className="text-xs font-semibold text-slate-500 mt-1">
+                  Gerenciamento de credenciais locais do administrador raiz do sistema.
+                </p>
+              </div>
+
+              {canChangePassword ? (
+                <button
+                  onClick={() => setPasswordModalOpen(true)}
+                  className="flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-2xl text-sm font-bold shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all cursor-pointer"
+                >
+                  <KeyRound size={16} />
+                  Alterar Minha Senha
+                </button>
+              ) : (
+                <div className="px-4 py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <Lock size={14} /> Conta gerenciada via LDAP / Active Directory
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div className="p-5 rounded-2xl border border-slate-100 bg-slate-50/70">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                    <User size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">{user?.displayName || "Administrador"}</h3>
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase">{user?.role || "admin"}</p>
+                  </div>
+                </div>
+                <div className="space-y-2 text-xs font-semibold text-slate-600 pt-3 border-t border-slate-200/60">
+                  <p className="flex items-center justify-between">
+                    <span>Tipo de Conta:</span>
+                    <span className="font-extrabold text-blue-700">
+                      {canChangePassword ? "Administrador Local (.env)" : "Domínio Active Directory (LDAP)"}
+                    </span>
+                  </p>
+                  <p className="flex items-center justify-between">
+                    <span>Permissão de Alteração de Senha:</span>
+                    <span className={`font-extrabold ${canChangePassword ? "text-emerald-600" : "text-amber-600"}`}>
+                      {canChangePassword ? "Habilitada (Conta Local)" : "Bloqueada (Gerida pelo Windows AD)"}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-5 rounded-2xl border border-slate-100 bg-slate-50/70 flex flex-col justify-between">
+                <div>
+                  <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Lock size={14} className="text-slate-500" /> Política de Senhas & Governança
+                  </h4>
+                  <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                    Usuários autenticados pelo <strong>Active Directory (LDAP)</strong> utilizam exclusivamente a senha da sua conta de rede do hotel e não possuem permissão de alteração pelo sistema web. Apenas o <strong>administrador raiz local</strong> pode alterar sua credencial de emergência diretamente por esta ferramenta.
+                  </p>
+                </div>
+                {canChangePassword && (
+                  <div className="mt-4 pt-4 border-t border-slate-200/60">
+                    <button
+                      onClick={() => setPasswordModalOpen(true)}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <KeyRound size={14} /> Abrir formulário de alteração de senha &rarr;
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Alteração de Senha */}
+      <ChangePasswordModal
+        isOpen={passwordModalOpen}
+        onClose={() => setPasswordModalOpen(false)}
+      />
 
       {/* MODAL: Criar / Editar Tipo de Equipamento */}
       {assetTypeModalOpen && (

@@ -33,6 +33,7 @@ def _format_user_response(user: User) -> dict:
         "manager_id": user.manager_id,
         "managed_department_ids": [d.id for d in user.managed_departments] if user.managed_departments else [],
         "managed_department_names": [d.name for d in user.managed_departments] if user.managed_departments else [],
+        "can_change_password": bool(user.ad_username == settings.admin_username or (user.password_hash and user.password_hash != "N/A")),
         "created_at": user.created_at,
     }
 
