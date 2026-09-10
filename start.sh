@@ -190,10 +190,20 @@ install_dependencies() {
 }
 
 # ══════════════════════════════════════════════════════════════
-#  3. CERTIFICADO SSL (HTTPS COM SAN V3)
+#  3. ASSEGURAR NGINX E CERTIFICADO SSL (HTTPS COM SAN V3)
 # ══════════════════════════════════════════════════════════════
+ensure_nginx_installed() {
+    if ! has_cmd nginx; then
+        log_info "Nginx não está instalado no sistema. Instalando Nginx e OpenSSL..."
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq nginx openssl
+        log_success "Nginx e OpenSSL instalados com sucesso."
+    fi
+    sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled "$SSL_DIR"
+}
+
 setup_ssl_certificate() {
-    sudo mkdir -p "$SSL_DIR"
+    ensure_nginx_installed
 
     local cert_file="$SSL_DIR/tihfsa.crt"
     local key_file="$SSL_DIR/tihfsa.key"
@@ -256,6 +266,7 @@ EOF
 #  4. CONFIGURAÇÃO DO NGINX (HTTP -> HTTPS & REVERSE PROXY)
 # ══════════════════════════════════════════════════════════════
 configure_nginx() {
+    ensure_nginx_installed
     log_info "Gerando configuração de produção do Nginx..."
 
     local frontend_dist="$FRONTEND_DIR/dist"
@@ -599,9 +610,10 @@ main() {
             ;;
         full|"")
             check_env_file
-            if [[ ! -d "$VENV_DIR" || ! -d "$FRONTEND_DIR/node_modules" ]]; then
+            if [[ ! -d "$VENV_DIR" || ! -d "$FRONTEND_DIR/node_modules" ]] || ! has_cmd nginx || ! has_cmd openssl; then
                 install_dependencies
             else
+                ensure_nginx_installed
                 setup_ssl_certificate
                 configure_nginx
             fi

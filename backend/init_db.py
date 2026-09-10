@@ -197,15 +197,32 @@ def main():
     # 1. Garantir que o banco de dados existe no servidor
     ensure_database_exists()
 
-    # 2. Criar todas as tabelas mapeadas pelos modelos SQLAlchemy
-    print("[INIT_DB] Criando tabelas do schema (Base.metadata.create_all)...")
-    Base.metadata.create_all(bind=engine)
-    print("[INIT_DB] Tabelas verificadas/criadas com sucesso.")
+    # 2. Inspecionar tabelas existentes antes do create_all
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    existing_tables = inspector.get_table_names()
 
-    # 3. Aplicar migrações incrementais
+    if existing_tables:
+        print(f"[INIT_DB] Banco existente com {len(existing_tables)} tabela(s) detectada(s).")
+        print("[INIT_DB] Verificando se há novas tabelas do modelo para adicionar...")
+    else:
+        print("[INIT_DB] Banco novo detectado. Criando tabelas iniciais...")
+
+    # Base.metadata.create_all NUNCA sobrescreve nem apaga dados de tabelas existentes
+    Base.metadata.create_all(bind=engine)
+
+    updated_tables = inspect(engine).get_table_names()
+    newly_created = set(updated_tables) - set(existing_tables)
+
+    if newly_created:
+        print(f"[INIT_DB] {len(newly_created)} nova(s) tabela(s) criada(s): {', '.join(sorted(newly_created))}")
+    else:
+        print(f"[INIT_DB] Todas as tabelas já existem no banco. Registros e dados 100% preservados.")
+
+    # 3. Aplicar migrações incrementais de colunas
     apply_migrations()
 
-    # 4. Inserir dados básicos essenciais
+    # 4. Inserir dados básicos essenciais apenas se necessário
     db = SessionLocal()
     try:
         seed_asset_types(db)
