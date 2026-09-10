@@ -209,3 +209,18 @@ def test_unifi_connection(
         return {"success": True, "message": "Conexão com a controladora UniFi estabelecida com sucesso!"}
     else:
         raise HTTPException(status_code=401, detail="Falha ao autenticar. Verifique a URL, Usuário ou Senha.")
+
+
+@router_unifi.post("/sync-devices")
+def trigger_unifi_device_sync(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Executa a sincronização e checagem de dispositivos UniFi offline sob demanda."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Apenas administradores podem acionar a sincronização.")
+
+    from app.services.unifi_service import sync_active_unifi_devices
+    result = sync_active_unifi_devices(db)
+    return result
+

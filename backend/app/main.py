@@ -155,7 +155,7 @@ async def zabbix_poller_task():
             await asyncio.sleep(60) # Checa a cada 60 segundos
             db = SessionLocal()
             try:
-                # Rodar função sincrona em thread pool para não bloquear o event loop
+                # Rodar função síncrona em thread pool para não bloquear o event loop
                 await asyncio.to_thread(sync_active_zabbix_alerts, db)
             finally:
                 db.close()
@@ -163,6 +163,24 @@ async def zabbix_poller_task():
             break
         except Exception as e:
             print(f"[Zabbix Poller] Erro: {e}")
+
+
+async def unifi_poller_task():
+    """Tarefa em segundo plano que monitora status de Switches e APs da UniFi continuamente."""
+    from app.services.unifi_service import sync_active_unifi_devices
+    while True:
+        try:
+            await asyncio.sleep(60) # Checa a cada 60 segundos
+            db = SessionLocal()
+            try:
+                # Rodar função síncrona em thread pool para não bloquear o event loop
+                await asyncio.to_thread(sync_active_unifi_devices, db)
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[UniFi Poller] Erro: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -182,14 +200,16 @@ async def lifespan(app: FastAPI):
         print(f"[DB Auto-Migration Error] {e}")
     _seed_default_asset_types()
     
-    # Iniciar o background poller do Zabbix
-    poller_task = asyncio.create_task(zabbix_poller_task())
+    # Iniciar os background pollers do Zabbix e da UniFi
+    zabbix_task = asyncio.create_task(zabbix_poller_task())
+    unifi_task = asyncio.create_task(unifi_poller_task())
     
-    print(f"[{settings.app_name}] Backend iniciado. Tabelas e Tipos de Equipamento prontos.")
+    print(f"[{settings.app_name}] Backend iniciado. Pollers Zabbix e UniFi ativos. Tabelas e Tipos prontos.")
     yield
     
     # Cancelar tarefas ao encerrar o servidor
-    poller_task.cancel()
+    zabbix_task.cancel()
+    unifi_task.cancel()
     print(f"[{settings.app_name}] Backend encerrado.")
 
 

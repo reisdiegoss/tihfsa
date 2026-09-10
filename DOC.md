@@ -222,8 +222,42 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
   - **Filtro Dinâmico nos Formulários e Modais de Configuração (`batchAddForm`, `newNodeForm`, `editNodeForm`)**:
     - As opções de seleção de métricas são filtradas dinamicamente com base no tipo de equipamento selecionado (`icon_type`) e nos ativos contidos no Rack em tempo real.
     - Botões rápidos `[ Todas ]` e `[ Nenhuma ]` adicionados aos modais de criação e edição individual para aplicar ou limpar opções contextuais em 1 clique.
-    - Presets rápidos em 1 clique no lote (`[ 📡 Wi-Fi (AP) ]`, `[ 🔀 Switches ]`, `[ ⚡ Todas ]`, `[ 🚫 Nenhuma ]`).
+- **Monitoramento Contínuo UniFi (Switches e APs Offline & Notificação WhatsApp)**:
+  - **Worker Periódico em Background (`unifi_poller_task`)**:
+    - Executado continuamente em segundo plano pelo FastAPI (`backend/app/main.py`) a cada 60 segundos com processamento não-bloqueante (`asyncio.to_thread`).
+    - Consulta os dispositivos adotados na controladora UniFi (`UnifiService.get_devices()`).
+  - **Abertura Automática de Chamados (`sync_active_unifi_devices`)**:
+    - Quando um Switch ou Access Point fica desconectado/offline na controladora (`state == 0`):
+      - Identifica se o dispositivo possui ativo correspondente no CMDB (por MAC, IP ou Nome).
+      - Checa idempotência: caso já exista um chamado aberto ou em andamento (`NEW`, `IN_PROGRESS` ou `PENDING_VALIDATION`) com o título `[NOC UniFi] Dispositivo Offline - {nome}`, não gera duplicatas.
+      - Cria automaticamente o chamado com status `Novo` (`NEW`), prioridade Crítica para Switches e Alta para APs, vinculado ao solicitante de sistema `unifi.system` (`Sistema UniFi NOC`).
+  - **Notificação Imediata no WhatsApp para o Grupo de TI**:
+    - Dispara mensagem automática com alta visibilidade para o grupo de TI configurado na Evolution API:
+      ```text
+      🚨 *ALERTA UNIFI: DISPOSITIVO OFFLINE* 🚨
+      
+      ⚠️ *Equipamento:* {nome}
+      🏷️ *Tipo:* Switch de Rede / Access Point (Wi-Fi) ({modelo})
+      🌐 *IP:* {ip} | *MAC:* {mac}
+      🔴 *Status:* Desconectado na Controladora UniFi
+      
+      🎫 *Chamado automático aberto:* #{ticket.id}
+      ```
+  - **Auto-Resolução e Notificação de Restabelecimento**:
+    - Assim que o Switch ou AP volta a responder na controladora (`state == 1`), o chamado aberto é atualizado automaticamente para `Aguardando Validação` (`PENDING_VALIDATION`) com registro da normalização no histórico.
+    - O sistema envia a notificação de restabelecimento no WhatsApp:
+      ```text
+      ✅ *UNIFI: DISPOSITIVO RESTABELECIDO!* ✅
+      
+      O equipamento *{nome}* ({modelo}) restabeleceu a comunicação com a controladora UniFi e está ONLINE.
+      
+      🎫 O chamado *#{ticket.id}* foi atualizado e aguarda validação.
+      ```
+  - **Endpoint de Sincronização Manual**: `POST /api/v1/integrations/unifi/sync-devices` disponível para administradores forçarem a checagem imediata.
+  - **Garantia Geral em Ativos Offline (`_auto_create_ticket_if_offline`)**: Qualquer ativo do CMDB detectado como sem resposta a Ping ICMP agora também dispara notificação com o chamado criado para o WhatsApp do grupo de TI.
+
 Deploy e Operação em Produção (Ubuntu / Debian com Nginx e HTTPS)
+
 
 A infraestrutura foi totalmente profissionalizada para permitir instalação e operação rápida e sem dores de cabeça em qualquer servidor Ubuntu (20.04 / 22.04 / 24.04) ou Debian:
 

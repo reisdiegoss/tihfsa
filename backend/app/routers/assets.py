@@ -97,7 +97,23 @@ def _auto_create_ticket_if_offline(asset_data: dict, db: Session):
         )
         db.add(auto_ticket)
         db.commit()
-        print(f"[NOC Auto-Ticket] Chamado criado automaticamente para ativo offline: {asset_name}")
+        db.refresh(auto_ticket)
+        print(f"[NOC Auto-Ticket] Chamado #{auto_ticket.id} criado automaticamente para ativo offline: {asset_name}")
+
+        # Notificar o grupo de TI no WhatsApp via Evolution API
+        try:
+            from app.services.evolution_service import EvolutionService
+            msg_text = (
+                f"🚨 *ALERTA NOC: ATIVO OFFLINE* 🚨\n\n"
+                f"⚠️ *Equipamento:* {asset_name}\n"
+                f"🌐 *IP:* {asset_ip} | *Local:* {asset_loc}\n"
+                f"🔴 *Status:* Sem resposta a conectividade ICMP (Ping)\n\n"
+                f"🎫 *Chamado automático aberto:* #{auto_ticket.id}"
+            )
+            EvolutionService.send_whatsapp_message(msg_text)
+        except Exception as notify_err:
+            print(f"[NOC Auto-Ticket WhatsApp Error] {notify_err}")
+
     except Exception as e:
         print(f"[NOC Auto-Ticket Error] {e}")
         db.rollback()
