@@ -356,3 +356,8 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
 7. **Governança de Senhas (Admin Local vs. Usuários LDAP)**:
    - **Administrador Local (.env)**: Possui permissão exclusiva para alterar sua senha de emergência diretamente pela interface web (botão de chave no cabeçalho ou em *Configurações &rarr; Parâmetros Gerais &rarr; Credenciais & Segurança*).
    - **Usuários do Domínio (Active Directory / LDAP)**: Utilizam a autenticação corporativa centralizada da empresa. O sistema bloqueia a alteração local de senha para contas LDAP, garantindo que as políticas de senha e expiração do domínio Windows sejam preservadas.
+
+8. **Resolução de DNS & Tolerância a Falhas na Evolution API**:
+   - **Problema de Rede Comum no Linux**: Em distribuições Ubuntu / Debian, domínios corporativos com sufixo `.local` (ex: `evo2.fassa26.fasanobr.local`) são interceptados por padrão pelo protocolo mDNS (Multicast DNS) ao invés do DNS unicast do Active Directory, resultando no erro `[Errno -3] Temporary failure in name resolution`.
+   - **Mecanismo Resiliente Automático (`safe_evolution_request`)**: O backend conta com detecção e fallback inteligente. Caso a chamada ao hostname corporativo falhe na resolução de DNS, a requisição é redirecionada automaticamente para o IP direto (`192.168.168.26`) preservando o cabeçalho virtual `Host: evo2.fassa26.fasanobr.local`.
+   - **Automação no `start.sh`**: O script de inicialização do sistema valida e injeta automaticamente a entrada `192.168.168.26 evo2.fassa26.fasanobr.local` em `/etc/hosts`, assegurando resolução em 0ms sem depender de DNS externo.

@@ -68,7 +68,7 @@ def fetch_evolution_groups(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Acesso negado.")
         
-    import httpx
+    from app.services.evolution_service import safe_evolution_request
     if not payload.api_url or not payload.instance_name or not payload.api_key:
         raise HTTPException(status_code=400, detail="Preencha URL, Instância e API Key para carregar os grupos.")
         
@@ -79,7 +79,7 @@ def fetch_evolution_groups(
     }
     
     try:
-        response = httpx.get(url, headers=headers, timeout=15.0, verify=False)
+        response = safe_evolution_request("GET", url, headers=headers, timeout=15.0)
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail="Instância não encontrada na Evolution API.")
         if response.status_code != 200:

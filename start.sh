@@ -616,6 +616,11 @@ start_services() {
     check_env_file
     mkdir -p "$LOG_DIR" "$PID_DIR"
 
+    # Assegurar resolução de domínios corporativos internos do Fasano no /etc/hosts
+    if ! grep -q "evo2.fassa26.fasanobr.local" /etc/hosts 2>/dev/null; then
+        echo "192.168.168.26 evo2.fassa26.fasanobr.local" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    fi
+
     # 1. Garantir que o banco de dados está pronto
     run_database_migrations
 
