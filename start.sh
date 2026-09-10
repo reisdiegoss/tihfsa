@@ -27,7 +27,6 @@
 
 set -o errexit
 set -o pipefail
-set -o nounset
 
 # ── Cores para Terminal ──────────────────────────────────────
 RED='\033[0;31m'
@@ -113,19 +112,207 @@ is_port_in_use() {
 }
 
 # ══════════════════════════════════════════════════════════════
+#  0. ASSISTENTE INTERATIVO DE CLONE E CONFIGURAÇÃO (WIZARD)
+# ══════════════════════════════════════════════════════════════
+configure_initial_env() {
+    local unit_name="$1"
+    log_info "Configurando variáveis de ambiente para a unidade: '$unit_name'..."
+
+    if [[ -f "$ENV_EXAMPLE" && ! -f "$ENV_FILE" ]]; then
+        cp "$ENV_EXAMPLE" "$ENV_FILE"
+    elif [[ ! -f "$ENV_FILE" ]]; then
+        touch "$ENV_FILE"
+    fi
+
+    # Gerar chave secreta JWT aleatória de 32 bytes em hex
+    local jwt_secret=""
+    if has_cmd openssl; then
+        jwt_secret=$(openssl rand -hex 32 2>/dev/null || true)
+    fi
+    if [[ -z "$jwt_secret" ]]; then
+        jwt_secret="tihfsa-jwt-$(date +%s)-$(head -c 16 /dev/urandom 2>/dev/null | xxd -p 2>/dev/null || echo 'sec123')"
+    fi
+
+    # Atualizar APP_NAME
+    if grep -q "^APP_NAME=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s/^APP_NAME=.*/APP_NAME=\"TIHFSA - $unit_name\"/" "$ENV_FILE"
+    else
+        echo "APP_NAME=\"TIHFSA - $unit_name\"" >> "$ENV_FILE"
+    fi
+
+    # Atualizar JWT_SECRET_KEY
+    if grep -q "^JWT_SECRET_KEY=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$jwt_secret/" "$ENV_FILE"
+    else
+        echo "JWT_SECRET_KEY=$jwt_secret" >> "$ENV_FILE"
+    fi
+
+    # Atualizar SMTP_FROM_NAME
+    if grep -q "^SMTP_FROM_NAME=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s/^SMTP_FROM_NAME=.*/SMTP_FROM_NAME=\"TIHFSA - $unit_name\"/" "$ENV_FILE"
+    else
+        echo "SMTP_FROM_NAME=\"TIHFSA - $unit_name\"" >> "$ENV_FILE"
+    fi
+
+    log_success "Arquivo .env configurado com sucesso para '$unit_name'!"
+}
+
+interactive_wizard() {
+    echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}${CYAN}║          TIHFSA — Hotel Fasano                               ║${NC}"
+    echo -e "${BOLD}${CYAN}║     Sistema Integrado de Gestão de TI & NOC Central          ║${NC}"
+    echo -e "${BOLD}${CYAN}║      Instalador e Assistente de Deploy Automatizado          ║${NC}"
+    echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+
+    local is_repo=false
+    if [[ -f "$SCRIPT_DIR/backend/app/main.py" && -f "$SCRIPT_DIR/frontend/package.json" ]]; then
+        is_repo=true
+    fi
+
+    # Caso NÃO esteja dentro do repositório (ex: baixou só o start.sh num servidor limpo)
+    if ! $is_repo; then
+        echo -e "${YELLOW}Repositório ainda não detectado nesta pasta.${NC}"
+        echo -e "O assistente irá baixar o projeto do GitHub e configurar todo o ambiente.\n"
+
+        # 1. Usuário GitHub
+        local gh_user=""
+        read -r -p "1. Usuário do GitHub [padrão: reisdiegoss]: " gh_user
+        gh_user="${gh_user:-reisdiegoss}"
+
+        # 2. Senha / Token
+        local gh_token=""
+        echo -e "\n2. Senha ou Personal Access Token (PAT) do GitHub:"
+        echo -e "   ${CYAN}(Dica: Para contas com 2FA ou repositórios privados, use um Token com escopo 'repo')${NC}"
+        read -r -s -p "   Senha/Token (oculto): " gh_token
+        echo ""
+
+        if [[ -z "$gh_token" ]]; then
+            log_error "A senha ou Token do GitHub é obrigatório para clonar o repositório."
+            exit 1
+        fi
+
+        # 3. Nome da pasta de destino
+        local target_folder=""
+        echo -e "\n3. Nome da pasta para download e instalação:"
+        read -r -p "   Pasta [ex: tihfsa, tihfsa-salvador, tihfsa-bh] (padrão: tihfsa): " target_folder
+        target_folder="${target_folder:-tihfsa}"
+        target_folder="${target_folder//[^a-zA-Z0-9_-]/_}"
+
+        # 4. Nome da Unidade
+        local unit_name=""
+        echo -e "\n4. Nome da Unidade Hoteleira / Hotel Fasano:"
+        read -r -p "   Unidade [ex: Hotel Fasano Salvador]: " unit_name
+        unit_name="${unit_name:-Hotel Fasano Salvador}"
+
+        # Assegurar pacotes essenciais instalados
+        log_info "Verificando dependências básicas (git, curl)..."
+        if ! has_cmd git || ! has_cmd curl; then
+            log_info "Instalando git e curl no sistema..."
+            sudo apt-get update -qq && sudo apt-get install -y -qq git curl
+        fi
+
+        # Verificar se a pasta já existe
+        if [[ -d "$target_folder" ]]; then
+            if [[ -f "$target_folder/backend/app/main.py" ]]; then
+                log_warn "A pasta '$target_folder' já existe e contém o projeto TIHFSA."
+                local reuse_choice=""
+                read -r -p "Deseja utilizar a pasta existente? [S/n]: " reuse_choice
+                reuse_choice="${reuse_choice:-S}"
+                if [[ "$reuse_choice" != "S" && "$reuse_choice" != "s" ]]; then
+                    log_error "Operação cancelada pelo usuário."
+                    exit 1
+                fi
+            else
+                log_error "A pasta '$target_folder' já existe e não é o projeto TIHFSA. Escolha outro nome."
+                exit 1
+            fi
+        else
+            log_info "Clonando repositório na pasta '$target_folder'..."
+            
+            # URL-encode em usuário e token caso contenham caracteres especiais
+            local enc_user="$gh_user"
+            local enc_token="$gh_token"
+            if has_cmd python3; then
+                enc_user=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$gh_user" 2>/dev/null || echo "$gh_user")
+                enc_token=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$gh_token" 2>/dev/null || echo "$gh_token")
+            fi
+
+            local clone_url="https://${enc_user}:${enc_token}@github.com/reisdiegoss/tihfsa.git"
+            if ! git clone "$clone_url" "$target_folder"; then
+                log_error "Falha ao clonar o repositório do GitHub."
+                log_info "Verifique se o usuário e a senha/token do GitHub estão corretos e têm acesso ao repositório."
+                exit 1
+            fi
+            log_success "Repositório clonado com sucesso na pasta '$target_folder'!"
+        fi
+
+        # Entrar na pasta clonada
+        cd "$target_folder"
+
+        # Limpar credenciais do remote origin por segurança (nunca persistir token no git config)
+        git remote set-url origin "https://github.com/reisdiegoss/tihfsa.git" 2>/dev/null || true
+
+        # Criar e configurar o .env dentro da nova pasta
+        log_info "Configurando o arquivo .env da unidade em $(pwd)..."
+        if [[ -f ".env.example" && ! -f ".env" ]]; then
+            cp ".env.example" ".env"
+        elif [[ ! -f ".env" ]]; then
+            touch ".env"
+        fi
+
+        local jwt_secret=""
+        if has_cmd openssl; then
+            jwt_secret=$(openssl rand -hex 32 2>/dev/null || true)
+        fi
+        if [[ -z "$jwt_secret" ]]; then
+            jwt_secret="tihfsa-jwt-$(date +%s)-$(head -c 16 /dev/urandom 2>/dev/null | xxd -p 2>/dev/null || echo 'sec123')"
+        fi
+
+        if grep -q "^APP_NAME=" ".env" 2>/dev/null; then
+            sed -i "s/^APP_NAME=.*/APP_NAME=\"TIHFSA - $unit_name\"/" ".env"
+        else
+            echo "APP_NAME=\"TIHFSA - $unit_name\"" >> ".env"
+        fi
+
+        if grep -q "^JWT_SECRET_KEY=" ".env" 2>/dev/null; then
+            sed -i "s/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$jwt_secret/" ".env"
+        else
+            echo "JWT_SECRET_KEY=$jwt_secret" >> ".env"
+        fi
+
+        if grep -q "^SMTP_FROM_NAME=" ".env" 2>/dev/null; then
+            sed -i "s/^SMTP_FROM_NAME=.*/SMTP_FROM_NAME=\"TIHFSA - $unit_name\"/" ".env"
+        else
+            echo "SMTP_FROM_NAME=\"TIHFSA - $unit_name\"" >> ".env"
+        fi
+
+        log_success "Arquivo .env configurado com sucesso para a unidade: '$unit_name'!"
+
+        # Assegurar permissão de execução no start.sh da pasta clonada
+        chmod +x ./start.sh
+
+        log_info "Transferindo controle para o script de inicialização do projeto em $(pwd)..."
+        echo ""
+        exec ./start.sh full
+    else
+        # Se já está dentro da pasta clonada mas .env não existe ou chamou com flag --setup
+        if [[ ! -f "$ENV_FILE" ]]; then
+            echo -e "${YELLOW}Configuração inicial da Unidade:${NC}\n"
+            local unit_name=""
+            read -r -p "Nome da Unidade / Hotel Fasano [ex: Hotel Fasano Salvador]: " unit_name
+            unit_name="${unit_name:-Hotel Fasano Salvador}"
+            configure_initial_env "$unit_name"
+        fi
+    fi
+}
+
+
+# ══════════════════════════════════════════════════════════════
 #  1. VERIFICAÇÃO DO ARQUIVO .ENV
 # ══════════════════════════════════════════════════════════════
 check_env_file() {
     if [[ ! -f "$ENV_FILE" ]]; then
-        if [[ -f "$ENV_EXAMPLE" ]]; then
-            log_warn "Arquivo .env não encontrado. Copiando de .env.example..."
-            cp "$ENV_EXAMPLE" "$ENV_FILE"
-            log_success "Arquivo .env criado a partir de .env.example."
-            log_warn "IMPORTANTE: Revise as credenciais em $ENV_FILE se necessário."
-        else
-            log_error "Nenhum arquivo .env ou .env.example foi encontrado na raiz!"
-            exit 1
-        fi
+        interactive_wizard
     else
         log_success "Arquivo de ambiente .env detectado."
     fi
@@ -625,11 +812,17 @@ main() {
                 log_warn "Arquivo de log ainda não criado ($LOG_DIR/backend.log)."
             fi
             ;;
+        --setup|-w)
+            interactive_wizard
+            install_dependencies
+            start_services
+            ;;
         --help|-h)
             echo "Uso: ./start.sh [opção]"
             echo ""
             echo "Opções:"
-            echo "  (sem opção)     Instalação completa + migração do banco + build + subir serviços"
+            echo "  (sem opção)     Instalação / Deploy completo da aplicação"
+            echo "  --setup, -w     Executar o assistente interativo de clone e configuração"
             echo "  --start, -s     Iniciar backend e Nginx (rápido)"
             echo "  --stop, -x      Parar o backend"
             echo "  --restart, -r   Reiniciar o backend e recarregar Nginx"
@@ -642,6 +835,10 @@ main() {
             echo ""
             ;;
         full|"")
+            if [[ ! -f "$SCRIPT_DIR/backend/app/main.py" || ! -f "$ENV_FILE" ]]; then
+                interactive_wizard
+            fi
+
             check_env_file
             if [[ ! -d "$VENV_DIR" || ! -d "$FRONTEND_DIR/node_modules" ]] || ! has_cmd nginx || ! has_cmd openssl; then
                 install_dependencies

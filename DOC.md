@@ -249,38 +249,68 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
    - Inserção dos 8 tipos de equipamentos padrão do Fasano.
    - Criação automática do departamento TI e do usuário Administrador Root caso o banco de dados esteja limpo, permitindo login imediato com as credenciais definidas no `.env`.
 
-4. **Guia de Uso do Script `start.sh`**:
+4. **Instalação em Servidor Zerado em 1 Comando (Assistente Interativo)**:
+   Em uma máquina Linux (Ubuntu / Debian) recém-criada, basta baixar o `start.sh` e executá-lo:
+   ```bash
+   # Baixar o start.sh (ou copiar para o servidor) e executar:
+   chmod +x start.sh
+   ./start.sh
+   ```
+   O assistente detectará automaticamente que o sistema ainda não está instalado e solicitará interativamente:
+   1. **Usuário do GitHub** (ex: `reisdiegoss`)
+   2. **Senha ou Personal Access Token (PAT) do GitHub** (entrada oculta por segurança)
+   3. **Nome da pasta de instalação** (ex: `tihfsa`, `tihfsa-salvador`, `tihfsa-bh`)
+   4. **Nome da Unidade** (ex: `Hotel Fasano Salvador`, `Hotel Fasano Belo Horizonte`)
+
+   A partir daí, o script faz **TODO o trabalho de forma autônoma**:
+   - Instala `git` e `curl` se necessário
+   - Clona o repositório privado do GitHub dentro da pasta informada
+   - Remove tokens e senhas das URLs do git local por segurança
+   - Configura o `.env` específico daquela unidade com JWT Secret aleatório e nomes da unidade
+   - Instala dependências do SO (Python 3, venv, pip, Node.js 20 LTS, Nginx, OpenSSL, lsof)
+   - Cria o virtualenv e instala os pacotes do Backend
+   - Instala os pacotes do Frontend e compila a SPA para produção (`npm run build`)
+   - Executa a inicialização do banco (`backend/init_db.py`), criando o banco no PostgreSQL se não existir e aplicando migrações
+   - Gera o certificado SSL autoassinado com IP e localhost em `/etc/ssl/<nome_da_pasta>/`
+   - Configura e ativa o proxy reverso Nginx em `/etc/nginx/sites-available/<nome_da_pasta>`
+   - Sobe o backend FastAPI e valida os serviços
+   - Exibe a URL de acesso pronta: `https://<ip_do_servidor>/` sem necessidade de portas!
+
+5. **Guia de Comandos do Script `start.sh`**:
    ```bash
    chmod +x start.sh
 
-   # 1. Instalação Completa (Instala deps, cria banco, migra, compila frontend e sobe tudo):
+   # 1. Instalação Completa / Inicialização Geral:
    ./start.sh
 
-   # 2. Inicialização Rápida (Sobe backend e recarrega Nginx):
+   # 2. Executar o Assistente de Clone e Setup:
+   ./start.sh --setup
+
+   # 3. Inicialização Rápida (Sobe backend e recarrega Nginx):
    ./start.sh --start
 
-   # 3. Verificar Status dos Serviços (Portas 80, 443 e Backend):
+   # 4. Verificar Status dos Serviços (Portas 80, 443 e Backend):
    ./start.sh --status
 
-   # 4. Acompanhar Logs do Backend em Tempo Real:
+   # 5. Acompanhar Logs do Backend em Tempo Real:
    ./start.sh --logs
 
-   # 5. Executar Apenas Migrações do Banco:
+   # 6. Executar Apenas Migrações do Banco:
    ./start.sh --migrate
 
-   # 6. Recompilar o Frontend para Produção:
+   # 7. Recompilar o Frontend para Produção:
    ./start.sh --build
 
-   # 7. Reiniciar Serviços:
+   # 8. Reiniciar Serviços:
    ./start.sh --restart
 
-   # 8. Encerrar Serviços:
+   # 9. Encerrar Serviços:
    ./start.sh --stop
    ```
 
-5. **Configuração de Ambiente (`.env.example`)**:
+6. **Configuração de Ambiente (`.env.example`)**:
    - Um template completo e documentado foi disponibilizado na raiz como `.env.example`.
-   - Em novas instalações, execute `cp .env.example .env` e configure as credenciais de banco, LDAP, SMTP e Zabbix.
+   - Em novas instalações, o script gera o `.env` automaticamente através do assistente interativo.
 
 6. **Deploy Multi-Unidades Dinâmico (Sem Nomes ou Pastas Fixas)**:
    - O script `start.sh` detecta automaticamente o nome do diretório em que o repositório foi clonado do Git (`basename "$SCRIPT_DIR"`).
