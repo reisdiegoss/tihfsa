@@ -249,26 +249,27 @@ def sync_active_unifi_devices(db) -> dict:
 
             ticket_tag = f"[NOC UniFi] Dispositivo Offline - {name}"
 
-            # Verificar se já existe chamado aberto para este dispositivo UniFi
-            ticket_filters = [
-                Ticket.title == ticket_tag,
-                Ticket.title.like(f"[NOC UniFi] Dispositivo Offline - {name}%"),
-            ]
-            if matched_asset:
-                ticket_filters.append(Ticket.asset_id == matched_asset.id)
-
-            existing_ticket = (
-                db.query(Ticket)
-                .filter(
-                    or_(*ticket_filters),
-                    Ticket.status.in_([
-                        TicketStatus.NEW,
-                        TicketStatus.IN_PROGRESS,
-                        TicketStatus.PENDING_VALIDATION,
-                    ])
-                )
-                .first()
+            # Verificar se já existe chamado aberto gerado pelo NOC UniFi para este dispositivo
+            ticket_query = db.query(Ticket).filter(
+                Ticket.status.in_([
+                    TicketStatus.NEW,
+                    TicketStatus.IN_PROGRESS,
+                    TicketStatus.PENDING_VALIDATION,
+                ])
             )
+
+            existing_ticket = ticket_query.filter(
+                or_(
+                    Ticket.title == ticket_tag,
+                    Ticket.title.like(f"[NOC UniFi] Dispositivo Offline - {name}%"),
+                )
+            ).first()
+
+            if not existing_ticket and matched_asset:
+                existing_ticket = ticket_query.filter(
+                    Ticket.asset_id == matched_asset.id,
+                    Ticket.title.like("[NOC UniFi]%")
+                ).first()
 
             # CASO A: DISPOSITIVO OFFLINE (state == 0)
             if state == 0:

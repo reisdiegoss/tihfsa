@@ -253,8 +253,11 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
       
       🎫 O chamado *#{ticket.id}* foi atualizado e aguarda validação.
       ```
+  - **Sincronização Integrada em Tempo Real nos Mapas de Rede**: O endpoint `/api/v1/network-maps/` executa a checagem e disparo imediato no instante em que o NOC detecta o nó desconectado no painel visual, sem aguardar o intervalo do background poller.
+  - **Isolamento de Chamados por Origem**: A checagem de chamados abertos valida exclusivamente tickets gerados pelo próprio NOC UniFi (`[NOC UniFi]`), evitando que chamados manuais ou de outras origens associados ao ativo bloqueiem o alerta.
   - **Endpoint de Sincronização Manual**: `POST /api/v1/integrations/unifi/sync-devices` disponível para administradores forçarem a checagem imediata.
   - **Garantia Geral em Ativos Offline (`_auto_create_ticket_if_offline`)**: Qualquer ativo do CMDB detectado como sem resposta a Ping ICMP agora também dispara notificação com o chamado criado para o WhatsApp do grupo de TI.
+
 
 Deploy e Operação em Produção (Ubuntu / Debian com Nginx e HTTPS)
 

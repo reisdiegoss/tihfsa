@@ -71,7 +71,7 @@ def list_network_maps(
     unifi_offline_ips = set()
     unifi_offline_macs = set()
     try:
-        from app.services.unifi_service import UnifiService
+        from app.services.unifi_service import UnifiService, sync_active_unifi_devices
         unifi_devs = UnifiService.get_devices()
         for ud in unifi_devs:
             if ud.get("state") == 0:
@@ -81,6 +81,12 @@ def list_network_maps(
                     unifi_offline_ips.add(ip)
                 if mac:
                     unifi_offline_macs.add(mac)
+
+        # Sincroniza abertura de chamados e notificações no WhatsApp no mesmo instante do alerta
+        try:
+            sync_active_unifi_devices(db)
+        except Exception as sync_err:
+            print(f"[Network Maps UniFi Sync Error] {sync_err}")
     except Exception as e:
         print(f"[List Network Maps UniFi Error] {e}")
 
