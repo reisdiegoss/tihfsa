@@ -23,6 +23,10 @@ import app.models.network_map  # noqa: F401
 # Criar pasta uploads se não existir
 os.makedirs("uploads", exist_ok=True)
 
+# Ativar resolvedor de DNS corporativo resiliente (suporte nativo para Docker e Linux sem DNS interno)
+from app.utils.dns_resolver import setup_corporate_dns_resolver
+setup_corporate_dns_resolver()
+
 
 def _seed_default_asset_types():
     from app.database import SessionLocal
