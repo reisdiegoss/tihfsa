@@ -98,11 +98,14 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Carrossel Inteligente de Fluxogramas (TV NOC)**:
   - Permite criar uma playlist com múltiplos diagramas de rede para rotação contínua em loop em televisores e video walls.
   - **Tempo e Ordem Personalizáveis**: Cada fluxograma tem seu próprio tempo de exibição em segundos (mínimo de 5s) e ordem configurada em um modal interativo com botões de subir/descer e checkbox de ativação.
-    - **Critério Preciso de Incidentes**: Apenas nós com alerta crítico configurado no fluxograma (`sound_alert_offline: true`) são considerados para congelar ou priorizar o carrossel, evitando bloqueios indevidos por equipamentos sem monitoramento.
+    - **Critério Preciso de Incidentes (Detecção Híbrida UniFi + Zabbix)**:
+      - Apenas nós com alerta crítico configurado no fluxograma (`sound_alert_offline: true`) são considerados para congelar ou priorizar o carrossel.
+      - **Integração Realtime no Backend (`/network-maps`)**: Cruza os nós monitorados tanto com triggers do **Zabbix** quanto com o status em tempo real da controladora **UniFi Controller** (`state === 0`), identificando quedas de antenas APs e switches UniFi instantaneamente (com checagem de IP e MAC tanto em nós avulsos quanto em ativos contidos em Racks).
+      - **Callback Instantâneo no Frontend (`onAlertStatusChange`)**: O `TopologyMapBuilder` comunica imediatamente o componente pai (`PublicNocPanel`) no milissegundo em que um alarme sonoro é disparado, sem aguardar o próximo ciclo de polling.
     - Se todos os diagramas estiverem saudáveis, o carrossel percorre toda a playlist continuamente no tempo estipulado.
-    - Se houver um alerta/incidente em **um único diagrama**, o carrossel **trava imediatamente** nesse mapa com um banner de alerta pulsante, garantindo que o problema seja visto pela equipe de TI.
-    - Se houver alertas em **dois ou mais diagramas**, o carrossel entra em **Modo Prioritário**, alternando exclusivamente entre os mapas que possuem incidentes e ignorando os mapas normais.
-    - Assim que todos os incidentes forem normalizados, o carrossel retoma o ciclo completo de todos os mapas.
+    - Se houver um alerta/incidente em **um único diagrama**, o carrossel **pula imediatamente para este mapa e congela a rotação**, exibindo badge luminoso `ROTAÇÃO CONGELADA NO INCIDENTE` e banner de atenção, permanecendo travado até a normalização do equipamento.
+    - Se houver alertas em **dois ou mais diagramas**, o carrossel entra em **Modo Prioritário de Incidentes**, alternando exclusivamente entre os mapas afetados no tempo estipulado de cada um e ignorando completamente os mapas normais.
+    - Assim que todos os incidentes forem normalizados, o carrossel retoma automaticamente o ciclo completo de todos os mapas da TV.
   - **Interface Limpa para TV (Bloqueio de Controles)**:
     - No modo bloqueado da TV (`isUnlocked === false`), toda a linha superior com filtros (Localização, Tipo, Status), seletor de mapa, botões de visualização e engrenagem de configuração fica totalmente oculta.
     - **Apenas o botão Play/Pause do carrossel** (com status e contagem regressiva) permanece visível na TV para controle rápido.

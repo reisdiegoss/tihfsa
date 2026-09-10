@@ -855,7 +855,7 @@ const getZoneBounds = (zone, allNodes) => {
   };
 };
 
-export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapLoaded, refreshTrigger }) {
+export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapLoaded, refreshTrigger, onAlertStatusChange }) {
   const [mapData, setMapData] = useState({
     id: null,
     name: "Topologia Geral de Rede TIHFSA",
@@ -3145,6 +3145,19 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
     return () => clearInterval(interval);
   }, [mapData.nodes_data, assetsList, unifiMetrics, isAudioMuted]);
+
+  // Notifica o componente pai (ex: Painel TV NOC / Carrossel) sempre que o status de alertas do mapa mudar
+  useEffect(() => {
+    if (typeof onAlertStatusChange === 'function' && mapData.id) {
+      const triggeredNodes = (mapData.nodes_data || []).filter(n => getIsNodeSoundAlertTriggered(n));
+      const triggeredCount = triggeredNodes.length;
+      onAlertStatusChange({
+        mapId: mapData.id,
+        hasActiveAlert: triggeredCount > 0,
+        offlineCount: triggeredCount
+      });
+    }
+  }, [mapData.id, mapData.nodes_data, assetsList, unifiMetrics, onAlertStatusChange]);
 
   const hasAnySoundAlertTriggered = (mapData.nodes_data || []).some(n => getIsNodeSoundAlertTriggered(n));
   const soundAlertsActiveCount = (mapData.nodes_data || []).filter(n => n.sound_alert_offline).length;

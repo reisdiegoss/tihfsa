@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { 
   Activity, Server, Wifi, Cpu, AlertCircle, CheckCircle, 
@@ -262,6 +262,26 @@ export default function PublicNocPanel() {
     }
     setSearchParams(newParams);
   };
+
+  // Callback recebido do TopologyMapBuilder quando o mapa ativo detecta queda/alerta em tempo real
+  const handleAlertStatusChange = useCallback(({ mapId, hasActiveAlert, offlineCount }) => {
+    if (!mapId) return;
+    setMapsList(prevList => {
+      const idx = prevList.findIndex(m => String(m.id) === String(mapId));
+      if (idx < 0) return prevList;
+      const currentItem = prevList[idx];
+      if (currentItem.has_alerts === hasActiveAlert && currentItem.offline_count === offlineCount) {
+        return prevList;
+      }
+      const updated = [...prevList];
+      updated[idx] = {
+        ...currentItem,
+        has_alerts: hasActiveAlert,
+        offline_count: offlineCount
+      };
+      return updated;
+    });
+  }, []);
 
   // Playlist do Carrossel de Fluxogramas (TV NOC)
   const carouselMaps = (mapsList || []).filter(m => m.in_carousel !== false);
@@ -772,7 +792,12 @@ export default function PublicNocPanel() {
               </div>
 
               <div className="flex items-center gap-3 font-mono text-[11px] shrink-0">
-                {mapsWithAlerts.length !== 1 && (
+                {mapsWithAlerts.length === 1 ? (
+                  <span className="text-red-400 font-bold flex items-center gap-1.5 bg-red-950/90 px-2.5 py-1 rounded-lg border border-red-500/40">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-ping shrink-0" />
+                    ROTAÇÃO CONGELADA NO INCIDENTE
+                  </span>
+                ) : (
                   <span>Próximo mapa em: <strong className="text-white text-xs">{carouselCountdown}s</strong></span>
                 )}
                 <button
@@ -790,6 +815,7 @@ export default function PublicNocPanel() {
             isPublicView={!isUnlocked} 
             mapId={currentMapId ? parseInt(currentMapId, 10) : (mapId ? parseInt(mapId, 10) : undefined)} 
             refreshTrigger={lastUpdate}
+            onAlertStatusChange={handleAlertStatusChange}
             onMapLoaded={(loadedMap) => {
               if (loadedMap?.id) {
                 const idStr = String(loadedMap.id);

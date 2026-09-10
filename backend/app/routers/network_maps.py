@@ -67,15 +67,43 @@ def list_network_maps(
                 if str(cid).isdigit():
                     all_asset_ids.add(int(cid))
 
+    # Consulta dispositivos UniFi para detectar nós/ativos offline gerenciados pela UniFi (state == 0)
+    unifi_offline_ips = set()
+    unifi_offline_macs = set()
+    try:
+        from app.services.unifi_service import UnifiService
+        unifi_devs = UnifiService.get_devices()
+        for ud in unifi_devs:
+            if ud.get("state") == 0:
+                ip = (ud.get("ip") or "").strip()
+                mac = (ud.get("mac") or "").strip().lower()
+                if ip:
+                    unifi_offline_ips.add(ip)
+                if mac:
+                    unifi_offline_macs.add(mac)
+    except Exception as e:
+        print(f"[List Network Maps UniFi Error] {e}")
+
     assets_status = {}
+    asset_ip_map = {}
+    asset_mac_map = {}
     if all_asset_ids:
         try:
             assets = db.query(Asset).filter(Asset.id.in_(list(all_asset_ids))).all()
+            for a in assets:
+                if a.ip_address:
+                    asset_ip_map[a.id] = a.ip_address.strip()
+                if a.mac_address:
+                    asset_mac_map[a.id] = a.mac_address.strip().lower()
+
             formatted = [_format_asset_response(a) for a in assets]
             enriched = _enrich_assets_with_zabbix_status(formatted, db=db)
             for ea in enriched:
-                is_offline = ea.get("icmp_status") == "offline" or ea.get("zabbix_status") in ("problem", "critical")
-                assets_status[ea["id"]] = is_offline
+                is_zabbix_offline = ea.get("icmp_status") == "offline" or ea.get("zabbix_status") in ("problem", "critical")
+                a_ip = (ea.get("ip_address") or "").strip()
+                a_mac = (ea.get("mac_address") or "").strip().lower()
+                is_unifi_offline = (a_ip in unifi_offline_ips) or (a_mac in unifi_offline_macs)
+                assets_status[ea["id"]] = is_zabbix_offline or is_unifi_offline
         except Exception as e:
             print(f"[List Network Maps Enrich Error] {e}")
 
@@ -91,9 +119,29 @@ def list_network_maps(
             a_id = node.get("asset_id")
             if a_id and str(a_id).isdigit() and assets_status.get(int(a_id)):
                 node_offline = True
+
+            # Checa IP e MAC do próprio nó contra UniFi offline
+            node_ip = (node.get("ip_address") or "").strip()
+            node_mac = (node.get("mac_address") or "").strip().lower()
+            if not node_ip and a_id and str(a_id).isdigit():
+                node_ip = asset_ip_map.get(int(a_id), "")
+            if not node_mac and a_id and str(a_id).isdigit():
+                node_mac = asset_mac_map.get(int(a_id), "")
+
+            if (node_ip and node_ip in unifi_offline_ips) or (node_mac and node_mac in unifi_offline_macs):
+                node_offline = True
+
+            # Checa filhos do nó (ex: Rack contendo switches/antenas)
             for cid in node.get("child_asset_ids", []):
-                if str(cid).isdigit() and assets_status.get(int(cid)):
-                    node_offline = True
+                if str(cid).isdigit():
+                    c_int = int(cid)
+                    if assets_status.get(c_int):
+                        node_offline = True
+                    c_ip = asset_ip_map.get(c_int, "")
+                    c_mac = asset_mac_map.get(c_int, "")
+                    if (c_ip and c_ip in unifi_offline_ips) or (c_mac and c_mac in unifi_offline_macs):
+                        node_offline = True
+
             if node_offline:
                 map_offline_count += 1
 
