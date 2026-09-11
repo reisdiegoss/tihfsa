@@ -258,9 +258,110 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                 {/* Vertical Timeline Container */}
                 <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
                   
-                  {/* Evento 0: Abertura do Chamado pelo Solicitante */}
+                  {/* Interações / Comentários Adicionais (Mais recentes no topo) */}
+                  {[...(ticket?.interactions || [])]
+                    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                    .map((item, idx) => {
+                      const dateStr = new Date(item.created_at).toLocaleString("pt-BR", {
+                        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+                      });
+                      const userName = item.user_name || `Usuário #${item.user_id}`;
+
+                      return (
+                        <div key={item.id} className="relative group">
+                          
+                          {/* Timeline Node Icon */}
+                          <div className={`absolute -left-6 top-1 w-5 h-5 rounded-full border-2 bg-white flex items-center justify-center z-10 ${
+                            item.is_solution
+                              ? "border-emerald-500 text-emerald-600 bg-emerald-50"
+                              : idx === 0
+                                ? "border-blue-600 text-blue-600 shadow-xs ring-2 ring-blue-100"
+                                : "border-slate-400 text-slate-500"
+                          }`}>
+                            <div className={`w-2 h-2 rounded-full ${
+                              item.is_solution 
+                                ? "bg-emerald-500" 
+                                : idx === 0 
+                                  ? "bg-blue-600 animate-pulse" 
+                                  : "bg-slate-400"
+                            }`} />
+                          </div>
+
+                          {/* Message Card / Bubble */}
+                          <div className={`p-4 rounded-2xl border transition-all ${
+                            item.is_solution
+                              ? "bg-emerald-50/70 border-emerald-200 shadow-xs"
+                              : idx === 0
+                                ? "bg-slate-50 border-blue-200/80 shadow-xs"
+                                : "bg-slate-50/80 border-slate-200/80 hover:bg-slate-50"
+                          }`}>
+                            
+                            {/* Header: User Name + Role Badge + Timestamp */}
+                            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-slate-900 text-xs">{userName}</span>
+                                {getRoleBadge(item.user_role)}
+                                {idx === 0 && (
+                                  <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    Mais Recente
+                                  </span>
+                                )}
+                                {item.is_solution && (
+                                  <span className="text-[10px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                    <Sparkles size={10} /> Solução
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] font-semibold text-slate-400">{dateStr}</span>
+                            </div>
+
+                            {/* Message Content */}
+                            {item.message && (
+                              <p className="text-xs text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
+                                {item.message}
+                              </p>
+                            )}
+
+                            {/* Anexos Múltiplos Dentro do Próprio Balão da Mensagem */}
+                            {item.attachments && item.attachments.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-slate-200/60 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {item.attachments.map(att => (
+                                  <div
+                                    key={att.id}
+                                    onClick={() => openInternalViewer(att)}
+                                    className="border border-slate-200 bg-white rounded-xl overflow-hidden hover:border-blue-500 transition-all cursor-pointer group/att shadow-2xs"
+                                  >
+                                    {att.content_type.includes("image") ? (
+                                      <div className="h-24 bg-slate-100 relative overflow-hidden">
+                                        <img src={att.file_path} alt={att.file_name} className="w-full h-full object-cover group-hover/att:scale-105 transition-transform" />
+                                        <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold gap-1">
+                                          <Eye size={14} /> Visualizar
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="h-24 bg-slate-50 flex flex-col items-center justify-center text-slate-400 p-2 group-hover/att:text-blue-600 transition-colors">
+                                        <FileText size={28} />
+                                        <span className="text-[10px] font-bold text-slate-600 mt-1 truncate max-w-full">Documento PDF</span>
+                                      </div>
+                                    )}
+                                    <div className="p-2 bg-white border-t border-slate-100 flex items-center justify-between">
+                                      <p className="text-[10px] font-bold text-slate-700 truncate" title={att.file_name}>{att.file_name}</p>
+                                      <Eye size={12} className="text-blue-600 shrink-0" />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                          </div>
+
+                        </div>
+                      );
+                    })}
+
+                  {/* Evento Inicial: Abertura do Chamado pelo Solicitante (No fim da linha do tempo por ser a origem) */}
                   <div className="relative group">
-                    <div className="absolute -left-6 top-1 w-5 h-5 rounded-full border-2 border-blue-600 bg-blue-50 text-blue-600 flex items-center justify-center z-10">
+                    <div className="absolute -left-6 top-1 w-5 h-5 rounded-full border-2 border-slate-400 bg-slate-50 text-slate-500 flex items-center justify-center z-10">
                       <PlusCircle size={12} />
                     </div>
 
@@ -311,90 +412,6 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                       )}
                     </div>
                   </div>
-
-                  {/* Interações / Comentários Adicionais */}
-                  {ticket?.interactions?.map((item) => {
-                    const dateStr = new Date(item.created_at).toLocaleString("pt-BR", {
-                      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
-                    });
-                    const userName = item.user_name || `Usuário #${item.user_id}`;
-
-                    return (
-                      <div key={item.id} className="relative group">
-                        
-                        {/* Timeline Node Icon */}
-                        <div className={`absolute -left-6 top-1 w-5 h-5 rounded-full border-2 bg-white flex items-center justify-center z-10 ${
-                          item.is_solution
-                            ? "border-emerald-500 text-emerald-600 bg-emerald-50"
-                            : "border-blue-500 text-blue-600"
-                        }`}>
-                          <div className={`w-2 h-2 rounded-full ${item.is_solution ? "bg-emerald-500" : "bg-blue-600"}`} />
-                        </div>
-
-                        {/* Message Card / Bubble */}
-                        <div className={`p-4 rounded-2xl border transition-all ${
-                          item.is_solution
-                            ? "bg-emerald-50/70 border-emerald-200 shadow-xs"
-                            : "bg-slate-50/80 border-slate-200/80 hover:bg-slate-50"
-                        }`}>
-                          
-                          {/* Header: User Name + Role Badge + Timestamp */}
-                          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                            <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-slate-900 text-xs">{userName}</span>
-                              {getRoleBadge(item.user_role)}
-                              {item.is_solution && (
-                                <span className="text-[10px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                                  <Sparkles size={10} /> Solução
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[11px] font-semibold text-slate-400">{dateStr}</span>
-                          </div>
-
-                          {/* Message Content */}
-                          {item.message && (
-                            <p className="text-xs text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
-                              {item.message}
-                            </p>
-                          )}
-
-                          {/* Anexos Múltiplos Dentro do Próprio Balão da Mensagem */}
-                          {item.attachments && item.attachments.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-slate-200/60 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                              {item.attachments.map(att => (
-                                <div
-                                  key={att.id}
-                                  onClick={() => openInternalViewer(att)}
-                                  className="border border-slate-200 bg-white rounded-xl overflow-hidden hover:border-blue-500 transition-all cursor-pointer group/att shadow-2xs"
-                                >
-                                  {att.content_type.includes("image") ? (
-                                    <div className="h-24 bg-slate-100 relative overflow-hidden">
-                                      <img src={att.file_path} alt={att.file_name} className="w-full h-full object-cover group-hover/att:scale-105 transition-transform" />
-                                      <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold gap-1">
-                                        <Eye size={14} /> Visualizar
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="h-24 bg-slate-50 flex flex-col items-center justify-center text-slate-400 p-2 group-hover/att:text-blue-600 transition-colors">
-                                      <FileText size={28} />
-                                      <span className="text-[10px] font-bold text-slate-600 mt-1 truncate max-w-full">Documento PDF</span>
-                                    </div>
-                                  )}
-                                  <div className="p-2 bg-white border-t border-slate-100 flex items-center justify-between">
-                                    <p className="text-[10px] font-bold text-slate-700 truncate" title={att.file_name}>{att.file_name}</p>
-                                    <Eye size={12} className="text-blue-600 shrink-0" />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                        </div>
-
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
 

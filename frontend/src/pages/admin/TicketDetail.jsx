@@ -104,7 +104,9 @@ export default function TicketDetail() {
         </h2>
 
         <div className="space-y-4">
-          {ticket.interactions?.map((inter) => (
+          {[...(ticket.interactions || [])]
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .map((inter) => (
             <div
               key={inter.id}
               className={`p-4 rounded-xl border transition-all ${

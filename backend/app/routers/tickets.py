@@ -238,7 +238,7 @@ def get_ticket(
     interactions = (
         db.query(TicketInteraction)
         .filter(TicketInteraction.ticket_id == ticket_id)
-        .order_by(TicketInteraction.created_at)
+        .order_by(TicketInteraction.created_at.desc())
         .all()
     )
     

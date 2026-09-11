@@ -446,3 +446,9 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Toggles individuais para ativar/desativar abertura automática de chamados, notificação no WhatsApp (Grupo Suporte TI-HFSA) e envio por E-mail (`ti-hfsa@fasano.com.br`).
     - **Permissões de Acesso**:
       - Endpoints `GET /api/v1/zabbix/config` e `POST /api/v1/zabbix/config` restritos a usuários com perfil de Administrador (`require_admin`).
+
+17. **Linha do Tempo em Ordem Cronológica Decrescente (Mais Recentes no Topo)**:
+    - **Visibilidade Imediata das Últimas Ações**: Tanto no Drawer lateral de detalhes do chamado (`TicketDetailDrawer.jsx`) quanto na página dedicada de atendimento (`TicketDetail.jsx`), a linha do tempo de histórico e interações foi invertida para ordem cronológica decrescente.
+    - **Destaque do Último Evento**: A interação mais recente (seja reabertura automática de monitoramento, comentário técnico ou mudança de status) é exibida no topo absoluto da linha do tempo, com badge visual "Mais Recente" e indicador pulsante.
+    - **Marco de Abertura no Rodapé**: O evento original de abertura do chamado pelo solicitante (com a descrição inicial e anexos primários) posiciona-se no final da linha do tempo, servindo como o ponto de partida do histórico.
+    - **Padronização na API REST**: A rota `GET /api/v1/tickets/{id}` ordena as interações por `TicketInteraction.created_at.desc()`, garantindo consistência completa entre backend e frontend.
