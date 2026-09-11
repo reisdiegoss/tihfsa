@@ -1078,6 +1078,65 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       .catch(console.error);
   };
 
+  // Ajustar o diagrama para caber perfeitamente na tela do usuário/TV (incluindo telas 4K)
+  const handleFitToScreen = (customNodes = null, customId = null) => {
+    const nodes = (customNodes && customNodes.length > 0) ? customNodes : mapData.nodes_data;
+    if (!nodes || nodes.length === 0) return;
+    
+    // Calcular limites reais considerando a largura e altura de cada tipo de nó (especialmente Racks e Áreas)
+    const bounds = nodes.map(n => {
+      if (n.icon_type === 'Zone') {
+        const zb = getZoneBounds(n, nodes);
+        return {
+          minX: zb.x,
+          maxX: zb.x + zb.width,
+          minY: zb.y,
+          maxY: zb.y + zb.height
+        };
+      }
+      const dim = getNodeRealDimensions(n);
+      return {
+        minX: n.x,
+        maxX: n.x + dim.w,
+        minY: n.y,
+        maxY: n.y + dim.h
+      };
+    });
+
+    const minX = Math.min(...bounds.map(b => b.minX));
+    const maxX = Math.max(...bounds.map(b => b.maxX));
+    const minY = Math.min(...bounds.map(b => b.minY));
+    const maxY = Math.max(...bounds.map(b => b.maxY));
+
+    const mapWidth = Math.max(maxX - minX, 100);
+    const mapHeight = Math.max(maxY - minY, 100);
+
+    const container = containerRef.current;
+    const cWidth = container && container.clientWidth > 100 ? container.clientWidth : (window.innerWidth || 1920);
+    const cHeight = container && container.clientHeight > 100 ? container.clientHeight : (window.innerHeight - 130 || 900);
+
+    const padding = 60;
+    const availableW = Math.max(cWidth - padding * 2, 200);
+    const availableH = Math.max(cHeight - padding * 2, 200);
+
+    const scaleX = availableW / mapWidth;
+    const scaleY = availableH / mapHeight;
+    // Permite zoom de até 4.5x em telas grandes como TVs 4K
+    const newZoom = Math.min(4.5, Math.max(0.2, Math.min(scaleX, scaleY)));
+
+    const newPanX = (cWidth - mapWidth * newZoom) / 2 - minX * newZoom;
+    const newPanY = (cHeight - mapHeight * newZoom) / 2 - minY * newZoom;
+
+    const finalZoom = parseFloat(newZoom.toFixed(2));
+    const finalPan = { x: Math.round(newPanX), y: Math.round(newPanY) };
+    setZoom(finalZoom);
+    setPan(finalPan);
+    const targetMapId = customId || selectedMapId;
+    if (targetMapId) {
+      saveTvViewport(targetMapId, finalZoom, finalPan);
+    }
+  };
+
   // Carga do mapa (isFirstLoad = false não ativa tela cheia de loading para não piscar a TV)
   const fetchMapDetails = (id, isFirstLoad = true) => {
     if (!id) return;
@@ -1095,20 +1154,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         });
         setMapData({ ...latest, nodes_data: sanitizedNodes });
         if (isFirstLoad) {
-          // Prioridade 1: Cookies / LocalStorage específico desta TV ou navegador
-          const savedViewport = getTvViewport(id);
-          if (savedViewport && typeof savedViewport.zoom === 'number') {
-            setZoom(savedViewport.zoom);
-            if (savedViewport.pan && typeof savedViewport.pan.x === 'number') {
-              setPan({ x: savedViewport.pan.x, y: savedViewport.pan.y });
-            }
-          } else {
-            // Prioridade 2: Definições padrão salvas no banco de dados
-            if (latest.zoom_level) setZoom(latest.zoom_level);
-            if (latest.pan_x !== undefined && latest.pan_y !== undefined) {
-              setPan({ x: latest.pan_x, y: latest.pan_y });
-            }
-          }
+          // Fit Tela Automático: enquadra perfeitamente na abertura individual ou transição do carrossel
+          handleFitToScreen(sanitizedNodes, id);
+          setTimeout(() => handleFitToScreen(sanitizedNodes, id), 80);
+          setTimeout(() => handleFitToScreen(sanitizedNodes, id), 250);
         }
         if (latest.assets_data && latest.assets_data.length > 0) {
           setAssetsList((prev) => {
@@ -1237,13 +1286,6 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   useEffect(() => {
     if (selectedMapId) {
-      const savedViewport = getTvViewport(selectedMapId);
-      if (savedViewport && typeof savedViewport.zoom === 'number') {
-        setZoom(savedViewport.zoom);
-        if (savedViewport.pan && typeof savedViewport.pan.x === 'number') {
-          setPan({ x: savedViewport.pan.x, y: savedViewport.pan.y });
-        }
-      }
       fetchMapDetails(selectedMapId, true);
       // Refresh periódico seguro a cada 15s via Ref para nunca sofrer de stale closure
       const interval = setInterval(() => {
@@ -1254,6 +1296,21 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       return () => clearInterval(interval);
     }
   }, [selectedMapId]);
+
+  // Recalcular Fit Tela automaticamente ao redimensionar a tela ou alternar Fullscreen (TV NOC)
+  useEffect(() => {
+    const handleResize = () => {
+      if (mapData.nodes_data && mapData.nodes_data.length > 0 && !hasUnsavedChangesRef.current && !isPanningRef.current) {
+        handleFitToScreen(mapData.nodes_data, selectedMapId);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    document.addEventListener("fullscreenchange", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      document.removeEventListener("fullscreenchange", handleResize);
+    };
+  }, [mapData.nodes_data, selectedMapId]);
 
   // Salvar resolução (zoom) e posicionamento (pan) em cookies/localStorage da TV automaticamente após ajustes
   useEffect(() => {
@@ -1308,62 +1365,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       .finally(() => setSaving(false));
   };
 
-  // Ajustar o diagrama para caber perfeitamente na tela do usuário/TV (incluindo telas 4K)
-  const handleFitToScreen = () => {
-    if (mapData.nodes_data.length === 0) return;
-    
-    // Calcular limites reais considerando a largura e altura de cada tipo de nó (especialmente Racks)
-    const bounds = mapData.nodes_data.map(n => {
-      if (n.icon_type === 'Zone') {
-        const zb = getZoneBounds(n, mapData.nodes_data);
-        return {
-          minX: zb.x,
-          maxX: zb.x + zb.width,
-          minY: zb.y,
-          maxY: zb.y + zb.height
-        };
-      }
-      const dim = getNodeRealDimensions(n);
-      return {
-        minX: n.x,
-        maxX: n.x + dim.w,
-        minY: n.y,
-        maxY: n.y + dim.h
-      };
-    });
-
-    const minX = Math.min(...bounds.map(b => b.minX));
-    const maxX = Math.max(...bounds.map(b => b.maxX));
-    const minY = Math.min(...bounds.map(b => b.minY));
-    const maxY = Math.max(...bounds.map(b => b.maxY));
-
-    const mapWidth = Math.max(maxX - minX, 100);
-    const mapHeight = Math.max(maxY - minY, 100);
-
-    const container = containerRef.current;
-    const cWidth = container ? container.clientWidth : (window.innerWidth || 1920);
-    const cHeight = container ? container.clientHeight : (window.innerHeight - 130 || 900);
-
-    const padding = 60;
-    const availableW = Math.max(cWidth - padding * 2, 200);
-    const availableH = Math.max(cHeight - padding * 2, 200);
-
-    const scaleX = availableW / mapWidth;
-    const scaleY = availableH / mapHeight;
-    // Permite zoom de até 4.5x em telas grandes como TVs 4K
-    const newZoom = Math.min(4.5, Math.max(0.2, Math.min(scaleX, scaleY)));
-
-    const newPanX = (cWidth - mapWidth * newZoom) / 2 - minX * newZoom;
-    const newPanY = (cHeight - mapHeight * newZoom) / 2 - minY * newZoom;
-
-    const finalZoom = parseFloat(newZoom.toFixed(2));
-    const finalPan = { x: Math.round(newPanX), y: Math.round(newPanY) };
-    setZoom(finalZoom);
-    setPan(finalPan);
-    if (selectedMapId) {
-      saveTvViewport(selectedMapId, finalZoom, finalPan);
-    }
-  };
+  // handleFitToScreen definido no topo do componente para enquadramento automático na carga e carrossel
 
   // Gerar Diagrama de Exemplo (Presets iguais à imagem fornecida)
   const handleSeedExampleMap = () => {

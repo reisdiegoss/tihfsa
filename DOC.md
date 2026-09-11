@@ -463,3 +463,8 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
 19. **Resiliência e Diagnóstico de Autenticação na Evolution API (WhatsApp)**:
     - **Tratamento Seguro de Erros (`POST /api/v1/integrations/evolution/groups`)**: Import explícito do módulo `httpx` e propagação transparente de erros HTTP da Evolution API, eliminando falhas 500 decorrentes de `NameError`.
     - **Identificação Clara de Token Desatualizado (HTTP 401)**: Quando uma instância é recriada na Evolution API e o token muda, a API retorna mensagem direta informando que o token/API Key está incorreto ou expirado, orientando o usuário a atualizar o campo API Key nas configurações do painel.
+
+20. **Fit Tela Automático na Abertura e Carrossel de Fluxogramas (TV NOC)**:
+    - **Enquadramento Inteligente Instantâneo**: Em toda abertura de fluxograma (seja no dropdown individual, acesso via link direto `/noc` ou na alternância automática de diagramas no **Carrossel da TV**), o sistema recalcula e aplica automaticamente o **Fit Tela** (`handleFitToScreen`).
+    - **Cálculo Preciso com Bounding Box Real**: Considera as dimensões físicas e renderizadas no DOM de todos os tipos de nós (Switches, Racks com ativos empilhados, APs com métricas UniFi e Áreas/Zonas adaptativas em bolha SVG), aplicando margem de segurança de 60px para que nenhum card toque as bordas da tela nem fique encoberto por barras flutuantes.
+    - **Suporte Nativo a Fullscreen e Múltiplas Resoluções**: Escalas de 0.2x até 4.5x adequadas para qualquer monitor, TV ou painel 4K, com listener dinâmico em `resize` e `fullscreenchange` para recalibrar o zoom e pan ao alternar o modo tela cheia.
