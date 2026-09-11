@@ -52,71 +52,28 @@ def _format_asset_response(asset: Asset) -> dict:
     }
 
 
-def _auto_create_ticket_if_offline(asset_data: dict, db: Session):
-    """Cria automaticamente um chamado de suporte quando um equipamento fica OFFLINE."""
+def _verify_host_ping_with_gap(ip: str) -> bool:
+    """
+    Executa teste de ping ICMP com múltiplos pacotes (gap de confirmação) para evitar falso-positivo.
+    Retorna True se o equipamento estiver ONLINE (respondeu a pelo menos 1 pacote).
+    Retorna False apenas se houver 100% de perda comprovada após o gap.
+    """
+    import subprocess
+    import platform
+
+    if not ip or ip.strip() in ("no_ip", "Sem IP", ""):
+        return False
+    
+    clean_ip = ip.strip()
+    is_windows = platform.system().lower() == "windows"
+    # 3 pacotes com timeout de 1s (gap de confirmação)
+    cmd = ["ping", "-n", "3", "-w", "1000", clean_ip] if is_windows else ["ping", "-c", "3", "-W", "1", clean_ip]
     try:
-        from app.models.ticket import Ticket, TicketStatus, TicketPriority
-        from app.models.user import User, UserRole
-
-        asset_id = asset_data.get("id")
-        if not asset_id:
-            return
-
-        # Verificar se já existe um chamado em aberto/em andamento para este ativo
-        existing_ticket = (
-            db.query(Ticket)
-            .filter(
-                Ticket.asset_id == asset_id,
-                Ticket.status.in_([TicketStatus.NEW, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_VALIDATION])
-            )
-            .first()
-        )
-        if existing_ticket:
-            return
-
-        # Buscar um usuário admin para figurar como solicitante do auto-alerta
-        admin_user = db.query(User).filter(User.role == UserRole.ADMIN).first()
-        requester_id = admin_user.id if admin_user else 1
-
-        asset_name = asset_data.get("name", "Equipamento")
-        asset_ip = asset_data.get("ip_address") or "Sem IP"
-        asset_loc = asset_data.get("location_name") or "Localização Geral"
-
-        auto_ticket = Ticket(
-            title=f"[NOC Auto-Alerta] Equipamento Indisponível (Offline) - {asset_name}",
-            description=(
-                f"Alerta Automático NOC Zabbix: O equipamento '{asset_name}' (IP: {asset_ip}, Local: {asset_loc}) "
-                f"ficou OFFLINE e parou de responder a requisições de conectividade ICMP (Ping).\n\n"
-                f"Este chamado foi aberto automaticamente pelo monitoramento para verificação imediata da equipe de TI."
-            ),
-            status=TicketStatus.NEW,
-            priority=TicketPriority.HIGH,
-            requester_id=requester_id,
-            asset_id=asset_id,
-            category_id=asset_data.get("category_id")
-        )
-        db.add(auto_ticket)
-        db.commit()
-        db.refresh(auto_ticket)
-        print(f"[NOC Auto-Ticket] Chamado #{auto_ticket.id} criado automaticamente para ativo offline: {asset_name}")
-
-        # Notificar o grupo de TI no WhatsApp via Evolution API
-        try:
-            from app.services.evolution_service import EvolutionService
-            msg_text = (
-                f"🚨 *ALERTA NOC: ATIVO OFFLINE* 🚨\n\n"
-                f"⚠️ *Equipamento:* {asset_name}\n"
-                f"🌐 *IP:* {asset_ip} | *Local:* {asset_loc}\n"
-                f"🔴 *Status:* Sem resposta a conectividade ICMP (Ping)\n\n"
-                f"🎫 *Chamado automático aberto:* #{auto_ticket.id}"
-            )
-            EvolutionService.send_whatsapp_message(msg_text)
-        except Exception as notify_err:
-            print(f"[NOC Auto-Ticket WhatsApp Error] {notify_err}")
-
-    except Exception as e:
-        print(f"[NOC Auto-Ticket Error] {e}")
-        db.rollback()
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+        return res.returncode == 0
+    except Exception:
+        # Em caso de qualquer falha na execução do processo, assume online para evitar falso-positivo
+        return True
 
 
 def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session | None = None) -> list[dict]:
@@ -173,15 +130,22 @@ def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session 
             # 1. Determinar Status de Conectividade ICMP (Ping)
             if host_match:
                 is_down = False
-                # Zabbix host availability == "2" indica indisponível
-                if str(host_match.get("available")) == "2":
-                    is_down = True
-                elif probs:
+                if probs:
                     for prob in probs:
                         p_title = (prob.get("description") or prob.get("name") or "").lower()
-                        if any(w in p_title for w in ["unavailable", "ping", "down", "unreachable", "sem resposta", "indisponivel", "offline"]):
+                        # Ignorar problemas em interfaces/portas/links individuais (link down em porta de switch/firewall não é host offline)
+                        if any(term in p_title for term in ["interface", "link down", "port ", "tunnel", "bgp", "vlan", "service"]):
+                            continue
+                        
+                        # Apenas triggers específicas de indisponibilidade de ICMP do host
+                        if any(w in p_title for w in ["unavailable by icmp", "icmp ping loss", "host is unreachable", "host is down"]):
                             is_down = True
                             break
+
+                # Se a trigger indicou suspeita de queda, valida com Ping Real com Gap de confirmação
+                if is_down and ip:
+                    if _verify_host_ping_with_gap(ip):
+                        is_down = False
 
                 a["icmp_status"] = "offline" if is_down else "online"
             elif ip:
@@ -245,10 +209,6 @@ def _enrich_assets_with_zabbix_status(formatted_assets: list[dict], db: Session 
 
             a["monitoring_protocol"] = monitoring_protocol
             a["snmp_status"] = snmp_status
-
-            # 4. Criar chamado automático se o equipamento estiver OFFLINE
-            if db and a.get("icmp_status") == "offline":
-                _auto_create_ticket_if_offline(a, db)
 
     except Exception as e:
         print(f"[Zabbix Status Enrich Error] {e}")

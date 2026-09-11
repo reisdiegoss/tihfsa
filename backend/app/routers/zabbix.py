@@ -183,6 +183,13 @@ def sync_active_zabbix_alerts(db: Session):
             main_severity = main_prob.get("priority") or main_prob.get("severity") or "3"
             main_clock = main_prob.get("lastchange") or main_prob.get("clock") or "0"
 
+            # Se o alerta for de perda de pacotes ICMP / ping, valida com teste real com gap de confirmação
+            if asset.ip_address and any(w in main_event_title.lower() for w in ["icmp", "ping", "unavailable by icmp", "host is unreachable"]):
+                from app.routers.assets import _verify_host_ping_with_gap
+                if _verify_host_ping_with_gap(asset.ip_address):
+                    print(f"[Zabbix Poller] Alerta de ICMP descartado após confirmação de Ping para {asset.name} ({asset.ip_address}): Host está ONLINE")
+                    continue
+
             ticket_tag = f"[NOC Zabbix] Alertas - {asset.name}"
 
             # 5. Cálculo do Início do Dia no Fuso Horário de Brasília/Salvador (UTC-3)

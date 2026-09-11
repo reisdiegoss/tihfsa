@@ -452,3 +452,10 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Destaque do Último Evento**: A interação mais recente (seja reabertura automática de monitoramento, comentário técnico ou mudança de status) é exibida no topo absoluto da linha do tempo, com badge visual "Mais Recente" e indicador pulsante.
     - **Marco de Abertura no Rodapé**: O evento original de abertura do chamado pelo solicitante (com a descrição inicial e anexos primários) posiciona-se no final da linha do tempo, servindo como o ponto de partida do histórico.
     - **Padronização na API REST**: A rota `GET /api/v1/tickets/{id}` ordena as interações por `TicketInteraction.created_at.desc()`, garantindo consistência completa entre backend e frontend.
+
+18. **Eliminação de Falsos-Positivos de ICMP / Ping e Validação com Gap de Confirmação**:
+    - **Supressão de Efeitos Colaterais em Rotas de Consulta**: O endpoint de ativos (`GET /api/v1/assets/`) e os mapas de rede não abrem mais chamados de suporte silenciosos. Toda governança de abertura de incidentes do Zabbix fica estritamente sob o worker oficial de background (`sync_active_zabbix_alerts`).
+    - **Desassociação de Triggers de Portas / Links vs. Queda do Host**: Triggers contendo termos como `"interface"`, `"link down"`, `"port "`, `"tunnel"` referem-se a interfaces secundárias e não rotulam mais o host como "Sem resposta a conectividade ICMP (Ping)".
+    - **Validação de Conectividade com Gap de Confirmação (`_verify_host_ping_with_gap`)**:
+      - Quando uma trigger do Zabbix sugerir perda de pacotes ICMP, o sistema executa um teste direto de 3 pacotes com intervalo (gap).
+      - Se o equipamento responder a pelo menos 1 pacote (sem perda total persistente), o alarme falso é sumariamente descartado e nenhum chamado é aberto desnecessariamente.
