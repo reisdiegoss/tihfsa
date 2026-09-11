@@ -258,6 +258,8 @@ def sync_active_unifi_devices(db) -> dict:
             today_start_utc = today_start_br.astimezone(timezone.utc)
             hora_formatada = now_br.strftime("%d/%m/%Y às %H:%M:%S")
 
+            ticket_tag = f"[NOC UniFi] Dispositivo Offline - {name}"
+
             # 6. Buscar o chamado mais recente deste dispositivo criado no DIA DE HOJE
             today_ticket = db.query(Ticket).filter(
                 or_(
