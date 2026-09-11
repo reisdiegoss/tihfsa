@@ -459,3 +459,7 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Validação de Conectividade com Gap de Confirmação (`_verify_host_ping_with_gap`)**:
       - Quando uma trigger do Zabbix sugerir perda de pacotes ICMP, o sistema executa um teste direto de 3 pacotes com intervalo (gap).
       - Se o equipamento responder a pelo menos 1 pacote (sem perda total persistente), o alarme falso é sumariamente descartado e nenhum chamado é aberto desnecessariamente.
+
+19. **Resiliência e Diagnóstico de Autenticação na Evolution API (WhatsApp)**:
+    - **Tratamento Seguro de Erros (`POST /api/v1/integrations/evolution/groups`)**: Import explícito do módulo `httpx` e propagação transparente de erros HTTP da Evolution API, eliminando falhas 500 decorrentes de `NameError`.
+    - **Identificação Clara de Token Desatualizado (HTTP 401)**: Quando uma instância é recriada na Evolution API e o token muda, a API retorna mensagem direta informando que o token/API Key está incorreto ou expirado, orientando o usuário a atualizar o campo API Key nas configurações do painel.

@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -105,9 +106,14 @@ def fetch_evolution_groups(
     try:
         response = safe_evolution_request("GET", url, headers=headers, timeout=15.0)
         if response.status_code == 404:
-            raise HTTPException(status_code=404, detail="Instância não encontrada na Evolution API.")
+            raise HTTPException(status_code=404, detail="Instância ou rota '/group/list' não encontrada na Evolution API.")
+        if response.status_code == 401:
+            raise HTTPException(
+                status_code=401, 
+                detail=f"API Key / Token inválido na Evolution API (HTTP 401). Atualize o campo API Key com o novo token da instância."
+            )
         if response.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Erro na Evolution API: {response.text}")
+            raise HTTPException(status_code=400, detail=f"Erro na Evolution API (HTTP {response.status_code}): {response.text}")
             
         data = response.json()
         groups = []
@@ -139,6 +145,8 @@ def fetch_evolution_groups(
                 })
             
         return groups
+    except HTTPException:
+        raise
     except httpx.RequestError as e:
         raise HTTPException(status_code=400, detail=f"Falha de conexão com a API: {str(e)}")
     except Exception as e:
