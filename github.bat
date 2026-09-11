@@ -1,6 +1,7 @@
 @echo off
+set msg=
 set /p msg="Digite a mensagem do commit: "
-if "%msg%"=="" set msg="update: sincronizacao automatica via github.bat"
+if "%msg%"=="" set msg=update: sincronizacao automatica via github.bat
 
 echo.
 echo === Iniciando Sincronizacao ===
