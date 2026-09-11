@@ -152,15 +152,16 @@ class TestMessageSchema(BaseModel):
 @router.post("/test")
 def test_evolution_message(
     payload: TestMessageSchema,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Acesso negado.")
         
-    background_tasks.add_task(EvolutionService.send_whatsapp_message, f"🧪 *Teste de Integração*\n\n{payload.text}")
-    return {"message": "Requisição de teste enviada."}
+    success, detail = EvolutionService.send_whatsapp_message_with_status(f"🧪 *Teste de Integração*\n\n{payload.text}")
+    if not success:
+        raise HTTPException(status_code=400, detail=detail)
+    return {"message": "Mensagem de teste enviada com sucesso para o WhatsApp!"}
 
 
 router_unifi = APIRouter(prefix="/api/v1/integrations/unifi", tags=["Integrations - UniFi"])
