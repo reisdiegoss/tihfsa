@@ -418,3 +418,8 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       ./start.sh --update
       ```
     - O comando realiza: `git pull`, checagem de dependências Python, build de produção do frontend (`npm run build`), sincronização do Nginx e reinício gracioso do serviço systemd `tihfsa-backend.service`.
+
+15. **Governança e Resiliência de Conexões do Banco de Dados (PostgreSQL Connection Pooling)**:
+    - **Proteção Contra Sobrecarga (`FATAL: sorry, too many clients already`)**: O pool de conexões do SQLAlchemy (`backend/app/database.py`) foi estruturado de forma ultra conservadora com `pool_size=5`, `max_overflow=5`, `pool_recycle=180` (renovação forçada a cada 3 minutos) e `pool_timeout=10` com `pool_pre_ping=True`.
+    - **Timeout de Sessões Ociosas no PostgreSQL (`idle_session_timeout = '15min'`)**: O servidor PostgreSQL foi parametrizado para encerrar automaticamente conexões clientes zumbis ou ociosas que fiquem sem atividade por mais de 15 minutos, impedindo que serviços integrados (como containers da Evolution API / WhatsApp) saturem o limite de 500 conexões do servidor.
+    - **Uvicorn Assíncrono com 1 Worker Dedicado**: No script `start.sh`, o Uvicorn foi ajustado para `--workers 1`. O FastAPI assíncrono com `uvloop` processa milhares de requisições por segundo em 1 único worker, eliminando o risco de colisão de workers no startup e assegurando que os pollers do Zabbix, UniFi e Agendador de Resumo executem pontualmente sem duplicação de instâncias ou sobrecarga no banco de dados.

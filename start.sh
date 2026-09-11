@@ -647,7 +647,7 @@ start_services() {
     nohup "$py_exec" -m uvicorn app.main:app \
         --host 127.0.0.1 \
         --port $INTERNAL_BACKEND_PORT \
-        --workers 2 \
+        --workers 1 \
         > "$LOG_DIR/backend.log" 2>&1 &
     local backend_pid=$!
     echo "$backend_pid" > "$PID_DIR/backend.pid"
