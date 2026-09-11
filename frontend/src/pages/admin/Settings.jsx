@@ -40,7 +40,8 @@ import {
   Clock,
   Mail,
   Send,
-  Bell
+  Bell,
+  Filter
 } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -128,6 +129,18 @@ export default function Settings() {
   const [loadingUnifi, setLoadingUnifi] = useState(false);
   const [savingUnifi, setSavingUnifi] = useState(false);
   const [testingUnifi, setTestingUnifi] = useState(false);
+
+  // Zabbix Integrations & Filters States
+  const [zabbixConfig, setZabbixConfig] = useState({
+    min_severity: 3,
+    ignored_patterns: "System time is out of sync,Failed to fetch info data,has just been restarted",
+    auto_ticket_enabled: true,
+    auto_notify_whatsapp: true,
+    auto_notify_email: true,
+  });
+  const [loadingZabbixConfig, setLoadingZabbixConfig] = useState(false);
+  const [savingZabbixConfig, setSavingZabbixConfig] = useState(false);
+  const [newIgnoredPattern, setNewIgnoredPattern] = useState("");
 
   const fetchEvolutionConfig = async () => {
     setLoadingEvolution(true);
@@ -274,10 +287,59 @@ export default function Settings() {
     }
   };
 
+  const fetchZabbixConfig = async () => {
+    setLoadingZabbixConfig(true);
+    try {
+      const { data } = await api.get("/zabbix/config");
+      setZabbixConfig(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingZabbixConfig(false);
+    }
+  };
+
+  const handleSaveZabbixConfig = async () => {
+    setSavingZabbixConfig(true);
+    try {
+      const { data } = await api.post("/zabbix/config", zabbixConfig);
+      setZabbixConfig(data);
+      alert("Configurações e filtros do Zabbix salvos com sucesso!");
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao salvar configurações do Zabbix.");
+    } finally {
+      setSavingZabbixConfig(false);
+    }
+  };
+
+  const handleAddIgnoredPattern = () => {
+    if (!newIgnoredPattern.trim()) return;
+    const current = zabbixConfig.ignored_patterns
+      ? zabbixConfig.ignored_patterns.split(",").map(p => p.trim()).filter(Boolean)
+      : [];
+    if (current.some(p => p.toLowerCase() === newIgnoredPattern.trim().toLowerCase())) {
+      alert("Este termo já está na lista de filtros!");
+      return;
+    }
+    const updated = [...current, newIgnoredPattern.trim()];
+    setZabbixConfig({ ...zabbixConfig, ignored_patterns: updated.join(",") });
+    setNewIgnoredPattern("");
+  };
+
+  const handleRemoveIgnoredPattern = (patternToRemove) => {
+    const current = zabbixConfig.ignored_patterns
+      ? zabbixConfig.ignored_patterns.split(",").map(p => p.trim()).filter(Boolean)
+      : [];
+    const updated = current.filter(p => p !== patternToRemove);
+    setZabbixConfig({ ...zabbixConfig, ignored_patterns: updated.join(",") });
+  };
+
   useEffect(() => {
     if (activeTab === "integrations") {
       fetchEvolutionConfig();
       fetchUnifiConfig();
+      fetchZabbixConfig();
     }
   }, [activeTab]);
 
@@ -2475,6 +2537,172 @@ export default function Settings() {
             >
               {savingUnifi ? <RefreshCw size={16} className="animate-spin" /> : <Check size={16} />}
               Salvar Configurações UniFi
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ABA: Integrações (Zabbix & Filtro Inteligente de Alertas) */}
+      {activeTab === "integrations" && (
+        <div className="bg-white rounded-3xl shadow-xs border border-slate-200 overflow-hidden animate-fade-in p-6 mt-6">
+          <div className="mb-6 pb-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <Activity className="text-red-500" size={20} /> Integração Zabbix & Filtro Inteligente de Chamados
+              </h2>
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                Defina quais alertas do Zabbix têm relevância para abrir/reabrir chamados automaticamente e notificar a equipe de TI.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 shrink-0">
+              <span className="text-xs font-extrabold text-slate-700">Abertura Automática</span>
+              <input
+                type="checkbox"
+                checked={zabbixConfig.auto_ticket_enabled ?? true}
+                onChange={(e) => setZabbixConfig({ ...zabbixConfig, auto_ticket_enabled: e.target.checked })}
+                className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {/* Coluna 1: Severidade e Canais */}
+            <div className="space-y-6">
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+                  <Filter size={14} className="text-blue-600" /> Severidade Mínima para Abertura de Chamados
+                </label>
+                <select
+                  value={zabbixConfig.min_severity ?? 3}
+                  onChange={(e) => setZabbixConfig({ ...zabbixConfig, min_severity: parseInt(e.target.value, 10) })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
+                >
+                  <option value={1}>1 - Informação (Info) [Abre para tudo]</option>
+                  <option value={2}>2 - Atenção (Warning) [Pode gerar ruído]</option>
+                  <option value={3}>3 - Média / Normal (Average) [Recomendado]</option>
+                  <option value={4}>4 - Alta (High) [Apenas falhas graves]</option>
+                  <option value={5}>5 - Desastre (Disaster) [Apenas incidentes críticos]</option>
+                </select>
+                <p className="text-[11px] text-slate-400 mt-2 font-semibold leading-relaxed">
+                  Alertas abaixo deste nível (ex: severidades 1 e 2 como relógio fora de sincronia ou ping transitório) serão descartados e não abrirão chamados nem mandarão notificações.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-2">
+                  Canais de Notificação dos Incidentes Zabbix
+                </label>
+                <div className="space-y-2.5">
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={zabbixConfig.auto_notify_whatsapp ?? true}
+                      onChange={(e) => setZabbixConfig({ ...zabbixConfig, auto_notify_whatsapp: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Phone size={14} className="text-emerald-600" /> WhatsApp (Grupo Suporte TI-HFSA)
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        Dispara novo chamado e reabertura com link direto no grupo.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={zabbixConfig.auto_notify_email ?? true}
+                      onChange={(e) => setZabbixConfig({ ...zabbixConfig, auto_notify_email: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Mail size={14} className="text-blue-600" /> E-mail Corporativo (ti-hfsa@fasano.com.br)
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        Dispara alerta formatado via SMTP para o time de TI.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Coluna 2: Blacklist de Triggers */}
+            <div className="flex flex-col justify-between">
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+                  <AlertCircle size={14} className="text-amber-500" /> Termos Ignorados / Blacklist no Título do Alerta
+                </label>
+                
+                {/* Lista de chips */}
+                <div className="flex flex-wrap gap-2 mb-3 min-h-[100px] max-h-[160px] overflow-y-auto items-start p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  {(() => {
+                    const patterns = zabbixConfig.ignored_patterns
+                      ? zabbixConfig.ignored_patterns.split(",").map(p => p.trim()).filter(Boolean)
+                      : [];
+                    if (patterns.length === 0) {
+                      return <span className="text-xs text-slate-400 font-semibold italic">Nenhum termo ignorado. Todos os alertas permitidos pela severidade abrirão chamados.</span>;
+                    }
+                    return patterns.map((pattern) => (
+                      <span
+                        key={pattern}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-xs font-extrabold shadow-2xs"
+                      >
+                        {pattern}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveIgnoredPattern(pattern)}
+                          className="text-slate-400 hover:text-red-600 ml-0.5 cursor-pointer"
+                          title="Remover filtro"
+                        >
+                          <X size={13} />
+                        </button>
+                      </span>
+                    ));
+                  })()}
+                </div>
+
+                {/* Adicionar novo termo */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ex: System time is out of sync, MySQL: Failed to fetch..."
+                    value={newIgnoredPattern}
+                    onChange={(e) => setNewIgnoredPattern(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddIgnoredPattern();
+                      }
+                    }}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddIgnoredPattern}
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-extrabold transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <Plus size={14} /> Adicionar
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2 font-semibold">
+                  Qualquer disparo que contiver um destes termos será ignorado automaticamente, mesmo se o Zabbix disparar.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end border-t border-slate-100 pt-6">
+            <button
+              onClick={handleSaveZabbixConfig}
+              disabled={savingZabbixConfig || loadingZabbixConfig}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-extrabold shadow-md shadow-blue-600/20 transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {savingZabbixConfig ? <RefreshCw size={16} className="animate-spin" /> : <Check size={16} />}
+              Salvar Regras do Zabbix
             </button>
           </div>
         </div>

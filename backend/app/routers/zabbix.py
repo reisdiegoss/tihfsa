@@ -15,14 +15,65 @@ from app.services.email_service import send_noc_dual_notification
 from app.services.zabbix_service import ZabbixService
 from app.services.evolution_service import EvolutionService
 
+from pydantic import BaseModel
+from app.models.integration_config import ZabbixConfig
+
 router = APIRouter(prefix="/api/v1/zabbix", tags=["Zabbix"])
+
+
+class ZabbixConfigSchema(BaseModel):
+    min_severity: int = 3
+    ignored_patterns: str = "System time is out of sync,Failed to fetch info data,has just been restarted"
+    auto_ticket_enabled: bool = True
+    auto_notify_whatsapp: bool = True
+    auto_notify_email: bool = True
+
+
+@router.get("/config", response_model=ZabbixConfigSchema)
+def get_zabbix_config(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
+    cfg = db.query(ZabbixConfig).first()
+    if not cfg:
+        return ZabbixConfigSchema()
+    return ZabbixConfigSchema(
+        min_severity=cfg.min_severity if cfg.min_severity is not None else 3,
+        ignored_patterns=cfg.ignored_patterns if cfg.ignored_patterns is not None else "System time is out of sync,Failed to fetch info data,has just been restarted",
+        auto_ticket_enabled=cfg.auto_ticket_enabled if cfg.auto_ticket_enabled is not None else True,
+        auto_notify_whatsapp=cfg.auto_notify_whatsapp if cfg.auto_notify_whatsapp is not None else True,
+        auto_notify_email=cfg.auto_notify_email if cfg.auto_notify_email is not None else True,
+    )
+
+
+@router.post("/config")
+def save_zabbix_config(
+    payload: ZabbixConfigSchema,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
+    cfg = db.query(ZabbixConfig).first()
+    if not cfg:
+        cfg = ZabbixConfig()
+        db.add(cfg)
+    cfg.min_severity = payload.min_severity
+    cfg.ignored_patterns = payload.ignored_patterns
+    cfg.auto_ticket_enabled = payload.auto_ticket_enabled
+    cfg.auto_notify_whatsapp = payload.auto_notify_whatsapp
+    cfg.auto_notify_email = payload.auto_notify_email
+    db.commit()
+    return {"message": "Configurações de regras do Zabbix salvas com sucesso!"}
 
 
 def _map_zabbix_severity_to_priority(severity: str) -> TicketPriority:
     s = severity.lower()
-    if s in ["disaster", "high"]:
+    if s in ["disaster", "high", "5", "4"]:
         return TicketPriority.CRITICAL
-    if s in ["average", "warning"]:
+    if s in ["average", "warning", "3", "2"]:
         return TicketPriority.HIGH
     return TicketPriority.MEDIUM
 
@@ -62,6 +113,15 @@ def sync_active_zabbix_alerts(db: Session):
         # Buscar todos os ativos importados no CMDB com IP ou Nome
         imported_assets = db.query(Asset).filter(Asset.is_active == True).all()
 
+        # Carregar parâmetros e filtros do Zabbix
+        zabbix_cfg = db.query(ZabbixConfig).first()
+        min_severity = getattr(zabbix_cfg, "min_severity", 3) if zabbix_cfg else 3
+        ignored_patterns_raw = getattr(zabbix_cfg, "ignored_patterns", "") if zabbix_cfg else "System time is out of sync,Failed to fetch info data,has just been restarted"
+        ignored_patterns = [p.strip().lower() for p in (ignored_patterns_raw or "").split(",") if p.strip()]
+        auto_ticket_enabled = getattr(zabbix_cfg, "auto_ticket_enabled", True) if zabbix_cfg else True
+        notify_wa = getattr(zabbix_cfg, "auto_notify_whatsapp", True) if zabbix_cfg else True
+        notify_email = getattr(zabbix_cfg, "auto_notify_email", True) if zabbix_cfg else True
+
         # Mapeadores por IP e Nome (case-insensitive) - Apenas ativos COM IP podem gerar alertas de rede!
         asset_by_ip = {a.ip_address.strip(): a for a in imported_assets if a.ip_address and a.ip_address.strip()}
         asset_by_name = {a.name.strip().lower(): a for a in imported_assets if a.name and a.name.strip() and a.ip_address and a.ip_address.strip()}
@@ -74,6 +134,18 @@ def sync_active_zabbix_alerts(db: Session):
         unmatched_problems = []
 
         for prob in raw_problems:
+            prob_sev = int(prob.get("priority") or prob.get("severity") or "0")
+            prob_title = (prob.get("description") or prob.get("name") or "").strip()
+
+            # FILTRO 1: Severidade Mínima configurada (padrão 3 = Média)
+            if prob_sev < min_severity:
+                continue
+
+            # FILTRO 2: Blacklist de padrões/palavras-chave ignoradas
+            prob_title_lower = prob_title.lower()
+            if any(term in prob_title_lower for term in ignored_patterns):
+                continue
+
             hosts = prob.get("hosts", [])
             matched_asset = None
             for h in hosts:
@@ -189,6 +261,8 @@ def sync_active_zabbix_alerts(db: Session):
                         email_details_html=mail_html,
                         status_type="warning",
                         ticket_id=today_ticket.id,
+                        send_whatsapp=notify_wa,
+                        send_email=notify_email,
                     )
                 else:
                     # Atualizar chamado existente se surgiram novos alertas que não estão na descrição
@@ -204,7 +278,7 @@ def sync_active_zabbix_alerts(db: Session):
                                         db.commit()
                                         break
                 existing_ticket = today_ticket
-            else:
+            elif auto_ticket_enabled:
                 # Criar um chamado agrupado para o ativo
                 prio = _map_zabbix_severity_to_priority(main_severity)
                 new_ticket = Ticket(
@@ -264,6 +338,8 @@ def sync_active_zabbix_alerts(db: Session):
                     email_details_html=mail_html,
                     status_type="danger",
                     ticket_id=new_ticket.id,
+                    send_whatsapp=notify_wa,
+                    send_email=notify_email,
                 )
 
             # Alimentar o filtered_alerts pro endpoint /alerts
@@ -292,7 +368,8 @@ def sync_active_zabbix_alerts(db: Session):
             has_critical_problems = False
             for p in asset_probs:
                 p_sev = int(p.get("priority") or p.get("severity") or "0")
-                if p_sev >= 3: # 3=Average, 4=High, 5=Disaster
+                p_desc = (p.get("description") or p.get("name") or "").strip().lower()
+                if p_sev >= min_severity and not any(term in p_desc for term in ignored_patterns):
                     has_critical_problems = True
                     break
                     
@@ -338,6 +415,8 @@ def sync_active_zabbix_alerts(db: Session):
                     email_details_html=mail_html,
                     status_type="success",
                     ticket_id=ticket.id,
+                    send_whatsapp=notify_wa,
+                    send_email=notify_email,
                 )
 
         return {

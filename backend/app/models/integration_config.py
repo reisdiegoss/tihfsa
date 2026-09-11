@@ -25,3 +25,13 @@ class UnifiConfig(Base):
     password = Column(String, nullable=True)
     site_id = Column(String, default="default") # default site is usually "default"
     is_active = Column(Boolean, default=False)
+
+class ZabbixConfig(Base):
+    __tablename__ = "zabbix_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+    min_severity = Column(Integer, default=3) # 1=Info, 2=Warning, 3=Average, 4=High, 5=Disaster
+    ignored_patterns = Column(String, default="System time is out of sync,Failed to fetch info data,has just been restarted")
+    auto_ticket_enabled = Column(Boolean, default=True)
+    auto_notify_whatsapp = Column(Boolean, default=True)
+    auto_notify_email = Column(Boolean, default=True)

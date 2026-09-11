@@ -245,6 +245,16 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_times VARCHAR DEFAULT '09:00,14:00,18:00';"))
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_whatsapp BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_email BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS zabbix_config (
+                    id SERIAL PRIMARY KEY,
+                    min_severity INTEGER DEFAULT 3,
+                    ignored_patterns VARCHAR DEFAULT 'System time is out of sync,Failed to fetch info data,has just been restarted',
+                    auto_ticket_enabled BOOLEAN DEFAULT TRUE,
+                    auto_notify_whatsapp BOOLEAN DEFAULT TRUE,
+                    auto_notify_email BOOLEAN DEFAULT TRUE
+                );
+            """))
             conn.commit()
     except Exception as e:
         print(f"[DB Auto-Migration Error] {e}")

@@ -244,6 +244,8 @@ def send_noc_dual_notification(
     email_details_html: str,
     status_type: str = "danger",
     ticket_id: int | None = None,
+    send_whatsapp: bool = True,
+    send_email: bool = True,
 ):
     """
     Dispara simultaneamente no WhatsApp do grupo de TI e por E-mail corporativo.
@@ -252,20 +254,22 @@ def send_noc_dual_notification(
     from app.services.evolution_service import EvolutionService
 
     # 1. WhatsApp Evolution API
-    try:
-        EvolutionService.send_whatsapp_message(whatsapp_text)
-    except Exception as e:
-        print(f"[WhatsApp Dual Notify Error] {e}")
+    if send_whatsapp:
+        try:
+            EvolutionService.send_whatsapp_message(whatsapp_text)
+        except Exception as e:
+            print(f"[WhatsApp Dual Notify Error] {e}")
 
     # 2. E-mail Corporativo SMTP
-    try:
-        send_noc_email(
-            subject=email_subject,
-            header_title=email_title,
-            details_html=email_details_html,
-            status_type=status_type,
-            ticket_id=ticket_id,
-        )
-    except Exception as e:
-        print(f"[Email Dual Notify Error] {e}")
+    if send_email:
+        try:
+            send_noc_email(
+                subject=email_subject,
+                header_title=email_title,
+                details_html=email_details_html,
+                status_type=status_type,
+                ticket_id=ticket_id,
+            )
+        except Exception as e:
+            print(f"[Email Dual Notify Error] {e}")
 

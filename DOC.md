@@ -423,3 +423,26 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Proteção Contra Sobrecarga (`FATAL: sorry, too many clients already`)**: O pool de conexões do SQLAlchemy (`backend/app/database.py`) foi estruturado de forma ultra conservadora com `pool_size=5`, `max_overflow=5`, `pool_recycle=180` (renovação forçada a cada 3 minutos) e `pool_timeout=10` com `pool_pre_ping=True`.
     - **Timeout de Sessões Ociosas no PostgreSQL (`idle_session_timeout = '15min'`)**: O servidor PostgreSQL foi parametrizado para encerrar automaticamente conexões clientes zumbis ou ociosas que fiquem sem atividade por mais de 15 minutos, impedindo que serviços integrados (como containers da Evolution API / WhatsApp) saturem o limite de 500 conexões do servidor.
     - **Uvicorn Assíncrono com 1 Worker Dedicado**: No script `start.sh`, o Uvicorn foi ajustado para `--workers 1`. O FastAPI assíncrono com `uvloop` processa milhares de requisições por segundo em 1 único worker, eliminando o risco de colisão de workers no startup e assegurando que os pollers do Zabbix, UniFi e Agendador de Resumo executem pontualmente sem duplicação de instâncias ou sobrecarga no banco de dados.
+
+16. **Filtro Inteligente de Severidade e Blacklist para Alertas Zabbix vs. UniFi On/Off**:
+    - **Diferenciação de Comportamento entre UniFi e Zabbix**:
+      - **UniFi Controller (Conectividade On/Off)**: Focado estritamente na disponibilidade física e de rádio da rede (dispositivo conectado ou desconectado). Quedas geram chamados imediatos e retorno atualiza o chamado para validação e notifica a equipe.
+      - **Zabbix Server (Filtro por Severidade e Palavras-Chave)**: Por monitorar centenas de itens de software, sistema operacional e banco de dados, conta com motor de filtragem configurável para evitar abertura desnecessária de chamados por alertas secundários ou transitórios.
+    - **Filtro por Severidade Mínima Configurável (Painel de Configurações &rarr; Integrações)**:
+      - O Administrador pode selecionar o nível mínimo de gravidade necessário para abertura de chamados:
+        - `1`: Informação (Information) — Abre para todos os disparos.
+        - `2`: Atenção (Warning) — Pode gerar alertas de baixo impacto.
+        - `3`: Média / Normal (Average) [Padrão Recomendado] — Descarta ruídos e foca em quedas e indisponibilidades reais.
+        - `4`: Alta (High) — Apenas falhas de infraestrutura graves.
+        - `5`: Desastre (Disaster) — Apenas paradas críticas gerais.
+      - Alertas com severidade inferior ao limite configurado são descartados silenciosamente pelo motor de sincronização, sem abertura de chamados, reaberturas ou envio de mensagens.
+    - **Blacklist de Triggers (Termos Ignorados no Título do Alerta)**:
+      - Gerenciador visual interativo de palavras-chave / termos proibidos na aba de Integrações.
+      - Termos padrão cadastrados: `System time is out of sync`, `Failed to fetch info data`, `has just been restarted`.
+      - Qualquer trigger cujo nome ou descrição contenha qualquer um dos termos cadastrados é sumariamente ignorada pelo poller.
+    - **Eliminação Definitiva do Loop de Reabertura / Normalização**:
+      - A checagem de problemas ativos na FASE 1 (abertura/reabertura) e FASE 2 (auto-resolução) passa a compartilhar exatamente o mesmo filtro de severidade e lista de termos ignorados. Isso impede o efeito gangorra onde um alerta secundário abria chamado a cada minuto e era auto-resolvido 60 segundos depois.
+    - **Controle de Notificações e Canais**:
+      - Toggles individuais para ativar/desativar abertura automática de chamados, notificação no WhatsApp (Grupo Suporte TI-HFSA) e envio por E-mail (`ti-hfsa@fasano.com.br`).
+    - **Permissões de Acesso**:
+      - Endpoints `GET /api/v1/zabbix/config` e `POST /api/v1/zabbix/config` restritos a usuários com perfil de Administrador (`require_admin`).
