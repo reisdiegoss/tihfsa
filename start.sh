@@ -99,16 +99,31 @@ has_cmd() {
 kill_port() {
     local port=$1
     local pid=""
-    pid=$(lsof -ti :"$port" 2>/dev/null || true)
-    if [[ -n "$pid" ]]; then
-        kill -9 $pid 2>/dev/null || true
-        log_info "Processo na porta $port (PID: $pid) encerrado."
+    if has_cmd lsof; then
+        pid=$(lsof -ti :"$port" 2>/dev/null || true)
+        if [[ -n "$pid" ]]; then
+            kill -9 $pid 2>/dev/null || true
+            log_info "Processo na porta $port (PID: $pid) encerrado."
+        fi
     fi
+    if has_cmd fuser; then
+        fuser -k -9 "$port/tcp" >/dev/null 2>&1 || true
+    fi
+    pkill -9 -f "uvicorn.*app.main:app" 2>/dev/null || true
 }
 
 # ── Verificar porta em uso ───────────────────────────────────
 is_port_in_use() {
-    lsof -ti :"$1" >/dev/null 2>&1
+    local port=$1
+    if has_cmd lsof; then
+        lsof -ti :"$port" >/dev/null 2>&1
+    elif has_cmd fuser; then
+        fuser "$port/tcp" >/dev/null 2>&1
+    elif has_cmd ss; then
+        ss -tuln 2>/dev/null | grep -q ":$port "
+    else
+        netstat -tuln 2>/dev/null | grep -q ":$port "
+    fi
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -729,13 +744,16 @@ stop_services() {
         pid=$(cat "$pidfile" 2>/dev/null || true)
         if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null || true
+            sleep 1
+            kill -9 "$pid" 2>/dev/null || true
             log_success "Backend (PID: $pid) encerrado."
         fi
         rm -f "$pidfile"
     fi
 
-    # Fallback por porta interna
+    # Fallback por porta interna e processos órfãos
     kill_port $INTERNAL_BACKEND_PORT
+    pkill -9 -f "uvicorn.*app.main:app" 2>/dev/null || true
     log_success "Serviços encerrados."
 }
 
