@@ -831,7 +831,8 @@ main() {
             ;;
         --update|-u)
             log_step "UPDATE" "Atualizando repositório do Git e recompilando..."
-            git pull || true
+            git fetch origin main || true
+            git reset --hard origin/main || git pull || true
             build_frontend
             stop_services
             sleep 1
