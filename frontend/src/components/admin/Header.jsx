@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Search, Bell, LogOut, KeyRound } from "lucide-react";
+import { Search, LogOut, KeyRound } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import ChangePasswordModal from "../common/ChangePasswordModal";
+import NotificationsPopover from "./NotificationsPopover";
 
 export default function Header() {
   const { user, logout, canChangePassword } = useAuth();
@@ -25,10 +26,7 @@ export default function Header() {
 
         {/* Right Side */}
         <div className="flex items-center gap-3 sm:gap-5 ml-4">
-          <button className="relative text-slate-400 hover:text-blue-600 transition-colors cursor-pointer shrink-0">
-            <Bell size={20} />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
+          <NotificationsPopover />
 
           <div className="flex items-center gap-3 pl-3 sm:pl-4 border-l border-slate-200">
             <div className="text-right hidden sm:block">

@@ -7,7 +7,7 @@ import {
   ChevronsRight, CheckCircle2, User, Radio, Activity, Wifi,
   CheckSquare, Square, MinusSquare, ShieldCheck, MessageSquare, Send
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import TicketDetailDrawer from "../../components/admin/TicketDetailDrawer";
@@ -75,6 +75,7 @@ const STATUS_WEIGHTS = {
 
 export default function TicketList() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, isStaff } = useAuth();
 
   // Dados
@@ -82,6 +83,26 @@ export default function TicketList() {
   const [categoriesList, setCategoriesList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTicketId, setActiveTicketId] = useState(null);
+
+  // Abre o drawer se ticketId estiver na URL (ex: via notificação)
+  useEffect(() => {
+    const tid = searchParams.get("ticketId");
+    if (tid) {
+      const parsed = parseInt(tid, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        setActiveTicketId(parsed);
+      }
+    }
+  }, [searchParams]);
+
+  const handleCloseDrawer = () => {
+    setActiveTicketId(null);
+    if (searchParams.get("ticketId")) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("ticketId");
+      setSearchParams(newParams, { replace: true });
+    }
+  };
 
   // Estados de Filtro
   const [searchTerm, setSearchTerm] = useState("");
@@ -1367,7 +1388,7 @@ export default function TicketList() {
       {/* Slide-Over Detail Drawer */}
       <TicketDetailDrawer
         ticketId={activeTicketId}
-        onClose={() => setActiveTicketId(null)}
+        onClose={handleCloseDrawer}
         onUpdate={fetchTickets}
       />
     </div>

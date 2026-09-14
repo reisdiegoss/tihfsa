@@ -73,7 +73,105 @@ def create_ticket(
     return ticket
 
 
+@router.get("/notifications")
+def get_notifications(
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Retorna a lista de notificações ativas/recentes e contadores para a central do Header:
+    - Chamados com alertas de infraestrutura NOC (UniFi / Zabbix)
+    - Chamados Críticos e Altos em aberto
+    - Chamados Aguardando Validação
+    - Chamados Novos aguardando atendimento
+    """
+    from sqlalchemy.orm import joinedload
+
+    role_val = current_user.role.value if isinstance(current_user.role, UserRole) else str(current_user.role).lower()
+    u_roles = current_user.roles if (current_user.roles and isinstance(current_user.roles, list)) else [role_val]
+    u_roles_lower = [r.lower() for r in u_roles]
+
+    is_admin = "admin" in u_roles_lower
+    is_tech = "technician" in u_roles_lower or "tecnico" in u_roles_lower
+
+    query = db.query(Ticket).options(
+        joinedload(Ticket.requester),
+        joinedload(Ticket.asset),
+    )
+
+    if not (is_admin or is_tech):
+        query = query.filter(Ticket.requester_id == current_user.id)
+
+    recent_tickets = query.order_by(
+        Ticket.status.in_([TicketStatus.NEW, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_VALIDATION]).desc(),
+        Ticket.created_at.desc()
+    ).limit(limit).all()
+
+    items = []
+    critical_count = 0
+    active_count = 0
+    pending_validation_count = 0
+
+    for t in recent_tickets:
+        is_noc = bool(
+            (t.title and any(k in t.title for k in ["[NOC", "NOC Auto", "ALERTA NOC", "[Zabbix]"]))
+            or (t.description and "Alerta Automático NOC" in t.description)
+        )
+        is_critical = (t.priority == TicketPriority.CRITICAL)
+        is_active = t.status in [TicketStatus.NEW, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_VALIDATION]
+        
+        if is_active:
+            active_count += 1
+            if is_critical or is_noc:
+                critical_count += 1
+            if t.status == TicketStatus.PENDING_VALIDATION:
+                pending_validation_count += 1
+
+        if is_noc and is_critical:
+            cat = "noc_critical"
+        elif is_noc:
+            cat = "noc_alert"
+        elif t.status == TicketStatus.PENDING_VALIDATION:
+            cat = "pending_validation"
+        elif t.status == TicketStatus.NEW:
+            cat = "new_ticket"
+        elif t.status == TicketStatus.CLOSED:
+            cat = "closed"
+        else:
+            cat = "in_progress"
+
+        desc_clean = (t.description or "").replace("#", "").replace("*", "").strip()
+        lines = [line.strip() for line in desc_clean.splitlines() if line.strip()]
+        summary = lines[0] if lines else ""
+        if len(summary) > 120:
+            summary = summary[:117] + "..."
+
+        items.append({
+            "id": t.id,
+            "title": t.title,
+            "summary": summary,
+            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "priority": t.priority.value if hasattr(t.priority, "value") else str(t.priority),
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+            "requester_name": t.requester.display_name if t.requester else "Sistema",
+            "asset_name": t.asset.name if t.asset else None,
+            "is_noc": is_noc,
+            "is_active": is_active,
+            "category": cat,
+        })
+
+    return {
+        "active_count": active_count,
+        "critical_count": critical_count,
+        "pending_validation_count": pending_validation_count,
+        "items": items,
+    }
+
+
 @router.get("/", response_model=list[TicketResponse])
+
 def list_tickets(
     status_filter: str | None = Query(None, alias="status"),
     technician_id: int | None = None,

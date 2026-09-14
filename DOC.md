@@ -496,4 +496,23 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Micro-Ticks de Alta Performance (`requestAnimationFrame` e 30ms)**: O enquadramento é validado em tempo de 1 a 2 frames de vídeo, além de um `ResizeObserver` ultrarrápido (debounce de 20ms) no container do canvas para reagir imediatamente a mudanças de resolução ou modo tela cheia (F11).
     - **Cálculo Preciso com Bounding Box Real**: Considera as dimensões físicas de todos os nós (Switches, Racks com ativos empilhados, APs com métricas UniFi e Áreas/Zonas adaptativas em bolha SVG), aplicando margem de segurança de 60px para que nenhum card toque as bordas da tela nem fique encoberto por barras flutuantes.
 
+21. **Central de Notificações Interativa e Monitoramento de Alertas NOC (Header & Chamados)**:
+    - **Substituição do Ícone Estático por Central Dinâmica (`NotificationsPopover.jsx`)**:
+      - O botão anterior possuía apenas um sino com ponto vermelho estático sem interação. Foi substituído por uma Central de Notificações completa com popover flutuante e contadores em tempo real.
+      - **Contador Dinâmico de Não Lidas**: O sino exibe um badge numérico com a quantidade de notificações não lidas. Se houver alertas críticos (ex.: incidentes NOC UniFi / Zabbix ou chamados de prioridade Crítica), o sino e o badge contam com animação de pulso e destaque visual em âmbar/vermelho.
+      - **Abas de Filtragem Rápida**:
+        - *Todas*: Lista unificada dos chamados e alertas mais recentes.
+        - *🚨 Alertas NOC*: Filtra estritamente eventos originados pela infraestrutura (UniFi, Zabbix e incidentes críticos).
+        - *⏳ Pendentes*: Destaca chamados com status "Novo" ou "Aguardando Validação".
+      - **Ações Rápidas**:
+        - Botão "Marcar todas como lidas" com persistência no `localStorage` do navegador (`tihfsa_read_notifications`).
+        - Botão de atualização manual (Refresh) e polling automático em background a cada 30 segundos.
+      - **Navegação Direta e Abertura Automática do Drawer**:
+        - Ao clicar em qualquer notificação, o sistema marca o item como lido, fecha o popover e redireciona o analista para `/admin/tickets?ticketId={id}`.
+        - A tela de gerenciamento de chamados (`TicketList.jsx`) intercepta o parâmetro `ticketId` e abre instantaneamente o slide-over (`TicketDetailDrawer.jsx`) do chamado em questão, removendo o parâmetro da URL ao fechar o painel.
+    - **Endpoint Dedicado no Backend (`GET /api/v1/tickets/notifications`)**:
+      - Rota protegida por autenticação JWT (`get_current_user`), aplicando as regras de perfil do sistema: administradores e técnicos têm visibilidade de todos os eventos; usuários comuns recebem notificações apenas dos seus próprios chamados.
+      - Retorna os contadores consolidados (`active_count`, `critical_count`, `pending_validation_count`) e os 25 itens mais recentes enriquecidos com categoria, prioridade, status, data de criação e flag indicativo de NOC.
+
+
 
