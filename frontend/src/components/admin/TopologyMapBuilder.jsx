@@ -510,7 +510,7 @@ const getNodeRealDimensions = (node) => {
   }
   
   if (isRack) {
-    return { w, h: Math.max(160, 100 + childCount * 48) };
+    return { w, h: Math.max(200, 80 + childCount * 105) };
   }
   
   // Fallback seguro: cartões UniFi AP/Switch têm altura real de ~330px no DOM com métricas ativas
@@ -1156,10 +1156,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
         });
         setMapData({ ...latest, nodes_data: sanitizedNodes });
         if (isFirstLoad) {
-          // Fit Tela Automático: enquadra perfeitamente na abertura individual ou transição do carrossel
+          // Fit Tela Automático Instantâneo: enquadra imediatamente no carregamento dos nós
           handleFitToScreen(sanitizedNodes, id);
-          setTimeout(() => handleFitToScreen(sanitizedNodes, id), 80);
-          setTimeout(() => handleFitToScreen(sanitizedNodes, id), 250);
         }
         if (latest.assets_data && latest.assets_data.length > 0) {
           setAssetsList((prev) => {
@@ -1313,15 +1311,13 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
       };
 
       const rAf = requestAnimationFrame(runFit);
-      const t1 = setTimeout(runFit, 60);
-      const t2 = setTimeout(runFit, 180);
-      const t3 = setTimeout(runFit, 400);
+      const t1 = setTimeout(runFit, 30);
+      const t2 = setTimeout(runFit, 100);
 
       return () => {
         cancelAnimationFrame(rAf);
         clearTimeout(t1);
         clearTimeout(t2);
-        clearTimeout(t3);
       };
     }
   }, [loading, mapData.id, mapData.nodes_data]);
@@ -1349,7 +1345,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
                 if (mapData.nodes_data && mapData.nodes_data.length > 0 && !hasUnsavedChangesRef.current && !isPanningRef.current) {
                   handleFitToScreen(mapData.nodes_data, selectedMapId);
                 }
-              }, 80);
+              }, 20);
             }
           }
         }
