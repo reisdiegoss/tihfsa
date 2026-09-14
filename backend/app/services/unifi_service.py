@@ -260,62 +260,14 @@ class UnifiService:
                 active_ip_map[ip].append(c_data)
 
         conflicts = {}
-        # Conflito 1: Mais de um MAC ativo simultaneamente no mesmo IP
+        # Conflito Real: Mais de um MAC conectado e ativo simultaneamente no mesmo IP
         for ip, dev_list in active_ip_map.items():
             unique_macs = {d["mac"].lower() for d in dev_list if d.get("mac")}
             if len(unique_macs) > 1:
                 conflicts[ip] = dev_list
 
-        # Conflito 2: Cruzar cliente ativo com histórico recente de 24h
-        allusers = cls.get_all_users_history(within_hours=24)
-        if allusers:
-            for c in clients:
-                ip = (c.get("ip") or "").strip()
-                mac = (c.get("mac") or "").strip().lower()
-                if not ip or ip in ["0.0.0.0", "127.0.0.1"]:
-                    continue
-
-                other_users = [
-                    u for u in allusers
-                    if (u.get("ip") == ip or u.get("last_ip") == ip)
-                    and (u.get("mac") or "").strip().lower() != mac
-                ]
-                if other_users:
-                    if ip not in conflicts:
-                        sw_mac = c.get("sw_mac")
-                        ap_mac = c.get("ap_mac")
-                        conflicts[ip] = [{
-                            "mac": c.get("mac"),
-                            "name": c.get("name") or c.get("hostname") or c.get("oui") or "Dispositivo",
-                            "hostname": c.get("hostname"),
-                            "ip": ip,
-                            "is_wired": c.get("is_wired", False),
-                            "network": c.get("network") or "Padrão",
-                            "switch_name": sw_map.get(sw_mac, sw_mac or "N/A"),
-                            "switch_port": c.get("sw_port"),
-                            "ap_name": ap_map.get(ap_mac, ap_mac or "N/A"),
-                            "is_active": True,
-                        }]
-                    for ou in other_users:
-                        ou_mac = (ou.get("mac") or "").strip().lower()
-                        if not any(d["mac"].lower() == ou_mac for d in conflicts[ip]):
-                            ou_sw = ou.get("sw_mac")
-                            ou_ap = ou.get("ap_mac")
-                            conflicts[ip].append({
-                                "mac": ou.get("mac"),
-                                "name": ou.get("name") or ou.get("hostname") or ou.get("oui") or "Dispositivo",
-                                "hostname": ou.get("hostname"),
-                                "ip": ip,
-                                "is_wired": ou.get("is_wired", False),
-                                "network": ou.get("network") or "Padrão",
-                                "switch_name": sw_map.get(ou_sw, ou_sw or "N/A"),
-                                "switch_port": ou.get("sw_port"),
-                                "ap_name": ap_map.get(ou_ap, ou_ap or "N/A"),
-                                "is_active": False,
-                                "is_historical": True,
-                            })
-
         return conflicts
+
 
 
 def _normalize_mac(mac: str) -> str:
@@ -720,16 +672,15 @@ def sync_active_unifi_critical_alarms(db) -> dict:
                 port = d.get("switch_port") or "N/A"
                 net = d.get("network") or "Padrão"
                 is_wired = "Cabeado" if d.get("is_wired") else "Wi-Fi"
-                status_disp = "Ativo no momento" if d.get("is_active") else "Histórico Recente"
 
                 dev_lines_md.append(
                     f"- **Dispositivo {idx}**: {name} | MAC: `{mac}` | Conexão: {is_wired} | "
-                    f"Switch: {sw} (Porta: {port}) | VLAN/Rede: {net} | Situação: {status_disp}"
+                    f"Switch: {sw} (Porta: {port}) | VLAN/Rede: {net}"
                 )
-                dev_lines_wa.append(f"• *{name}* (MAC: `{mac}`) no switch *{sw}* (Porta {port}) [{status_disp}]")
+                dev_lines_wa.append(f"• *{name}* (MAC: `{mac}`) no switch *{sw}* (Porta {port})")
                 dev_rows_html.append(
                     f"<tr><td><strong>{name}</strong></td><td><code>{mac}</code></td>"
-                    f"<td>{sw} (Porta {port})</td><td>{net}</td><td>{status_disp}</td></tr>"
+                    f"<td>{sw} (Porta {port})</td><td>{net}</td><td>Conectado</td></tr>"
                 )
 
             devs_summary_md = "\n".join(dev_lines_md)

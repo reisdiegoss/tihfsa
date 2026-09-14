@@ -258,8 +258,8 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
   - **Objetivo**: Detectar proativamente e transformar em chamados de suporte técnico de prioridade **CRÍTICA** qualquer anomalia grave ou evento não resolvido da controladora UniFi antes mesmo de a equipe precisar acessar o painel da controladora.
   - **Fontes Monitoradas Continuamente no Poller (60s)**:
     1. **Conflitos de Endereço IP na Rede Local**:
-       - Cruza em tempo real a tabela de clientes conectados (`/stat/sta`) com o histórico recente de leases e dispositivos (`/stat/alluser?within=24`).
-       - Detecta instantaneamente quando múltiplos dispositivos (MAC addresses diferentes) disputam o mesmo IP.
+       - Monitora em tempo real a tabela de clientes conectados (`/stat/sta`).
+       - Detecta conflitos reais quando dois ou mais dispositivos distintos (MAC addresses diferentes) estão conectados e ativos **simultaneamente** com o mesmo endereço IP (desconsiderando histórico de leases de clientes desconectados para não gerar falso positivo em rotação comum de DHCP).
        - Mapeia com exatidão os nomes dos equipamentos, MACs, rede/VLAN e em qual switch e porta física cada dispositivo está conectado.
     2. **Logs Críticos e Unresolved Events da Aba "Crítico" (`/v2/api/site/{site}/next-ai/logs`)**:
        - Servidor DHCP fraudulento na rede (*Rogue DHCP*) e esgotamento de pool DHCP.

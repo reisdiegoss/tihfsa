@@ -90,8 +90,8 @@ O **TIHFSA** foi concebido para transformar a operação diária de TI da hotela
   - Se um Switch ou AP perde a comunicação (`state == 0`), abre chamado automático de prioridade Alta/Crítica e notifica a equipe.
   - Ao restabelecer a conexão (`state == 1`), atualiza o chamado para `Aguardando Validação` e dispara notificação de resolução.
 - **Monitoramento Ativo de Conflitos de IP na Rede**:
-  - Cruza em tempo real a tabela de clientes (`/stat/sta`) com o histórico de leases (`/stat/alluser?within=24`).
-  - Identifica instantaneamente disputas de endereço IP, mapeando **nomes dos dispositivos, MACs, rede/VLAN, switch físico e porta de conexão** de cada máquina envolvida.
+  - Monitora em tempo real a tabela de clientes ativos (`/stat/sta`).
+  - Identifica quando múltiplos dispositivos distintos (MACs diferentes) estão conectados **simultaneamente** com o mesmo IP, mapeando **nomes dos dispositivos, MACs, rede/VLAN, switch físico e porta de conexão** de cada máquina envolvida (evitando falsos positivos de rotação de DHCP em clientes desconectados).
 - **Monitoramento de Alertas Críticos UniFi**:
   - Captura eventos não resolvidos da controladora (`/v2/api/site/{site}/next-ai/logs` e `/stat/alarm?archived=false`).
   - Cobre: servidores DHCP fraudulentos (*Rogue DHCP*), loops de rede Spanning Tree (`EVT_SW_StpPortBlocking`), sobrecarga de PoE, falhas de energia em switch/RPS, failover LTE e quedas de túneis VPN.
