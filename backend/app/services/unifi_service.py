@@ -136,6 +136,187 @@ class UnifiService:
             print(f"[UnifiService] get_clients Error: {e}")
             return []
 
+    @classmethod
+    def get_critical_logs(cls, retry=True):
+        """Busca logs críticos e eventos não resolvidos da controladora (Next-AI / Critical Logs)."""
+        if not cls._is_authenticated:
+            if not cls.authenticate():
+                return []
+
+        site = cls.get_active_site()
+        url = urljoin(cls._config["api_url"], f"/v2/api/site/{site}/next-ai/logs")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                res = cls._session.get(url, timeout=10.0)
+
+            if res.status_code == 200:
+                data = res.json()
+                if isinstance(data, list):
+                    return data
+                return data.get("data", [])
+            elif res.status_code == 401 and retry:
+                cls._is_authenticated = False
+                if cls.authenticate():
+                    return cls.get_critical_logs(retry=False)
+            return []
+        except Exception as e:
+            print(f"[UnifiService] get_critical_logs Error: {e}")
+            return []
+
+    @classmethod
+    def get_unresolved_alarms(cls, retry=True):
+        """Busca alarmes não arquivados da controladora (ex: loops STP, PoE, conflitos)."""
+        if not cls._is_authenticated:
+            if not cls.authenticate():
+                return []
+
+        site = cls.get_active_site()
+        url = urljoin(cls._config["api_url"], f"/api/s/{site}/stat/alarm?archived=false")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                res = cls._session.get(url, timeout=10.0)
+
+            if res.status_code == 200:
+                data = res.json()
+                items = data.get("data", [])
+                filtered = [
+                    a for a in items
+                    if a.get("key") not in ["EVT_AP_Lost_Contact", "EVT_SW_Lost_Contact"]
+                ]
+                return filtered
+            elif res.status_code == 401 and retry:
+                cls._is_authenticated = False
+                if cls.authenticate():
+                    return cls.get_unresolved_alarms(retry=False)
+            return []
+        except Exception as e:
+            print(f"[UnifiService] get_unresolved_alarms Error: {e}")
+            return []
+
+    @classmethod
+    def get_all_users_history(cls, within_hours=24, retry=True):
+        """Busca histórico recente de clientes conhecidos na controladora (para cruzamento de IP e MAC)."""
+        if not cls._is_authenticated:
+            if not cls.authenticate():
+                return []
+
+        site = cls.get_active_site()
+        url = urljoin(cls._config["api_url"], f"/api/s/{site}/stat/alluser?within={within_hours}")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                res = cls._session.get(url, timeout=15.0)
+
+            if res.status_code == 200:
+                data = res.json()
+                return data.get("data", [])
+            elif res.status_code == 401 and retry:
+                cls._is_authenticated = False
+                if cls.authenticate():
+                    return cls.get_all_users_history(within_hours=within_hours, retry=False)
+            return []
+        except Exception as e:
+            print(f"[UnifiService] get_all_users_history Error: {e}")
+            return []
+
+    @classmethod
+    def get_detected_ip_conflicts(cls):
+        """
+        Detecta conflitos de IP ativos e recentes na rede:
+        1. Múltiplos dispositivos conectados com o mesmo IP.
+        2. Dispositivo conectado cujo IP bate com histórico recente de outro cliente com MAC diferente.
+        Retorna dicionário {ip: [lista de dispositivos]}.
+        """
+        from collections import defaultdict
+        clients = cls.get_clients()
+        if not clients:
+            return {}
+
+        devices = cls.get_devices()
+        sw_map = {d.get("mac"): d.get("name") or d.get("model") or "Switch" for d in devices if d.get("mac")}
+        ap_map = {d.get("mac"): d.get("name") or d.get("model") or "AP" for d in devices if d.get("mac")}
+
+        active_ip_map = defaultdict(list)
+        for c in clients:
+            ip = (c.get("ip") or "").strip()
+            mac = (c.get("mac") or "").strip()
+            if ip and ip not in ["0.0.0.0", "127.0.0.1"]:
+                sw_mac = c.get("sw_mac")
+                ap_mac = c.get("ap_mac")
+                c_data = {
+                    "mac": mac,
+                    "name": c.get("name") or c.get("hostname") or c.get("oui") or "Dispositivo",
+                    "hostname": c.get("hostname"),
+                    "ip": ip,
+                    "is_wired": c.get("is_wired", False),
+                    "network": c.get("network") or "Padrão",
+                    "switch_name": sw_map.get(sw_mac, sw_mac or "N/A"),
+                    "switch_port": c.get("sw_port"),
+                    "ap_name": ap_map.get(ap_mac, ap_mac or "N/A"),
+                    "is_active": True,
+                }
+                active_ip_map[ip].append(c_data)
+
+        conflicts = {}
+        # Conflito 1: Mais de um MAC ativo simultaneamente no mesmo IP
+        for ip, dev_list in active_ip_map.items():
+            unique_macs = {d["mac"].lower() for d in dev_list if d.get("mac")}
+            if len(unique_macs) > 1:
+                conflicts[ip] = dev_list
+
+        # Conflito 2: Cruzar cliente ativo com histórico recente de 24h
+        allusers = cls.get_all_users_history(within_hours=24)
+        if allusers:
+            for c in clients:
+                ip = (c.get("ip") or "").strip()
+                mac = (c.get("mac") or "").strip().lower()
+                if not ip or ip in ["0.0.0.0", "127.0.0.1"]:
+                    continue
+
+                other_users = [
+                    u for u in allusers
+                    if (u.get("ip") == ip or u.get("last_ip") == ip)
+                    and (u.get("mac") or "").strip().lower() != mac
+                ]
+                if other_users:
+                    if ip not in conflicts:
+                        sw_mac = c.get("sw_mac")
+                        ap_mac = c.get("ap_mac")
+                        conflicts[ip] = [{
+                            "mac": c.get("mac"),
+                            "name": c.get("name") or c.get("hostname") or c.get("oui") or "Dispositivo",
+                            "hostname": c.get("hostname"),
+                            "ip": ip,
+                            "is_wired": c.get("is_wired", False),
+                            "network": c.get("network") or "Padrão",
+                            "switch_name": sw_map.get(sw_mac, sw_mac or "N/A"),
+                            "switch_port": c.get("sw_port"),
+                            "ap_name": ap_map.get(ap_mac, ap_mac or "N/A"),
+                            "is_active": True,
+                        }]
+                    for ou in other_users:
+                        ou_mac = (ou.get("mac") or "").strip().lower()
+                        if not any(d["mac"].lower() == ou_mac for d in conflicts[ip]):
+                            ou_sw = ou.get("sw_mac")
+                            ou_ap = ou.get("ap_mac")
+                            conflicts[ip].append({
+                                "mac": ou.get("mac"),
+                                "name": ou.get("name") or ou.get("hostname") or ou.get("oui") or "Dispositivo",
+                                "hostname": ou.get("hostname"),
+                                "ip": ip,
+                                "is_wired": ou.get("is_wired", False),
+                                "network": ou.get("network") or "Padrão",
+                                "switch_name": sw_map.get(ou_sw, ou_sw or "N/A"),
+                                "switch_port": ou.get("sw_port"),
+                                "ap_name": ap_map.get(ou_ap, ou_ap or "N/A"),
+                                "is_active": False,
+                                "is_historical": True,
+                            })
+
+        return conflicts
+
 
 def _normalize_mac(mac: str) -> str:
     """Normaliza endereço MAC para comparação segura."""
@@ -441,13 +622,388 @@ def sync_active_unifi_devices(db) -> dict:
                         ticket_id=today_ticket.id,
                     )
 
+        # Executa verificação de alertas críticos e conflitos de IP na controladora
+        critical_res = sync_active_unifi_critical_alarms(db)
+        if isinstance(critical_res, dict):
+            new_tickets_count += critical_res.get("new_tickets", 0)
+            resolved_tickets_count += critical_res.get("resolved_tickets", 0)
+
         return {
             "status": "success",
             "total_devices": len(devices),
             "new_tickets": new_tickets_count,
             "resolved_tickets": resolved_tickets_count,
+            "critical_events": critical_res.get("total_events", 0) if isinstance(critical_res, dict) else 0,
         }
 
     except Exception as e:
         print(f"[UniFi Sync Error] {e}")
         return {"status": "error", "message": str(e)}
+
+
+def sync_active_unifi_critical_alarms(db) -> dict:
+    """
+    Monitora periodicamente QUALQUER alerta crítico registrado na controladora UniFi:
+    1. Conflitos de IP (múltiplos dispositivos disputando o mesmo endereço IP).
+    2. Logs Críticos e Unresolved Events (/v2/api/site/{site}/next-ai/logs):
+       - Servidor DHCP fraudulento (Rogue DHCP) e esgotamento de DHCP
+       - Loops de rede detectados por STP ou keepalive
+       - Falha de energia ou alimentação em switch / RPS
+       - Falhas de internet WAN / Failover LTE
+       - Queda de túneis VPN Site-to-Site
+       - Problemas de servidor RADIUS corporativo ou certificados
+    3. Alarmes de infraestrutura não arquivados (/api/s/{site}/stat/alarm?archived=false):
+       - Portas bloqueadas por STP (Spanning Tree), sobrecarga PoE, anomalias de gateway.
+    """
+    try:
+        from datetime import datetime, timezone, timedelta
+        from sqlalchemy import or_
+        from app.models.integration_config import UnifiConfig
+        from app.models.asset import Asset
+        from app.models.ticket import Ticket, TicketStatus, TicketPriority
+        from app.models.ticket_interaction import TicketInteraction
+        from app.services.email_service import send_noc_dual_notification
+
+        # 1. Verificar configuração ativa
+        config = db.query(UnifiConfig).first()
+        if not config or not config.is_active or not config.api_url:
+            return {"status": "inactive", "message": "Integração UniFi inativa."}
+
+        tz_br = timezone(timedelta(hours=-3))
+        now_br = datetime.now(tz_br)
+        today_start_br = datetime(now_br.year, now_br.month, now_br.day, 0, 0, 0, tzinfo=tz_br)
+        today_start_utc = today_start_br.astimezone(timezone.utc)
+        hora_formatada = now_br.strftime("%d/%m/%Y às %H:%M:%S")
+
+        noc_user = _get_or_create_unifi_system_user(db)
+        imported_assets = db.query(Asset).filter(Asset.is_active == True).all()
+        asset_by_mac = {_normalize_mac(a.mac_address): a for a in imported_assets if a.mac_address}
+        asset_by_ip = {a.ip_address.strip(): a for a in imported_assets if a.ip_address}
+
+        new_tickets_count = 0
+        resolved_tickets_count = 0
+        total_events_count = 0
+
+        # ── 1. CONFLITOS DE IP IDENTIFICADOS NA REDE ──────────────────────────
+        conflicts = UnifiService.get_detected_ip_conflicts()
+        for ip, devs in conflicts.items():
+            total_events_count += 1
+            ticket_tag = f"[NOC UniFi] Conflito de IP: {ip}"
+
+            # Identificar se algum dos dispositivos em conflito está no CMDB
+            matched_asset = None
+            for d in devs:
+                mac_norm = _normalize_mac(d.get("mac"))
+                if mac_norm and mac_norm in asset_by_mac:
+                    matched_asset = asset_by_mac[mac_norm]
+                    break
+            if not matched_asset and ip in asset_by_ip:
+                matched_asset = asset_by_ip[ip]
+
+            # Buscar chamado do dia de hoje para este conflito de IP
+            today_ticket = db.query(Ticket).filter(
+                or_(
+                    Ticket.title == ticket_tag,
+                    Ticket.title.like(f"%[NOC UniFi] Conflito de IP% {ip}%"),
+                ),
+                Ticket.created_at >= today_start_utc,
+            ).order_by(Ticket.created_at.desc()).first()
+
+            # Montar detalhes legíveis dos dispositivos envolvidos
+            dev_lines_md = []
+            dev_lines_wa = []
+            dev_rows_html = []
+            for idx, d in enumerate(devs, 1):
+                name = d.get("name") or d.get("hostname") or "Dispositivo"
+                mac = d.get("mac") or "N/A"
+                sw = d.get("switch_name") or "N/A"
+                port = d.get("switch_port") or "N/A"
+                net = d.get("network") or "Padrão"
+                is_wired = "Cabeado" if d.get("is_wired") else "Wi-Fi"
+                status_disp = "Ativo no momento" if d.get("is_active") else "Histórico Recente"
+
+                dev_lines_md.append(
+                    f"- **Dispositivo {idx}**: {name} | MAC: `{mac}` | Conexão: {is_wired} | "
+                    f"Switch: {sw} (Porta: {port}) | VLAN/Rede: {net} | Situação: {status_disp}"
+                )
+                dev_lines_wa.append(f"• *{name}* (MAC: `{mac}`) no switch *{sw}* (Porta {port}) [{status_disp}]")
+                dev_rows_html.append(
+                    f"<tr><td><strong>{name}</strong></td><td><code>{mac}</code></td>"
+                    f"<td>{sw} (Porta {port})</td><td>{net}</td><td>{status_disp}</td></tr>"
+                )
+
+            devs_summary_md = "\n".join(dev_lines_md)
+            devs_summary_wa = "\n".join(dev_lines_wa)
+            devs_summary_html = "".join(dev_rows_html)
+
+            # Caso A: Chamado já existe no dia
+            if today_ticket:
+                # Se estava fechado ou aguardando validação e o conflito continua, REABRE
+                if today_ticket.status in [TicketStatus.CLOSED, TicketStatus.REJECTED, TicketStatus.PENDING_VALIDATION]:
+                    today_ticket.status = TicketStatus.IN_PROGRESS
+                    today_ticket.closed_at = None
+                    today_ticket.solved_at = None
+                    today_ticket.updated_at = datetime.now(timezone.utc)
+
+                    reopen_note = (
+                        f"🚨 [NOC UniFi] Conflito no IP {ip} detectado novamente às {hora_formatada}!\n"
+                        f"Chamado #{today_ticket.id} reaberto automaticamente pelo monitoramento para intervenção da equipe de TI."
+                    )
+                    interaction = TicketInteraction(
+                        ticket_id=today_ticket.id,
+                        user_id=noc_user.id,
+                        message=reopen_note,
+                        is_solution=False,
+                    )
+                    db.add(interaction)
+                    today_ticket.description = (
+                        str(today_ticket.description)
+                        + f"\n\n---\n⚠️ **Conflito Reincidente ({hora_formatada})**:\n{devs_summary_md}"
+                    )
+                    db.commit()
+                    print(f"[UniFi Poller] Chamado #{today_ticket.id} REABERTO para Conflito de IP {ip}")
+
+                    # Disparo Dual: WhatsApp + E-mail
+                    wa_msg = (
+                        f"⚠️ *ALERTA UNIFI: CONFLITO DE IP REINCIDENTE!* ⚠️\n\n"
+                        f"Vários dispositivos voltaram a disputar o mesmo endereço IP: *{ip}*\n\n"
+                        f"👥 *Dispositivos Envolvidos:*\n{devs_summary_wa}\n\n"
+                        f"🕒 *Horário:* {hora_formatada}\n"
+                        f"🎫 *Chamado #{today_ticket.id} REABERTO!*\n"
+                        f"👉 Atenção equipe de TI: favor intervir para evitar paradas na rede."
+                    )
+                    mail_html = (
+                        f"<p>Vários dispositivos voltaram a disputar o mesmo endereço IP: <strong style='color:#b91c1c;'>{ip}</strong>.</p>"
+                        f"<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse;width:100%;margin:12px 0;'>"
+                        f"<thead><tr style='background:#f3f4f6;'><th>Nome</th><th>MAC</th><th>Switch/Porta</th><th>Rede</th><th>Status</th></tr></thead>"
+                        f"<tbody>{devs_summary_html}</tbody></table>"
+                        f"<p style='color:#b45309;font-weight:bold;'>Chamado #{today_ticket.id} REABERTO automaticamente pelo monitoramento UniFi.</p>"
+                    )
+                    send_noc_dual_notification(
+                        whatsapp_text=wa_msg,
+                        email_subject=f"⚠️ [NOC REABERTO] Conflito de IP: {ip} — Chamado #{today_ticket.id}",
+                        email_title=f"Conflito de IP Reincidente: {ip}",
+                        email_details_html=mail_html,
+                        status_type="warning",
+                        ticket_id=today_ticket.id,
+                    )
+
+            else:
+                # Caso B: Sem chamado no dia -> Abrir novo chamado automático
+                new_ticket = Ticket(
+                    title=ticket_tag,
+                    description=(
+                        f"🚨 **Alerta Automático NOC UniFi: Conflito de Endereço IP detectado na rede!**\n\n"
+                        f"Vários dispositivos estão usando o mesmo endereço IP: **{ip}**.\n\n"
+                        f"**Dispositivos Envolvidos no Conflito:**\n{devs_summary_md}\n\n"
+                        f"**Orientações e Ações Recomendadas para a Equipe de TI:**\n"
+                        f"1. Verifique a configuração de rede de cada equipamento para certificar-se de que nenhum está com IP estático incorreto configurado manualmente em duplicidade.\n"
+                        f"2. Verifique se nenhum dispositivo está se comunicando com um servidor DHCP fraudulento (Rogue DHCP) na rede.\n"
+                        f"3. Caso necessário, utilize a porta do switch indicada acima para isolamento temporário da máquina ou verificação do cabeamento físico.\n\n"
+                        f"🕒 Horário da Detecção: {hora_formatada}\n"
+                        f"Este chamado foi aberto automaticamente pelo monitoramento UniFi para atuação imediata da equipe de TI."
+                    ),
+                    status=TicketStatus.NEW,
+                    priority=TicketPriority.CRITICAL,
+                    requester_id=noc_user.id,
+                    asset_id=matched_asset.id if matched_asset else None,
+                    category_id=matched_asset.category_id if matched_asset else None,
+                    subcategory_id=matched_asset.subcategory_id if matched_asset else None,
+                )
+                db.add(new_ticket)
+                db.commit()
+                db.refresh(new_ticket)
+                new_tickets_count += 1
+                print(f"[UniFi Poller] Chamado #{new_ticket.id} aberto para Conflito de IP: {ip}")
+
+                first_interaction = TicketInteraction(
+                    ticket_id=new_ticket.id,
+                    user_id=noc_user.id,
+                    message=f"🚨 [NOC UniFi] Chamado aberto automaticamente por detecção de conflito no IP {ip} às {hora_formatada}.",
+                    is_solution=False,
+                )
+                db.add(first_interaction)
+                db.commit()
+
+                # Disparo Dual: WhatsApp + E-mail Corporativo
+                wa_msg = (
+                    f"🚨 *ALERTA NOC: CONFLITO DE IP DETECTADO* 🚨\n\n"
+                    f"⚠️ *Descrição:* Vários dispositivos estão usando o mesmo endereço IP: *{ip}*\n"
+                    f"🌐 *IP Conflitante:* {ip}\n\n"
+                    f"👥 *Dispositivos em Conflito:*\n{devs_summary_wa}\n\n"
+                    f"📌 *Recomendação:* Verifique se há IP estático duplicado ou servidor DHCP fraudulento na rede.\n"
+                    f"🕒 *Horário:* {hora_formatada}\n\n"
+                    f"🎫 *Chamado automático aberto:* #{new_ticket.id}"
+                )
+                mail_html = (
+                    f"<p>Alerta Automático NOC UniFi: <strong>Conflito de IP</strong> detectado na rede.</p>"
+                    f"<p>Vários dispositivos estão usando o mesmo endereço IP: <strong style='color:#b91c1c;font-size:16px;'>{ip}</strong>.</p>"
+                    f"<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse;width:100%;margin:12px 0;'>"
+                    f"<thead><tr style='background:#f3f4f6;'><th>Nome</th><th>MAC</th><th>Switch/Porta</th><th>Rede</th><th>Status</th></tr></thead>"
+                    f"<tbody>{devs_summary_html}</tbody></table>"
+                    f"<p><strong>Ação Recomendada:</strong> Verifique as máquinas listadas para garantir que não haja IP estático duplicado ou servidor DHCP fraudulento (Rogue DHCP).</p>"
+                    f"<p style='color:#b91c1c;font-weight:bold;'>Chamado automático aberto: #{new_ticket.id}. Requer intervenção da equipe de TI.</p>"
+                )
+                send_noc_dual_notification(
+                    whatsapp_text=wa_msg,
+                    email_subject=f"🚨 [ALERTA NOC UniFi] Conflito de IP: {ip} — Chamado #{new_ticket.id}",
+                    email_title=f"Conflito de IP na Rede: {ip}",
+                    email_details_html=mail_html,
+                    status_type="danger",
+                    ticket_id=new_ticket.id,
+                )
+
+        # ── 2. LOGS CRÍTICOS DA CONTROLADORA (Next-AI / Critical Logs) ─────────
+        critical_logs = UnifiService.get_critical_logs()
+        for log in critical_logs:
+            total_events_count += 1
+            log_id = str(log.get("id") or log.get("_id") or "")
+            msg = log.get("message") or log.get("event") or log.get("description") or "Alerta Crítico UniFi"
+            category = log.get("category") or "SISTEMA"
+            key = log.get("key") or "CRITICAL_EVENT"
+
+            ticket_tag = f"[NOC UniFi] Evento Crítico: {key}"
+
+            today_ticket = db.query(Ticket).filter(
+                or_(
+                    Ticket.title == ticket_tag,
+                    Ticket.title.like(f"%[NOC UniFi] Evento Crítico% {key}%"),
+                ),
+                Ticket.created_at >= today_start_utc,
+            ).order_by(Ticket.created_at.desc()).first()
+
+            if not today_ticket:
+                new_ticket = Ticket(
+                    title=ticket_tag,
+                    description=(
+                        f"🚨 **Alerta Automático NOC UniFi: Evento Crítico Registrado na Controladora!**\n\n"
+                        f"**Mensagem do Evento:**\n{msg}\n\n"
+                        f"- Categoria: {category}\n"
+                        f"- Chave: {key}\n"
+                        f"- Identificador do Log: {log_id}\n"
+                        f"- Horário: {hora_formatada}\n\n"
+                        f"Este chamado foi aberto automaticamente pelo monitoramento UniFi para atuação imediata da equipe de TI."
+                    ),
+                    status=TicketStatus.NEW,
+                    priority=TicketPriority.CRITICAL,
+                    requester_id=noc_user.id,
+                )
+                db.add(new_ticket)
+                db.commit()
+                db.refresh(new_ticket)
+                new_tickets_count += 1
+
+                first_interaction = TicketInteraction(
+                    ticket_id=new_ticket.id,
+                    user_id=noc_user.id,
+                    message=f"🚨 [NOC UniFi] Chamado aberto automaticamente para o alerta crítico {key} às {hora_formatada}.",
+                    is_solution=False,
+                )
+                db.add(first_interaction)
+                db.commit()
+
+                wa_msg = (
+                    f"🚨 *ALERTA NOC: EVENTO CRÍTICO UNIFI* 🚨\n\n"
+                    f"⚠️ *Alerta:* {key}\n"
+                    f"📝 *Detalhes:* {msg}\n"
+                    f"🕒 *Horário:* {hora_formatada}\n\n"
+                    f"🎫 *Chamado automático aberto:* #{new_ticket.id}"
+                )
+                mail_html = (
+                    f"<p>Alerta Automático NOC UniFi: <strong>Evento Crítico na Controladora</strong>.</p>"
+                    f"<p><strong>Chave:</strong> {key}</p>"
+                    f"<p><strong>Descrição:</strong> {msg}</p>"
+                    f"<p style='color:#b91c1c;font-weight:bold;'>Chamado automático aberto: #{new_ticket.id}. Requer atenção imediata da equipe de TI.</p>"
+                )
+                send_noc_dual_notification(
+                    whatsapp_text=wa_msg,
+                    email_subject=f"🚨 [ALERTA NOC UniFi] {key} — Chamado #{new_ticket.id}",
+                    email_title=f"Alerta Crítico UniFi: {key}",
+                    email_details_html=mail_html,
+                    status_type="danger",
+                    ticket_id=new_ticket.id,
+                )
+
+        # ── 3. ALARMES NÃO ARQUIVADOS DA CONTROLADORA (stat/alarm) ─────────────
+        unresolved_alarms = UnifiService.get_unresolved_alarms()
+        for alarm in unresolved_alarms:
+            total_events_count += 1
+            alarm_id = str(alarm.get("_id") or "")
+            key = alarm.get("key") or "ALARM_UNIFI"
+            msg = alarm.get("msg") or f"Alarme {key} gerado pela controladora UniFi"
+            subsystem = alarm.get("subsystem") or "Geral"
+
+            ticket_tag = f"[NOC UniFi] Alarme: {key}"
+
+            today_ticket = db.query(Ticket).filter(
+                or_(
+                    Ticket.title == ticket_tag,
+                    Ticket.title.like(f"%[NOC UniFi] Alarme% {key}%"),
+                ),
+                Ticket.created_at >= today_start_utc,
+            ).order_by(Ticket.created_at.desc()).first()
+
+            if not today_ticket:
+                prio = TicketPriority.CRITICAL if ("stp" in key.lower() or "conflict" in key.lower() or "rogue" in key.lower()) else TicketPriority.HIGH
+                new_ticket = Ticket(
+                    title=ticket_tag,
+                    description=(
+                        f"🚨 **Alerta Automático NOC UniFi: Alarme Ativo na Controladora!**\n\n"
+                        f"**Mensagem do Alarme:**\n{msg}\n\n"
+                        f"- Subsistema: {subsystem}\n"
+                        f"- Chave: {key}\n"
+                        f"- Identificador: {alarm_id}\n"
+                        f"- Horário: {hora_formatada}\n\n"
+                        f"Este chamado foi aberto automaticamente pelo monitoramento UniFi para investigação e atendimento da equipe de TI."
+                    ),
+                    status=TicketStatus.NEW,
+                    priority=prio,
+                    requester_id=noc_user.id,
+                )
+                db.add(new_ticket)
+                db.commit()
+                db.refresh(new_ticket)
+                new_tickets_count += 1
+
+                first_interaction = TicketInteraction(
+                    ticket_id=new_ticket.id,
+                    user_id=noc_user.id,
+                    message=f"🚨 [NOC UniFi] Chamado aberto automaticamente para o alarme {key} às {hora_formatada}.",
+                    is_solution=False,
+                )
+                db.add(first_interaction)
+                db.commit()
+
+                wa_msg = (
+                    f"🚨 *ALERTA NOC: ALARME ATIVO UNIFI* 🚨\n\n"
+                    f"⚠️ *Alarme:* {key} ({subsystem})\n"
+                    f"📝 *Detalhes:* {msg}\n"
+                    f"🕒 *Horário:* {hora_formatada}\n\n"
+                    f"🎫 *Chamado automático aberto:* #{new_ticket.id}"
+                )
+                mail_html = (
+                    f"<p>Alerta Automático NOC UniFi: <strong>Alarme Ativo na Controladora</strong>.</p>"
+                    f"<p><strong>Chave:</strong> {key} ({subsystem})</p>"
+                    f"<p><strong>Detalhes:</strong> {msg}</p>"
+                    f"<p style='color:#b91c1c;font-weight:bold;'>Chamado automático aberto: #{new_ticket.id}. Requer intervenção da equipe de TI.</p>"
+                )
+                send_noc_dual_notification(
+                    whatsapp_text=wa_msg,
+                    email_subject=f"🚨 [ALERTA NOC UniFi] {key} — Chamado #{new_ticket.id}",
+                    email_title=f"Alarme UniFi: {key}",
+                    email_details_html=mail_html,
+                    status_type="danger" if prio == TicketPriority.CRITICAL else "warning",
+                    ticket_id=new_ticket.id,
+                )
+
+        return {
+            "status": "success",
+            "total_events": total_events_count,
+            "new_tickets": new_tickets_count,
+            "resolved_tickets": resolved_tickets_count,
+        }
+
+    except Exception as e:
+        print(f"[UniFi Critical Alarms Error] {e}")
+        return {"status": "error", "message": str(e)}
+

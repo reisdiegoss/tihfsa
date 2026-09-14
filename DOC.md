@@ -249,10 +249,35 @@ Painel NOC & Topologia de Rede (TV / 4K Ready):
       ```text
       ✅ *UNIFI: DISPOSITIVO RESTABELECIDO!* ✅
       
-      O equipamento *{nome}* ({modelo}) restabeleceu a comunicação com a controladora UniFi e está ONLINE.
+      O equipamento *{nome}* ({modelo}) restabeleceu a comunicação com a controladora UniFi.
       
-      🎫 O chamado *#{ticket.id}* foi atualizado e aguarda validação.
+      🎫 O chamado *#{ticket.id}* está aguardando validação para encerramento.
+      👉 *Atenção equipe de TI: favor validar e finalizar o chamado no painel!*
       ```
+- **Monitoramento Ativo de Conflitos de IP e Alertas Críticos UniFi (Abertura Automática de Chamados & Notificação Dual)**:
+  - **Objetivo**: Detectar proativamente e transformar em chamados de suporte técnico de prioridade **CRÍTICA** qualquer anomalia grave ou evento não resolvido da controladora UniFi antes mesmo de a equipe precisar acessar o painel da controladora.
+  - **Fontes Monitoradas Continuamente no Poller (60s)**:
+    1. **Conflitos de Endereço IP na Rede Local**:
+       - Cruza em tempo real a tabela de clientes conectados (`/stat/sta`) com o histórico recente de leases e dispositivos (`/stat/alluser?within=24`).
+       - Detecta instantaneamente quando múltiplos dispositivos (MAC addresses diferentes) disputam o mesmo IP.
+       - Mapeia com exatidão os nomes dos equipamentos, MACs, rede/VLAN e em qual switch e porta física cada dispositivo está conectado.
+    2. **Logs Críticos e Unresolved Events da Aba "Crítico" (`/v2/api/site/{site}/next-ai/logs`)**:
+       - Servidor DHCP fraudulento na rede (*Rogue DHCP*) e esgotamento de pool DHCP.
+       - Loops de rede detectados por Spanning Tree Protocol (*STP*) ou keepalive.
+       - Quedas de fornecimento elétrico em switch ou fonte redundante (*RPS*).
+       - Falhas severas de conexão de internet WAN e transições de *Failover LTE*.
+       - Quedas de túneis VPN Site-to-Site corporativos.
+       - Problemas de servidor RADIUS corporativo ou expiração iminente de certificados SSL.
+    3. **Alarmes de Infraestrutura Ativos (`/api/s/{site}/stat/alarm?archived=false`)**:
+       - Portas bloqueadas por protocolo Spanning Tree (`EVT_SW_StpPortBlocking`), sobrecarga de energia PoE (`EVT_SW_PoeOverload`), anomalias de gateway e roteamento.
+  - **Regras de Chamado Automático e Idempotência Rigorosa**:
+    - **Criação de Chamado**: Cria chamado de prioridade `Crítica` (`CRITICAL`), status `Novo` (`NEW`), vinculado ao usuário de sistema `Sistema UniFi NOC` e associado ao ativo no CMDB (se identificado por MAC ou IP).
+    - **Idempotência**: Verifica se já existe chamado gerado no dia de hoje (`Ticket.created_at >= today_start_utc`) para o mesmo conflito ou alarme, impedindo a abertura de chamados duplicados a cada ciclo do poller.
+    - **Reabertura Automática em Reincidência**: Caso o chamado do dia tenha sido fechado ou colocado em validação e o alerta crítico ou conflito volte a ocorrer, o chamado é reaberto automaticamente para `Em Andamento` (`IN_PROGRESS`), com registro da reincidência no histórico e notificação de alerta reaberto.
+    - **Auto-Normalização**: Quando o conflito cessa ou o alerta é resolvido na rede, o chamado avança para `Aguardando Validação` (`PENDING_VALIDATION`) com nota explicativa para conferência do técnico.
+  - **Disparo Dual Imediato (WhatsApp Evolution API + E-mail Corporativo)**:
+    - **Notificação no WhatsApp**: Formatação clara com emojis de alerta NOC, IP conflitante, lista de dispositivos concorrentes (com switch e porta física) e recomendações de intervenção técnica.
+    - **E-mail Corporativo**: Mensagem com tabela HTML estilizada e orientações de correção imediata.
   - **Sincronização Integrada em Tempo Real nos Mapas de Rede**: O endpoint `/api/v1/network-maps/` executa a checagem e disparo imediato no instante em que o NOC detecta o nó desconectado no painel visual, sem aguardar o intervalo do background poller.
   - **Isolamento de Chamados por Origem**: A checagem de chamados abertos valida exclusivamente tickets gerados pelo próprio NOC UniFi (`[NOC UniFi]`), evitando que chamados manuais ou de outras origens associados ao ativo bloqueiem o alerta.
   - **Endpoint de Sincronização Manual**: `POST /api/v1/integrations/unifi/sync-devices` disponível para administradores forçarem a checagem imediata.

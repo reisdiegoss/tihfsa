@@ -257,3 +257,18 @@ def trigger_unifi_device_sync(
     result = sync_active_unifi_devices(db)
     return result
 
+
+@router_unifi.post("/sync-alarms")
+def trigger_unifi_alarms_sync(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Executa a sincronização e checagem de alarmes críticos e conflitos de IP sob demanda."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Apenas administradores podem acionar a sincronização.")
+
+    from app.services.unifi_service import sync_active_unifi_critical_alarms
+    result = sync_active_unifi_critical_alarms(db)
+    return result
+
+
