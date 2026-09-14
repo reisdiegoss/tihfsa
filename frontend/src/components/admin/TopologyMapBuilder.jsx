@@ -865,7 +865,7 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   });
 
   const [mapsList, setMapsList] = useState([]);
-  const [selectedMapId, setSelectedMapId] = useState(mapId || null);
+  const [selectedMapId, setSelectedMapId] = useState(mapId ? parseInt(mapId, 10) : null);
   const [assetsList, setAssetsList] = useState([]);
   const [locationsList, setLocationsList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1038,6 +1038,8 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
   const resizingNodeIdRef = useRef(null);
   const isPanningRef = useRef(false);
   const selectedMapIdRef = useRef(selectedMapId);
+  const lastAutoFitMapIdRef = useRef(null);
+  const isFirstRefreshRef = useRef(true);
 
   useEffect(() => {
     selectedMapIdRef.current = selectedMapId;
@@ -1297,7 +1299,34 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     }
   }, [selectedMapId]);
 
-  // Recalcular Fit Tela automaticamente ao redimensionar a tela ou alternar Fullscreen (TV NOC)
+  // Auto-fit garantido após a montagem do canvas e dos cartões no DOM (cold load / URL direta e carrossel)
+  useEffect(() => {
+    if (loading || !mapData.id || !mapData.nodes_data || mapData.nodes_data.length === 0) return;
+
+    if (lastAutoFitMapIdRef.current !== mapData.id) {
+      lastAutoFitMapIdRef.current = mapData.id;
+
+      const runFit = () => {
+        if (!hasUnsavedChangesRef.current && !isPanningRef.current) {
+          handleFitToScreen(mapData.nodes_data, mapData.id);
+        }
+      };
+
+      const rAf = requestAnimationFrame(runFit);
+      const t1 = setTimeout(runFit, 60);
+      const t2 = setTimeout(runFit, 180);
+      const t3 = setTimeout(runFit, 400);
+
+      return () => {
+        cancelAnimationFrame(rAf);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }
+  }, [loading, mapData.id, mapData.nodes_data]);
+
+  // Recalcular Fit Tela automaticamente ao redimensionar o container, tela ou alternar Fullscreen (TV NOC)
   useEffect(() => {
     const handleResize = () => {
       if (mapData.nodes_data && mapData.nodes_data.length > 0 && !hasUnsavedChangesRef.current && !isPanningRef.current) {
@@ -1306,9 +1335,33 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
     };
     window.addEventListener("resize", handleResize);
     document.addEventListener("fullscreenchange", handleResize);
+
+    const el = containerRef.current;
+    let observer = null;
+    let resizeTimer = null;
+    if (el && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.contentRect.width > 100 && entry.contentRect.height > 100) {
+            if (!hasUnsavedChangesRef.current && !isPanningRef.current) {
+              clearTimeout(resizeTimer);
+              resizeTimer = setTimeout(() => {
+                if (mapData.nodes_data && mapData.nodes_data.length > 0 && !hasUnsavedChangesRef.current && !isPanningRef.current) {
+                  handleFitToScreen(mapData.nodes_data, selectedMapId);
+                }
+              }, 80);
+            }
+          }
+        }
+      });
+      observer.observe(el);
+    }
+
     return () => {
       window.removeEventListener("resize", handleResize);
       document.removeEventListener("fullscreenchange", handleResize);
+      if (resizeTimer) clearTimeout(resizeTimer);
+      if (observer) observer.disconnect();
     };
   }, [mapData.nodes_data, selectedMapId]);
 
@@ -1323,6 +1376,10 @@ export default function TopologyMapBuilder({ mapId, isPublicView = false, onMapL
 
   // Disparo de sincronização externa (acionado pelo countdown da tela pública/TV ou botão atualizar)
   useEffect(() => {
+    if (isFirstRefreshRef.current) {
+      isFirstRefreshRef.current = false;
+      return;
+    }
     if (!refreshTrigger || !selectedMapId) return;
     if (draggingNodeIdRef.current || draggingZoneIdRef.current || isPanningRef.current || resizingNodeIdRef.current) return;
 

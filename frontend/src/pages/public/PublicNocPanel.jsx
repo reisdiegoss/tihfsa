@@ -46,7 +46,7 @@ export default function PublicNocPanel() {
   const locationId = searchParams.get("location_id") || "";
   const assetType = searchParams.get("type") || "Todos";
   const statusFilter = searchParams.get("status") || "Todos";
-  const viewMode = searchParams.get("view") || "grid"; // 'grid', 'compact', 'map'
+  const viewMode = searchParams.get("view") || (searchParams.get("map_id") || searchParams.get("carousel") === "true" ? "map" : "grid"); // 'grid', 'compact', 'map'
   const mapId = searchParams.get("map_id") || "";
   const refreshIntervalSec = parseInt(searchParams.get("refresh") || "15", 10);
 
