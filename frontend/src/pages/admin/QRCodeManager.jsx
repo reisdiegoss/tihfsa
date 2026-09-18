@@ -1,43 +1,13 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
-  QrCode, Plus, Search, Filter, RefreshCw, Wifi, Laptop, 
-  Download, Edit2, Trash2, Image as ImageIcon, CheckCircle2, 
-  Layers, ExternalLink, Calendar, MapPin, User, Building2, AlertCircle
+  QrCode, Plus, Search, RefreshCw, Wifi, Laptop, 
+  Edit2, Trash2, Image as ImageIcon, Calendar, 
+  MapPin, User, Building2, CheckCircle2, ShieldCheck, Download
 } from "lucide-react";
 import api from "../../api/client";
-import { formatWifiPayload, formatEquipmentPayload, renderQRCodeToCanvas } from "../../utils/qrGenerator";
 import QRCodeFormModal from "../../components/admin/QRCodeFormModal";
 import QRCodeExportModal from "../../components/admin/QRCodeExportModal";
 import QRCodeLogoModal from "../../components/admin/QRCodeLogoModal";
-
-// Sub-componente para renderizar a miniatura do QR Code em cada card
-function QRCodeThumbnail({ item, defaultLogoUrl }) {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    if (!canvasRef.current || !item) return;
-
-    let payloadText = "";
-    if (item.type === "wifi") {
-      payloadText = formatWifiPayload(item.ssid, item.password, item.security_type, item.is_hidden);
-    } else {
-      payloadText = formatEquipmentPayload(item);
-    }
-
-    renderQRCodeToCanvas(canvasRef.current, {
-      text: payloadText,
-      size: 160,
-      logoUrl: item.logo_url || defaultLogoUrl,
-      includeLogo: item.include_logo !== false,
-    });
-  }, [item, defaultLogoUrl]);
-
-  return (
-    <div className="w-20 h-20 bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-center shrink-0">
-      <canvas ref={canvasRef} className="w-full h-full object-contain rounded-lg" />
-    </div>
-  );
-}
 
 export default function QRCodeManager() {
   const [items, setItems] = useState([]);
@@ -127,8 +97,8 @@ export default function QRCodeManager() {
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
               <QrCode size={22} />
             </div>
             <div>
@@ -136,7 +106,7 @@ export default function QRCodeManager() {
                 Gerenciador de QR Codes
               </h1>
               <p className="text-xs font-semibold text-slate-400">
-                Emissão de QR Codes para Equipamentos e Conexão Wi-Fi de Eventos
+                Emissão e cadastro de QR Codes para Equipamentos e Conexão Wi-Fi de Eventos
               </p>
             </div>
           </div>
@@ -174,7 +144,7 @@ export default function QRCodeManager() {
             <p className="text-2xl font-black text-slate-900 mt-1">{items.length}</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-            <QrCode size={24} />
+            <QrCode size={22} />
           </div>
         </div>
 
@@ -184,7 +154,7 @@ export default function QRCodeManager() {
             <p className="text-2xl font-black text-blue-600 mt-1">{wifiCount}</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-            <Wifi size={24} />
+            <Wifi size={22} />
           </div>
         </div>
 
@@ -194,15 +164,15 @@ export default function QRCodeManager() {
             <p className="text-2xl font-black text-emerald-600 mt-1">{equipCount}</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <Laptop size={24} />
+            <Laptop size={22} />
           </div>
         </div>
       </div>
 
-      {/* Filtros e Busca */}
+      {/* Barra de Filtros e Busca */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* Barra de Busca */}
-        <div className="flex items-center gap-2.5 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl w-full md:w-96 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
+        {/* Campo de Busca */}
+        <div className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl w-full md:w-96 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
           <Search size={16} className="text-slate-400 shrink-0" />
           <input
             type="text"
@@ -217,7 +187,7 @@ export default function QRCodeManager() {
         <div className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-full md:w-auto">
           <button
             onClick={() => setSelectedType("all")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               selectedType === "all"
                 ? "bg-white text-slate-900 shadow-xs"
                 : "text-slate-500 hover:text-slate-800"
@@ -227,7 +197,7 @@ export default function QRCodeManager() {
           </button>
           <button
             onClick={() => setSelectedType("wifi")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
               selectedType === "wifi"
                 ? "bg-white text-blue-700 shadow-xs"
                 : "text-slate-500 hover:text-slate-800"
@@ -238,7 +208,7 @@ export default function QRCodeManager() {
           </button>
           <button
             onClick={() => setSelectedType("equipment")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
               selectedType === "equipment"
                 ? "bg-white text-emerald-700 shadow-xs"
                 : "text-slate-500 hover:text-slate-800"
@@ -250,7 +220,7 @@ export default function QRCodeManager() {
         </div>
       </div>
 
-      {/* Grid de Cards de QR Codes */}
+      {/* Tabela Limpa e Elegante */}
       {loading ? (
         <div className="bg-white p-12 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col items-center justify-center text-center">
           <RefreshCw size={28} className="animate-spin text-blue-600 mb-3" />
@@ -272,126 +242,159 @@ export default function QRCodeManager() {
               setEditingItem(null);
               setFormModalOpen(true);
             }}
-            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer"
           >
             + Cadastrar Novo QR Code
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredItems.map((item) => {
-            const isWifi = item.type === "wifi";
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/60">
+                  <th className="py-4 px-6">Tipo & Código</th>
+                  <th className="py-4 px-6">Título / Evento</th>
+                  <th className="py-4 px-6">Parâmetros de Conexão / Item</th>
+                  <th className="py-4 px-6">Data de Criação</th>
+                  <th className="py-4 px-6 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-sm">
+                {filteredItems.map((item) => {
+                  const isWifi = item.type === "wifi";
 
-            return (
-              <div
-                key={item.id}
-                className="bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md hover:border-slate-300 transition-all p-5 flex flex-col justify-between group"
-              >
-                <div>
-                  {/* Topo do Card com Badge e Ações Rápidas */}
-                  <div className="flex items-start justify-between gap-3 mb-3.5">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold ${
-                      isWifi
-                        ? "bg-blue-50 text-blue-700 border border-blue-100"
-                        : "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                    }`}>
-                      {isWifi ? <Wifi size={12} /> : <Laptop size={12} />}
-                      {isWifi ? "Wi-Fi Evento" : "Equipamento"}
-                    </span>
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-slate-50/80 transition-colors group"
+                    >
+                      {/* Tipo & Código */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                            isWifi ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
+                          }`}>
+                            {isWifi ? <Wifi size={19} /> : <Laptop size={19} />}
+                          </div>
+                          <div>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              isWifi ? "bg-blue-50 text-blue-700 border border-blue-100" : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                            }`}>
+                              {isWifi ? "Wi-Fi Evento" : "Equipamento"}
+                            </span>
+                            <p className="text-xs font-mono font-bold text-slate-600 mt-0.5">
+                              {item.code}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
 
-                    <span className="text-[10px] font-bold font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
-                      {item.code}
-                    </span>
-                  </div>
-
-                  {/* Corpo: Miniatura QR + Informações Principais */}
-                  <div className="flex items-center gap-3.5 mb-4">
-                    <QRCodeThumbnail item={item} defaultLogoUrl={defaultLogoUrl} />
-
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-sm font-extrabold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
-                        {item.title}
-                      </h3>
-                      <p className="text-[11px] font-semibold text-slate-400 truncate">
-                        {item.company || "Hotel Fasano Salvador"}
-                      </p>
-
-                      {isWifi ? (
-                        <div className="mt-1.5 space-y-0.5 text-xs">
-                          <p className="text-slate-700 font-bold truncate">
-                            <span className="text-slate-400 font-normal">SSID:</span> {item.ssid}
+                      {/* Título & Empresa */}
+                      <td className="py-4 px-6">
+                        <div className="max-w-xs sm:max-w-sm">
+                          <p className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors text-sm">
+                            {item.title}
                           </p>
-                          <p className="text-slate-500 text-[11px] truncate">
-                            <span className="text-slate-400">Senha:</span> {item.password || "Aberta"}
+                          <p className="text-xs text-slate-400 font-medium mt-0.5">
+                            {item.company || "Hotel Fasano Salvador"}
                           </p>
                         </div>
-                      ) : (
-                        <div className="mt-1.5 space-y-0.5 text-xs">
-                          <p className="text-slate-700 font-bold truncate">
-                            <span className="text-slate-400 font-normal">Item:</span> {item.asset_name || "—"}
-                          </p>
-                          <p className="text-slate-500 text-[11px] truncate">
-                            <span className="text-slate-400">Resp:</span> {item.collaborator || "—"}
-                          </p>
+                      </td>
+
+                      {/* Parâmetros Específicos */}
+                      <td className="py-4 px-6">
+                        {isWifi ? (
+                          <div className="text-xs space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-400 font-medium">SSID:</span>
+                              <span className="font-extrabold text-slate-800 font-mono">{item.ssid}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+                              <span className="text-slate-400">Senha:</span>
+                              <span className="font-mono">{item.password || "Aberta"}</span>
+                              {item.security_type && (
+                                <span className="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-semibold">
+                                  {item.security_type}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-400 font-medium">Equipamento:</span>
+                              <span className="font-bold text-slate-800">{item.asset_name || item.title}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+                              <span className="text-slate-400">Responsável:</span>
+                              <span>{item.collaborator || "—"}</span>
+                              {item.brand && (
+                                <span className="text-slate-400">• {item.brand} {item.model || ""}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Data de Registro */}
+                      <td className="py-4 px-6 whitespace-nowrap text-xs text-slate-500">
+                        {item.created_at ? (
+                          <div>
+                            <p className="font-semibold text-slate-700">
+                              {new Date(item.created_at).toLocaleDateString("pt-BR")}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              {new Date(item.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+
+                      {/* Ações */}
+                      <td className="py-4 px-6 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedExportItem(item);
+                              setExportModalOpen(true);
+                            }}
+                            className="px-3.5 py-2 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs group/btn"
+                            title="Visualizar QR Code, ajustar resolução e baixar imagem ou imprimir display de mesa"
+                          >
+                            <QrCode size={14} className="text-blue-600 group-hover/btn:text-white transition-colors" />
+                            <span>Emitir / Baixar</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setEditingItem(item);
+                              setFormModalOpen(true);
+                            }}
+                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer"
+                            title="Editar informações deste QR Code"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            disabled={deletingId === item.id}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+                            title="Excluir QR Code"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Detalhes extras */}
-                  <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-500 space-y-1">
-                    {item.address && (
-                      <p className="flex items-center gap-1.5 truncate">
-                        <MapPin size={12} className="text-slate-400 shrink-0" />
-                        <span className="truncate">{item.address}</span>
-                      </p>
-                    )}
-                    {item.created_at && (
-                      <p className="flex items-center gap-1.5 text-slate-400 text-[10px]">
-                        <Calendar size={12} className="shrink-0" />
-                        <span>Criado em {new Date(item.created_at).toLocaleDateString("pt-BR")}</span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Barra de Ações no Rodapé do Card */}
-                <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedExportItem(item);
-                      setExportModalOpen(true);
-                    }}
-                    className="flex-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                    title="Emitir, ajustar resolução e baixar imagem ou imprimir display de mesa"
-                  >
-                    <Download size={13} />
-                    <span>Emitir / Baixar</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setEditingItem(item);
-                      setFormModalOpen(true);
-                    }}
-                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer"
-                    title="Editar informações deste QR Code"
-                  >
-                    <Edit2 size={15} />
-                  </button>
-
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    disabled={deletingId === item.id}
-                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
-                    title="Excluir QR Code"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
