@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, LogOut, Settings } from "lucide-react";
+import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, QrCode, LogOut, Settings } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function Sidebar() {
@@ -10,6 +10,7 @@ export default function Sidebar() {
     { name: "Chamados", path: "/admin/tickets", icon: Ticket },
     { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle },
     { name: "Ativos", path: "/admin/assets", icon: Monitor },
+    { name: "QR Codes", path: "/admin/qrcodes", icon: QrCode },
     { name: "Monitoramento", path: "/admin/zabbix", icon: Activity },
     { name: "Configurações", path: "/admin/settings", icon: Settings },
   ];

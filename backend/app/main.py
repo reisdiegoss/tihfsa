@@ -16,9 +16,10 @@ from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
-    attachments, departments, ad_import, locations, asset_types, network_maps, integrations
+    attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes
 )
 import app.models.network_map  # noqa: F401
+import app.models.qrcode       # noqa: F401
 
 # Criar pasta uploads se não existir
 os.makedirs("uploads", exist_ok=True)
@@ -254,6 +255,34 @@ async def lifespan(app: FastAPI):
                     auto_notify_whatsapp BOOLEAN DEFAULT TRUE,
                     auto_notify_email BOOLEAN DEFAULT TRUE
                 );
+                CREATE TABLE IF NOT EXISTS qrcodes (
+                    id SERIAL PRIMARY KEY,
+                    code VARCHAR(32) UNIQUE NOT NULL,
+                    type VARCHAR(20) NOT NULL DEFAULT 'equipment',
+                    title VARCHAR(200) NOT NULL,
+                    company VARCHAR(150),
+                    ssid VARCHAR(100),
+                    password VARCHAR(100),
+                    security_type VARCHAR(20) DEFAULT 'WPA',
+                    is_hidden BOOLEAN DEFAULT FALSE,
+                    collaborator VARCHAR(150),
+                    asset_name VARCHAR(150),
+                    brand VARCHAR(100),
+                    model VARCHAR(100),
+                    address VARCHAR(255),
+                    message TEXT,
+                    asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+                    logo_url VARCHAR(500),
+                    include_logo BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+                );
+                CREATE TABLE IF NOT EXISTS qrcode_config (
+                    id SERIAL PRIMARY KEY,
+                    default_logo_url VARCHAR(500),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
             """))
             conn.commit()
     except Exception as e:
@@ -314,6 +343,7 @@ app.include_router(asset_types.router)
 app.include_router(network_maps.router)
 app.include_router(integrations.router)
 app.include_router(integrations.router_unifi)
+app.include_router(qrcodes.router)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

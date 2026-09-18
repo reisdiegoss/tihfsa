@@ -43,8 +43,10 @@ function RootRedirect() {
   return <Navigate to="/admin" replace />;
 }
 
-// Public Wallboard / TV NOC Page
+// Public Wallboard / TV NOC Page & QR Code Tag
 import PublicNocPanel from "./pages/public/PublicNocPanel";
+import PublicAssetTag from "./pages/public/PublicAssetTag";
+import QRCodeManager from "./pages/admin/QRCodeManager";
 
 export default function App() {
   return (
@@ -54,6 +56,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/noc" element={<PublicNocPanel />} />
           <Route path="/noc/public" element={<PublicNocPanel />} />
+          <Route path="/qr/:code" element={<PublicAssetTag />} />
           <Route path="/" element={<RootRedirect />} />
           
           {/* Main Admin UI Route */}
@@ -66,6 +69,7 @@ export default function App() {
             <Route path="tickets" element={<TicketList />} />
             <Route path="tickets/new" element={<NewTicket />} />
             <Route path="assets" element={<Assets />} />
+            <Route path="qrcodes" element={<QRCodeManager />} />
             <Route path="zabbix" element={<ZabbixPanel />} />
             <Route path="settings" element={<Settings />} />
             <Route path="ad-import" element={<Navigate to="/admin/settings" replace />} />

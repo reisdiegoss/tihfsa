@@ -514,5 +514,24 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Rota protegida por autenticação JWT (`get_current_user`), aplicando as regras de perfil do sistema: administradores e técnicos têm visibilidade de todos os eventos; usuários comuns recebem notificações apenas dos seus próprios chamados.
       - Retorna os contadores consolidados (`active_count`, `critical_count`, `pending_validation_count`) e os 25 itens mais recentes enriquecidos com categoria, prioridade, status, data de criação e flag indicativo de NOC.
 
-
-
+22. **Módulo de Emissão e Gestão de QR Codes (Equipamentos & Wi-Fi de Eventos)**:
+    - **Menu no Painel Administrativo**: Adicionado o menu **"QR Codes"** na barra lateral (`Sidebar.jsx`) apontando para `/admin/qrcodes`.
+    - **Persistência Completa de Registros**:
+      - Todos os QR Codes emitidos são salvos no banco de dados na tabela `qrcodes`, permitindo busca, edição de dados posteriores (ex.: troca de senha de Wi-Fi de eventos ou alteração de responsável pelo equipamento), reemissão e exclusão.
+    - **Logo Central da Empresa com Correção de Erro Nível H (30%)**:
+      - Modal dedicado (`QRCodeLogoModal.jsx`) para upload de imagem PNG com fundo transparente (`POST /api/v1/qrcodes/logo`), com persistência da logo padrão na tabela `qrcode_config`.
+      - Renderização em tempo real da logo sobreposta no centro do QR Code via Canvas, com fundo branco arredondado e tolerância de erro `H` para garantir leitura instantânea e sem falhas.
+    - **QR Code de Equipamentos (Universal iOS e Android)**:
+      - Campos suportados: Colaborador, Nome do Equipamento / Hostname / Patrimônio, Marca, Modelo, Empresa, Endereço/Localização e Mensagem personalizada.
+      - Ao escanear com a câmera nativa de qualquer smartphone (iPhone/iOS ou Android), o aparelho abre a ficha web pública e responsiva (`/qr/:code`), exibindo o selo de autenticidade, logo da empresa, especificações e dados de contato.
+      - Endpoint público sem login: `GET /api/v1/qrcodes/public/{code}`.
+    - **QR Code de Wi-Fi para Eventos (Conexão Automática)**:
+      - Padrão nativo industrial: `WIFI:T:WPA;S:{SSID};P:{SENHA};H:{OCULTA};;`.
+      - Câmeras do iOS e Android reconhecem instantaneamente e conectam com 1 toque, sem digitação de senha.
+    - **Ajuste de Resolução para Download & Impressão de Display de Mesa**:
+      - Seletor de dimensões de imagem PNG em alta resolução:
+        - `256 x 256 px` (Miniatura / Web)
+        - `512 x 512 px` (Crachás e Etiquetas)
+        - `1024 x 1024 px` (Placas de Mesa e Displays)
+        - `2048 x 2048 px` (Totens e Banners em Ultra Definição)
+      - Botão "Imprimir Display de Mesa" formatado para papel (A4/A5) com layout corporativo elegante para mesas de convenções e recepção.

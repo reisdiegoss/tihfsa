@@ -11,6 +11,7 @@ from app.models.problem_type import ProblemType
 from app.models.asset_type import AssetTypeModel
 from app.models.integration_config import EvolutionConfig
 from app.models.network_map import NetworkMap
+from app.models.qrcode import QRCodeItem, QRCodeConfig
 
 __all__ = [
     "User",
@@ -26,4 +27,7 @@ __all__ = [
     "AssetTypeModel",
     "EvolutionConfig",
     "NetworkMap",
+    "QRCodeItem",
+    "QRCodeConfig",
 ]
+
