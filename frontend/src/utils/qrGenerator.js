@@ -11,22 +11,46 @@ export function formatWifiPayload(ssid, password, securityType = "WPA", isHidden
 }
 
 /**
- * Formata o payload para Equipamento.
- * Se tiver code, gera a URL pública (/qr/:code) que é aberta nativamente por iOS e Android.
+ * Formata o texto estruturado para leitura direta na câmera do celular (iOS / Android / Bloco de Notas)
  */
-export function formatEquipmentPayload(item, origin = window.location.origin) {
+export function formatEquipmentText(item) {
+  const parts = [];
+  const company = item.company || "Hotel Fasano Salvador";
+  parts.push(`[FICHA DE EQUIPAMENTO]`);
+  parts.push(`Empresa: ${company}`);
+  if (item.asset_name || item.title) {
+    parts.push(`Equipamento: ${item.asset_name || item.title}`);
+  }
+  if (item.collaborator) {
+    parts.push(`Colaborador: ${item.collaborator}`);
+  }
+  const brandModel = [item.brand, item.model].filter(Boolean).join(" ");
+  if (brandModel) {
+    parts.push(`Marca/Modelo: ${brandModel}`);
+  }
+  if (item.address) {
+    parts.push(`Local: ${item.address}`);
+  }
+  if (item.message) {
+    parts.push(`Instruções: ${item.message}`);
+  }
   if (item.code) {
+    parts.push(`Patrimônio/Tag: ${item.code}`);
+  }
+  return parts.join("\n");
+}
+
+/**
+ * Formata o payload para Equipamento.
+ * Por padrão, usa Texto Estruturado (abre direto na câmera/bloco de notas do iOS/Android).
+ * Se o modo for "url", retorna o link da página web.
+ */
+export function formatEquipmentPayload(item, modeOverride = null, origin = window.location.origin) {
+  const mode = modeOverride || item.encode_mode || "text";
+  if (mode === "url" && item.code) {
     return `${origin}/qr/${item.code}`;
   }
-  // Fallback para texto caso não tenha code
-  return [
-    `[EQUIPAMENTO - ${item.company || "HOTEL FASANO SALVADOR"}]`,
-    `Equipamento/Patrimônio: ${item.asset_name || item.title || "—"}`,
-    `Colaborador/Responsável: ${item.collaborator || "—"}`,
-    `Marca/Modelo: ${[item.brand, item.model].filter(Boolean).join(" ") || "—"}`,
-    `Endereço/Localização: ${item.address || "—"}`,
-    item.message ? `Mensagem: ${item.message}` : "",
-  ].filter(Boolean).join("\n");
+  return formatEquipmentText(item);
 }
 
 /**

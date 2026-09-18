@@ -259,6 +259,7 @@ async def lifespan(app: FastAPI):
                     id SERIAL PRIMARY KEY,
                     code VARCHAR(32) UNIQUE NOT NULL,
                     type VARCHAR(20) NOT NULL DEFAULT 'equipment',
+                    encode_mode VARCHAR(20) DEFAULT 'text',
                     title VARCHAR(200) NOT NULL,
                     company VARCHAR(150),
                     ssid VARCHAR(100),
@@ -284,6 +285,7 @@ async def lifespan(app: FastAPI):
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
             """))
+            conn.execute(text("ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS encode_mode VARCHAR(20) DEFAULT 'text';"))
             conn.commit()
     except Exception as e:
         print(f"[DB Auto-Migration Error] {e}")

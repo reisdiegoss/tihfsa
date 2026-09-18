@@ -521,9 +521,10 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Logo Central da Empresa com Correção de Erro Nível H (30%)**:
       - Modal dedicado (`QRCodeLogoModal.jsx`) para upload de imagem PNG com fundo transparente (`POST /api/v1/qrcodes/logo`), com persistência da logo padrão na tabela `qrcode_config`.
       - Renderização em tempo real da logo sobreposta no centro do QR Code via Canvas, com fundo branco arredondado e tolerância de erro `H` para garantir leitura instantânea e sem falhas.
-    - **QR Code de Equipamentos (Universal iOS e Android)**:
+    - **QR Code de Equipamentos (Modal de Alerta com Botão OK & Leitura Direta)**:
       - Campos suportados: Colaborador, Nome do Equipamento / Hostname / Patrimônio, Marca, Modelo, Empresa, Endereço/Localização e Mensagem personalizada.
-      - Ao escanear com a câmera nativa de qualquer smartphone (iPhone/iOS ou Android), o aparelho abre a ficha web pública e responsiva (`/qr/:code`), exibindo o selo de autenticidade, logo da empresa, especificações e dados de contato.
+      - **Modo Texto Puro / Bloco de Notas (100% Offline)**: O QR Code armazena diretamente o texto estruturado, permitindo que a câmera nativa do iPhone (iOS) ou Android abra imediatamente um modal nativo do sistema com as informações e botões de "OK", "Copiar" e "Compartilhar com Notas/Bloco de Notas", sem depender de conexão de rede ou IP local.
+      - **Modal de Alerta na Web (`/qr/:code`)**: Caso acessado via navegador, a tela é estruturada como um modal de diálogo limpo e centrado estilo alerta de sistema, com a logo da empresa, dados do equipamento e um botão destacado **"OK"** que confirma a leitura e copia os dados para a área de transferência.
       - Endpoint público sem login: `GET /api/v1/qrcodes/public/{code}`.
     - **QR Code de Wi-Fi para Eventos (Conexão Automática)**:
       - Padrão nativo industrial: `WIFI:T:WPA;S:{SSID};P:{SENHA};H:{OCULTA};;`.
@@ -534,4 +535,5 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - `512 x 512 px` (Crachás e Etiquetas)
         - `1024 x 1024 px` (Placas de Mesa e Displays)
         - `2048 x 2048 px` (Totens e Banners em Ultra Definição)
-      - Botão "Imprimir Display de Mesa" formatado para papel (A4/A5) com layout corporativo elegante para mesas de convenções e recepção.
+      - Botão "Imprimir Display de Mesa" formatado para papel (A4/A5) com layout corporativo elegante para mesas de convenções e recepção, com opção de exibir ou ocultar a senha da rede na impressão.
+

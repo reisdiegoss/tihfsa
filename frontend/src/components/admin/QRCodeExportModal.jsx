@@ -3,7 +3,7 @@ import {
   X, Download, Printer, Wifi, Laptop, CheckCircle2, 
   Sparkles, Sliders, Layers, ArrowDownToLine, RefreshCw, ExternalLink 
 } from "lucide-react";
-import { formatWifiPayload, formatEquipmentPayload, renderQRCodeToCanvas } from "../../utils/qrGenerator";
+import { formatWifiPayload, formatEquipmentPayload, formatEquipmentText, renderQRCodeToCanvas } from "../../utils/qrGenerator";
 
 export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUrl }) {
   const [downloadSize, setDownloadSize] = useState(1024); // 256 | 512 | 1024 | 2048
@@ -11,6 +11,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [printMode, setPrintMode] = useState(false);
   const [showPasswordOnPlacard, setShowPasswordOnPlacard] = useState(true);
+  const [equipmentMode, setEquipmentMode] = useState("text"); // "text" (Bloco de Notas) | "url"
   const [qrDataUrl, setQrDataUrl] = useState("");
 
   const previewCanvasRef = useRef(null);
@@ -18,13 +19,20 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
 
   const isWifi = item?.type === "wifi";
 
+  // Sincroniza modo padrão do item ao abrir
+  useEffect(() => {
+    if (item) {
+      setEquipmentMode(item.encode_mode || "text");
+    }
+  }, [isOpen, item]);
+
   // Gera o texto bruto a ser codificado no QR
   const getPayloadText = () => {
     if (!item) return "";
     if (isWifi) {
       return formatWifiPayload(item.ssid, item.password, item.security_type, item.is_hidden);
     }
-    return formatEquipmentPayload(item);
+    return formatEquipmentPayload(item, equipmentMode);
   };
 
   // Renderiza preview em tela e gera imagem para impressão
@@ -51,7 +59,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
         }
       }
     });
-  }, [isOpen, item, defaultLogoUrl]);
+  }, [isOpen, item, defaultLogoUrl, equipmentMode]);
 
   // Função para download no tamanho selecionado
   const handleDownload = async () => {
@@ -294,6 +302,44 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </div>
           )}
 
+          {/* Opção para Equipamento: Texto (Bloco de Notas) ou Link Web */}
+          {!isWifi && (
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
+              <div>
+                <p className="text-xs font-bold text-slate-800">Formato dos Dados no QR Code</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {equipmentMode === "text"
+                    ? "Texto / Bloco de Notas: O celular lê as informações e exibe na tela com opção de salvar direto nas Notas ou Copiar (100% offline, sem depender de rede local ou IP)."
+                    : "Link Web: O celular abre o navegador na ficha digital pública do sistema."}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEquipmentMode("text")}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    equipmentMode === "text"
+                      ? "bg-white text-emerald-700 shadow-xs border border-slate-200"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <span>📝 Texto / Bloco de Notas</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEquipmentMode("url")}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    equipmentMode === "url"
+                      ? "bg-white text-blue-700 shadow-xs border border-slate-200"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <span>🌐 Link Web</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Destaque de Conexão ou Dados */}
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-1 text-slate-600">
             {isWifi ? (
@@ -311,9 +357,22 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
               </>
             ) : (
               <>
-                <p><strong>Ficha Digital:</strong> {window.location.origin}/qr/{item.code}</p>
-                <p><strong>Responsável:</strong> {item.collaborator || "—"}</p>
-                <p><strong>Patrimônio/Nome:</strong> {item.asset_name || "—"}</p>
+                {equipmentMode === "text" ? (
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Conteúdo lido pela câmera do celular:
+                    </p>
+                    <pre className="font-mono text-[11px] text-slate-700 whitespace-pre-wrap bg-white p-2.5 rounded-xl border border-slate-200/80">
+                      {formatEquipmentText(item)}
+                    </pre>
+                  </div>
+                ) : (
+                  <>
+                    <p><strong>Ficha Digital:</strong> {window.location.origin}/qr/{item.code}</p>
+                    <p><strong>Responsável:</strong> {item.collaborator || "—"}</p>
+                    <p><strong>Patrimônio/Nome:</strong> {item.asset_name || "—"}</p>
+                  </>
+                )}
               </>
             )}
           </div>
