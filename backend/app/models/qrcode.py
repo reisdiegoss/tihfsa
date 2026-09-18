@@ -33,7 +33,7 @@ class QRCodeItem(Base):
     asset_id = Column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
 
     # Personalização Visual e Modo de Codificação
-    encode_mode = Column(String(20), default="text")                   # "text" (Bloco de Notas/Texto puro) | "url" (Link Web)
+    encode_mode = Column(String(20), default="url")                    # "url" (Modal de Alerta Web) | "text" (Texto Puro)
     logo_url = Column(String(500), nullable=True)                       # URL da logo centralizada
     include_logo = Column(Boolean, default=True)
 

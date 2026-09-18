@@ -29,7 +29,7 @@ os.makedirs(UPLOAD_LOGOS_DIR, exist_ok=True)
 
 class QRCodeCreate(BaseModel):
     type: str = "equipment"  # "equipment" | "wifi"
-    encode_mode: Optional[str] = "text"  # "text" (Bloco de Notas/Texto puro) | "url" (Link Web)
+    encode_mode: Optional[str] = "url"  # "url" (Modal de Alerta Web) | "text" (Texto Puro)
     title: str
     company: Optional[str] = "Hotel Fasano Salvador"
 
@@ -116,7 +116,7 @@ def _format_item(item: QRCodeItem) -> dict:
         "id": item.id,
         "code": item.code,
         "type": item.type,
-        "encode_mode": getattr(item, "encode_mode", "text") or "text",
+        "encode_mode": getattr(item, "encode_mode", "url") or "url",
         "title": item.title,
         "company": item.company,
         "ssid": item.ssid,
@@ -198,7 +198,7 @@ def create_qrcode(
     item = QRCodeItem(
         code=code,
         type=payload.type,
-        encode_mode=payload.encode_mode or "text",
+        encode_mode=payload.encode_mode or "url",
         title=payload.title,
         company=payload.company or "Hotel Fasano Salvador",
         ssid=payload.ssid,

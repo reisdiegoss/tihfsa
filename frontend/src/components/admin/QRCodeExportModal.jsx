@@ -11,7 +11,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [printMode, setPrintMode] = useState(false);
   const [showPasswordOnPlacard, setShowPasswordOnPlacard] = useState(true);
-  const [equipmentMode, setEquipmentMode] = useState("text"); // "text" (Bloco de Notas) | "url"
+  const [equipmentMode, setEquipmentMode] = useState("url"); // "url" (Modal de Alerta Web) | "text" (Texto Puro)
   const [qrDataUrl, setQrDataUrl] = useState("");
 
   const previewCanvasRef = useRef(null);
@@ -22,7 +22,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   // Sincroniza modo padrão do item ao abrir
   useEffect(() => {
     if (item) {
-      setEquipmentMode(item.encode_mode || "text");
+      setEquipmentMode(item.encode_mode || "url");
     }
   }, [isOpen, item]);
 
@@ -302,39 +302,39 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </div>
           )}
 
-          {/* Opção para Equipamento: Texto (Bloco de Notas) ou Link Web */}
+          {/* Opção para Equipamento: Modal de Alerta Web (Recomendado) ou Texto Puro */}
           {!isWifi && (
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
               <div>
                 <p className="text-xs font-bold text-slate-800">Formato dos Dados no QR Code</p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  {equipmentMode === "text"
-                    ? "Texto / Bloco de Notas: O celular lê as informações e exibe na tela com opção de salvar direto nas Notas ou Copiar (100% offline, sem depender de rede local ou IP)."
-                    : "Link Web: O celular abre o navegador na ficha digital pública do sistema."}
+                  {equipmentMode === "url"
+                    ? "Modal de Alerta Web (Recomendado): Ao escanear, o celular abre o modal de alerta centralizado com a logo, ficha do equipamento e o botão destacado 'OK'."
+                    : "Texto Puro: Codifica o texto diretamente no QR Code sem abrir o navegador (100% offline)."}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setEquipmentMode("text")}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    equipmentMode === "text"
-                      ? "bg-white text-emerald-700 shadow-xs border border-slate-200"
-                      : "text-slate-500 hover:text-slate-800"
-                  }`}
-                >
-                  <span>📝 Texto / Bloco de Notas</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => setEquipmentMode("url")}
                   className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     equipmentMode === "url"
-                      ? "bg-white text-blue-700 shadow-xs border border-slate-200"
-                      : "text-slate-500 hover:text-slate-800"
+                      ? "bg-white text-blue-700 shadow-xs border border-blue-200 ring-2 ring-blue-500/20"
+                      : "text-slate-500 hover:text-slate-800 border border-transparent"
                   }`}
                 >
-                  <span>🌐 Link Web</span>
+                  <span>🌐 Modal de Alerta (Recomendado)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEquipmentMode("text")}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    equipmentMode === "text"
+                      ? "bg-white text-emerald-700 shadow-xs border border-emerald-200 ring-2 ring-emerald-500/20"
+                      : "text-slate-500 hover:text-slate-800 border border-transparent"
+                  }`}
+                >
+                  <span>📝 Texto Puro (Offline)</span>
                 </button>
               </div>
             </div>
@@ -368,7 +368,8 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
                   </div>
                 ) : (
                   <>
-                    <p><strong>Ficha Digital:</strong> {window.location.origin}/qr/{item.code}</p>
+                    <p><strong>Link do Modal:</strong> {window.location.origin}/qr/{item.code}</p>
+                    <p><strong>Ação ao Escanear:</strong> Abre o Modal de Alerta com Informações e Botão OK</p>
                     <p><strong>Responsável:</strong> {item.collaborator || "—"}</p>
                     <p><strong>Patrimônio/Nome:</strong> {item.asset_name || "—"}</p>
                   </>

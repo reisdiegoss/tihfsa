@@ -521,10 +521,10 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Logo Central da Empresa com Correção de Erro Nível H (30%)**:
       - Modal dedicado (`QRCodeLogoModal.jsx`) para upload de imagem PNG com fundo transparente (`POST /api/v1/qrcodes/logo`), com persistência da logo padrão na tabela `qrcode_config`.
       - Renderização em tempo real da logo sobreposta no centro do QR Code via Canvas, com fundo branco arredondado e tolerância de erro `H` para garantir leitura instantânea e sem falhas.
-    - **QR Code de Equipamentos (Modal de Alerta com Botão OK & Leitura Direta)**:
+    - **QR Code de Equipamentos (Modal de Alerta com Botão OK & Prevenção contra Detecção de Mapas)**:
       - Campos suportados: Colaborador, Nome do Equipamento / Hostname / Patrimônio, Marca, Modelo, Empresa, Endereço/Localização e Mensagem personalizada.
-      - **Modo Texto Puro / Bloco de Notas (100% Offline)**: O QR Code armazena diretamente o texto estruturado, permitindo que a câmera nativa do iPhone (iOS) ou Android abra imediatamente um modal nativo do sistema com as informações e botões de "OK", "Copiar" e "Compartilhar com Notas/Bloco de Notas", sem depender de conexão de rede ou IP local.
-      - **Modal de Alerta na Web (`/qr/:code`)**: Caso acessado via navegador, a tela é estruturada como um modal de diálogo limpo e centrado estilo alerta de sistema, com a logo da empresa, dados do equipamento e um botão destacado **"OK"** que confirma a leitura e copia os dados para a área de transferência.
+      - **Modal de Alerta Web (Padrão Recomendado - `/qr/:code`)**: O QR Code codifica diretamente o link para a página pública segura do equipamento. Ao escanear com a câmera do iOS (iPhone) ou Android, o smartphone exibe a ação de abrir o link, renderizando um **modal de alerta centralizado estilo pop-up nativo** com a logo corporativa, todos os detalhes do item e um botão de ação destacado **"OK"** (que confirma a leitura e copia os dados para a área de transferência). Evita 100% que as IAs das câmeras interpretem o texto como endereço geográfico e abram o Apple Maps / Google Maps.
+      - **Modo Alternativo: Texto Puro Sanitizado (100% Offline)**: Codifica os dados estruturados diretamente no QR Code com prefixos neutros (`Setor/Posição:`, `Tag:`, etc.), prevenindo disparos acidentais de geolocalização em leitores nativos.
       - Endpoint público sem login: `GET /api/v1/qrcodes/public/{code}`.
     - **QR Code de Wi-Fi para Eventos (Conexão Automática)**:
       - Padrão nativo industrial: `WIFI:T:WPA;S:{SSID};P:{SENHA};H:{OCULTA};;`.

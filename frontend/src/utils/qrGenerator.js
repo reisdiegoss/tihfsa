@@ -11,42 +11,42 @@ export function formatWifiPayload(ssid, password, securityType = "WPA", isHidden
 }
 
 /**
- * Formata o texto estruturado para leitura direta na câmera do celular (iOS / Android / Bloco de Notas)
+ * Formata o texto estruturado para leitura direta quando selecionado modo Texto Puro.
+ * Sanitizado para evitar que câmeras com IA (ex: iOS Data Detectors) interpretem como endereço do Mapas.
  */
 export function formatEquipmentText(item) {
   const parts = [];
   const company = item.company || "Hotel Fasano Salvador";
-  parts.push(`[FICHA DE EQUIPAMENTO]`);
-  parts.push(`Empresa: ${company}`);
+  parts.push(`[PATRIMÔNIO TI - ${company.toUpperCase()}]`);
+  if (item.code) {
+    parts.push(`Tag: ${item.code}`);
+  }
   if (item.asset_name || item.title) {
     parts.push(`Equipamento: ${item.asset_name || item.title}`);
   }
   if (item.collaborator) {
-    parts.push(`Colaborador: ${item.collaborator}`);
+    parts.push(`Responsável: ${item.collaborator}`);
   }
   const brandModel = [item.brand, item.model].filter(Boolean).join(" ");
   if (brandModel) {
     parts.push(`Marca/Modelo: ${brandModel}`);
   }
   if (item.address) {
-    parts.push(`Local: ${item.address}`);
+    parts.push(`Setor/Posição: ${item.address}`);
   }
   if (item.message) {
     parts.push(`Instruções: ${item.message}`);
-  }
-  if (item.code) {
-    parts.push(`Patrimônio/Tag: ${item.code}`);
   }
   return parts.join("\n");
 }
 
 /**
  * Formata o payload para Equipamento.
- * Por padrão, usa Texto Estruturado (abre direto na câmera/bloco de notas do iOS/Android).
- * Se o modo for "url", retorna o link da página web.
+ * Por padrão, utiliza a URL do Modal de Alerta Interativo (/qr/:code) com o botão de OK.
+ * Se o modo for "text", retorna texto estruturado offline.
  */
 export function formatEquipmentPayload(item, modeOverride = null, origin = window.location.origin) {
-  const mode = modeOverride || item.encode_mode || "text";
+  const mode = modeOverride || item.encode_mode || "url";
   if (mode === "url" && item.code) {
     return `${origin}/qr/${item.code}`;
   }
