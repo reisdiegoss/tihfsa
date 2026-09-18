@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
-  Camera, X, RefreshCw, AlertCircle, CheckCircle2, 
-  FlipHorizontal, Zap, ZapOff, ArrowLeft, Sliders, ShieldCheck
+  Camera, X, RefreshCw, AlertCircle, FlipHorizontal, 
+  Zap, ZapOff, ArrowLeft
 } from "lucide-react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import api from "../../api/client";
+import NativeAlertDialog from "../../components/ui/NativeAlertDialog";
 
 export default function QRCodeScannerPage() {
   const navigate = useNavigate();
@@ -14,12 +16,9 @@ export default function QRCodeScannerPage() {
   const [selectedCameraId, setSelectedCameraId] = useState(null);
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
-  
-  // Opção: Alert Dialog nativo (window.alert) ou Modal na tela
-  const [useNativeAlert, setUseNativeAlert] = useState(true);
 
-  // Estado do Modal de Alerta na tela (caso useNativeAlert seja falso ou como visualização)
-  const [alertData, setAlertData] = useState(null); // { text }
+  // Estado do Modal de Alerta Nativo
+  const [alertData, setAlertData] = useState(null); // { title, message }
 
   const html5QrCodeRef = useRef(null);
   const isPausedRef = useRef(false);
@@ -31,7 +30,6 @@ export default function QRCodeScannerPage() {
       .then((devices) => {
         if (devices && devices.length) {
           setCameras(devices);
-          // Prefere a câmera traseira (environment / back)
           const backCam = devices.find((d) => 
             d.label.toLowerCase().includes("back") || 
             d.label.toLowerCase().includes("traseira") ||
@@ -107,7 +105,7 @@ export default function QRCodeScannerPage() {
 
       setIsScanning(true);
 
-      // Verifica suporte a Lanterna / Torch
+      // Suporte a Lanterna
       try {
         const track = qrCode.getRunningTrack();
         const capabilities = track?.getCapabilities?.();
@@ -127,50 +125,66 @@ export default function QRCodeScannerPage() {
     }
   };
 
-  // Callback de sucesso da leitura
-  const onScanSuccess = (decodedText) => {
-    // 2. Assim que detectado, pausa temporariamente para evitar loops/duplicatas
+  // 1 & 2. Callback de sucesso da leitura: pausa imediatamente
+  const onScanSuccess = async (decodedText) => {
     if (isPausedRef.current) return;
     isPausedRef.current = true;
 
-    // Pausa o processador de vídeo da biblioteca
+    // Pausa a câmera para evitar leituras duplicadas
     try {
       html5QrCodeRef.current?.pause();
     } catch (e) {}
 
-    // Feedback de vibração tátil nativo
+    // Vibração tátil
     if (typeof navigator !== "undefined" && navigator.vibrate) {
       navigator.vibrate(120);
     }
-
-    // Beep sonoro sutil
     playBeepSound();
 
-    if (useNativeAlert) {
-      // 3 & 4. Alert Dialog NATIVO do sistema operacional (iOS / Android) contendo apenas o botão "OK"
-      setTimeout(() => {
-        window.alert(decodedText);
-        // 5. Quando o usuário clica em "OK", fecha o alerta e reativa a câmera para novas leituras
-        resumeScanning();
-      }, 80);
-    } else {
-      // Modal de Alerta na tela com o mesmo fluxo e apenas o botão "OK"
-      setAlertData({ text: decodedText });
+    let displayTitle = "Hotel Fasano Salvador";
+    let displayMessage = decodedText;
+
+    // Se o QR Code lido for uma URL de equipamento (/qr/QR-XXXX), busca os dados completos
+    const qrMatch = decodedText.match(/\/qr\/([A-Za-z0-9_-]+)/);
+    if (qrMatch && qrMatch[1]) {
+      try {
+        const res = await api.get(`/qrcodes/public/${qrMatch[1]}`);
+        if (res.data) {
+          const item = res.data;
+          displayTitle = item.company || "Hotel Fasano Salvador";
+          const lines = [];
+          if (item.asset_name || item.title) lines.push(`Equipamento: ${item.asset_name || item.title}`);
+          if (item.code) lines.push(`Patrimônio: ${item.code}`);
+          if (item.collaborator) lines.push(`Responsável: ${item.collaborator}`);
+          const brandModel = [item.brand, item.model].filter(Boolean).join(" • ");
+          if (brandModel) lines.push(`Marca/Modelo: ${brandModel}`);
+          if (item.address) lines.push(`Local: ${item.address}`);
+          if (item.message) lines.push(`\nInstruções:\n"${item.message}"`);
+          displayMessage = lines.join("\n");
+        }
+      } catch (e) {
+        // Mantém texto original
+      }
     }
+
+    // 3 & 4. Exibe o Modal de Alerta Nativo contendo apenas o botão "OK"
+    setAlertData({
+      title: displayTitle,
+      message: displayMessage,
+    });
   };
 
   const onScanFailure = () => {
-    // Ignora frames sem QR Code
+    // Ignora frames sem detecção
   };
 
-  // 5. Reativação da câmera após o clique em OK
+  // 5. Quando o usuário clica em "OK", o modal fecha e a câmera é reativada
   const resumeScanning = () => {
     setAlertData(null);
     try {
       html5QrCodeRef.current?.resume();
     } catch (e) {}
 
-    // Delay de proteção contra re-escaneamento imediato do mesmo código na mira
     setTimeout(() => {
       isPausedRef.current = false;
     }, 500);
@@ -200,7 +214,7 @@ export default function QRCodeScannerPage() {
     setSelectedCameraId(cameras[nextIndex].id);
   };
 
-  // Gerador de tom sonoro (Beep) via Web Audio API sem dependências externas
+  // Gerador de tom sonoro (Beep) via Web Audio API
   const playBeepSound = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -223,7 +237,7 @@ export default function QRCodeScannerPage() {
   return (
     <div className="fixed inset-0 bg-black flex flex-col z-50 select-none overflow-hidden">
       
-      {/* Top Bar / Header Flutuante */}
+      {/* Header Flutuante */}
       <div className="absolute top-0 left-0 right-0 z-30 p-4 pt-safe flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent text-white">
         <button
           onClick={() => navigate(-1)}
@@ -263,28 +277,21 @@ export default function QRCodeScannerPage() {
         </div>
       </div>
 
-      {/* Área da Câmera / Viewport */}
+      {/* Viewport da Câmera */}
       <div className="relative flex-1 flex items-center justify-center bg-black overflow-hidden">
-        
-        {/* Container onde o html5-qrcode injeta o elemento de vídeo */}
         <div 
           id={readerId} 
           className="w-full h-full flex items-center justify-center overflow-hidden [&>video]:w-full [&>video]:h-full [&>video]:object-cover"
         />
 
-        {/* Mira de Escaneamento Estilizada Sobreposta */}
+        {/* Mira de Escaneamento Estilizada */}
         {isScanning && !cameraError && (
           <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-            {/* Máscara de escurecimento ao redor */}
             <div className="relative w-64 h-64 sm:w-72 sm:h-72">
-              
-              {/* Cantos da Mira (Amarelo / Fasano Gold) */}
               <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-xl shadow-sm" />
               <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-xl shadow-sm" />
               <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-xl shadow-sm" />
               <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-xl shadow-sm" />
-
-              {/* Linha de Varredura Laser Animada */}
               <div className="absolute inset-x-2 h-0.5 bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_8px_#f59e0b] animate-[bounce_2s_infinite]" />
             </div>
 
@@ -294,7 +301,7 @@ export default function QRCodeScannerPage() {
           </div>
         )}
 
-        {/* Mensagem de Erro de Câmera */}
+        {/* Mensagem de Erro */}
         {cameraError && (
           <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center z-20">
             <div className="w-16 h-16 rounded-3xl bg-red-500/20 text-red-400 flex items-center justify-center mb-4">
@@ -315,64 +322,15 @@ export default function QRCodeScannerPage() {
         )}
       </div>
 
-      {/* Barra Inferior com Configurações Rápidas */}
-      <div className="p-4 pb-safe bg-gradient-to-t from-black/90 via-black/70 to-transparent flex flex-col items-center gap-3 z-30">
-        
-        {/* Toggle de Tipo de Alert Dialog */}
-        <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10">
-          <span className="text-[11px] font-bold text-white/80">Modo de Alerta:</span>
-          <button
-            onClick={() => setUseNativeAlert(true)}
-            className={`px-3 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer ${
-              useNativeAlert ? "bg-amber-400 text-slate-900 shadow-sm" : "text-white/60 hover:text-white"
-            }`}
-          >
-            Nativo do Sistema (iOS / Android)
-          </button>
-          <button
-            onClick={() => setUseNativeAlert(false)}
-            className={`px-3 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer ${
-              !useNativeAlert ? "bg-blue-600 text-white shadow-sm" : "text-white/60 hover:text-white"
-            }`}
-          >
-            Modal na Tela
-          </button>
-        </div>
-
-        <p className="text-[10px] text-white/50 text-center font-medium">
-          O escaneamento pausa automaticamente ao detectar o código e reativa ao clicar em OK.
-        </p>
-      </div>
-
-      {/* 3 & 4. MODAL DE ALERTA NA TELA COM APENAS O BOTÃO "OK" */}
+      {/* 3, 4 & 5. MODAL DE ALERTA NATIVO (IOS / ANDROID) COM BOTÃO "OK" */}
       {alertData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 flex flex-col text-center animate-in zoom-in-95 duration-200">
-            
-            <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-3">
-              <CheckCircle2 size={32} />
-            </div>
-
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-              QR Code Detectado
-            </h3>
-
-            {/* Texto extraído do QR Code */}
-            <div className="my-4 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 text-left max-h-60 overflow-y-auto">
-              <pre className="font-mono text-xs text-slate-800 whitespace-pre-wrap leading-relaxed">
-                {alertData.text}
-              </pre>
-            </div>
-
-            {/* 4. Apenas um botão "OK" */}
-            <button
-              onClick={resumeScanning}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-2xl font-black text-sm transition-all shadow-md shadow-blue-500/20 cursor-pointer"
-            >
-              OK
-            </button>
-          </div>
-        </div>
+        <NativeAlertDialog
+          isOpen={true}
+          title={alertData.title}
+          message={alertData.message}
+          okText="OK"
+          onOk={resumeScanning}
+        />
       )}
 
     </div>

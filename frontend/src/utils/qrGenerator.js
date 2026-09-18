@@ -71,7 +71,7 @@ export function formatEquipmentText(item) {
  * Se o modo for "url", retorna o link da página web.
  */
 export function formatEquipmentPayload(item, modeOverride = null, origin = window.location.origin) {
-  const mode = modeOverride || item.encode_mode || "text";
+  const mode = modeOverride || item.encode_mode || "url";
   if (mode === "url" && item.code) {
     return `${origin}/qr/${item.code}`;
   }

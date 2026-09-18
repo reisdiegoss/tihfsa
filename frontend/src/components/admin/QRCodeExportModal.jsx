@@ -11,7 +11,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [printMode, setPrintMode] = useState(false);
   const [showPasswordOnPlacard, setShowPasswordOnPlacard] = useState(true);
-  const [equipmentMode, setEquipmentMode] = useState("text"); // "text" (Modal Nativo iOS/Android) | "url" (Navegador Web)
+  const [equipmentMode, setEquipmentMode] = useState("url"); // "url" (Modal Nativo iOS/Android) | "text" (Texto Puro)
   const [qrDataUrl, setQrDataUrl] = useState("");
 
   const previewCanvasRef = useRef(null);
@@ -22,7 +22,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   // Sincroniza modo padrão do item ao abrir
   useEffect(() => {
     if (item) {
-      setEquipmentMode(item.encode_mode || "text");
+      setEquipmentMode(item.encode_mode || "url");
     }
   }, [isOpen, item]);
 
@@ -302,29 +302,18 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </div>
           )}
 
-          {/* Opção para Equipamento: Modal Nativo iOS / Android (Recomendado) ou Navegador Web */}
+          {/* Opção para Equipamento: Modal Nativo iOS / Android (Recomendado) ou Texto Puro */}
           {!isWifi && (
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
               <div>
                 <p className="text-xs font-bold text-slate-800">Formato dos Dados no QR Code</p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  {equipmentMode === "text"
-                    ? "Modal Nativo iOS / Android (Recomendado): Ao escanear, o celular abre o modal proprietário nativo do sistema na própria tela com todas as informações e o botão de confirmação, sem abrir o navegador."
-                    : "Navegador Web: Ao escanear, o celular abre o navegador na página web pública com modal digital."}
+                  {equipmentMode === "url"
+                    ? "Modal Nativo iOS / Android (Recomendado): Ao escanear, o celular abre o modal idêntico ao nativo do iOS (Cupertino) ou do Android (Material) com os dados e apenas o botão OK."
+                    : "Texto Puro: Codifica o texto diretamente no QR Code (100% offline)."}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEquipmentMode("text")}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    equipmentMode === "text"
-                      ? "bg-white text-emerald-700 shadow-xs border border-emerald-200 ring-2 ring-emerald-500/20"
-                      : "text-slate-500 hover:text-slate-800 border border-transparent"
-                  }`}
-                >
-                  <span>📱 Modal Nativo (Recomendado)</span>
-                </button>
                 <button
                   type="button"
                   onClick={() => setEquipmentMode("url")}
@@ -334,7 +323,18 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
                       : "text-slate-500 hover:text-slate-800 border border-transparent"
                   }`}
                 >
-                  <span>🌐 Navegador Web</span>
+                  <span>📱 Modal Nativo (Recomendado)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEquipmentMode("text")}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    equipmentMode === "text"
+                      ? "bg-white text-emerald-700 shadow-xs border border-emerald-200 ring-2 ring-emerald-500/20"
+                      : "text-slate-500 hover:text-slate-800 border border-transparent"
+                  }`}
+                >
+                  <span>📝 Texto Puro (Offline)</span>
                 </button>
               </div>
             </div>
@@ -361,10 +361,10 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        Modal Nativo do Sistema (iOS / Android):
+                        Texto Codificado no QR:
                       </p>
                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                        100% Offline (Sem Navegador)
+                        100% Offline
                       </span>
                     </div>
                     <pre className="font-mono text-[11px] text-slate-700 whitespace-pre-wrap bg-white p-2.5 rounded-xl border border-slate-200/80">
@@ -373,8 +373,8 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
                   </div>
                 ) : (
                   <>
-                    <p><strong>Link Web:</strong> {window.location.origin}/qr/{item.code}</p>
-                    <p><strong>Ação ao Escanear:</strong> Abre a página web do sistema no navegador do celular</p>
+                    <p><strong>Link de Leitura:</strong> {window.location.origin}/qr/{item.code}</p>
+                    <p><strong>Visualização:</strong> Modal Nativo iOS (Cupertino) / Android (Material) com botão OK</p>
                     <p><strong>Responsável:</strong> {item.collaborator || "—"}</p>
                     <p><strong>Patrimônio/Nome:</strong> {item.asset_name || "—"}</p>
                   </>
