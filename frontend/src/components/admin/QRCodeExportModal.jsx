@@ -11,7 +11,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [printMode, setPrintMode] = useState(false);
   const [showPasswordOnPlacard, setShowPasswordOnPlacard] = useState(true);
-  const [equipmentMode, setEquipmentMode] = useState("url"); // "url" (Modal Nativo iOS/Android) | "text" (Texto Puro)
+  const [equipmentMode, setEquipmentMode] = useState("vcard"); // "vcard" (Ficha Nativa iOS/Android 100% Offline)
   const [qrDataUrl, setQrDataUrl] = useState("");
 
   const previewCanvasRef = useRef(null);
@@ -19,10 +19,10 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
 
   const isWifi = item?.type === "wifi";
 
-  // Sincroniza modo padrão do item ao abrir (sempre prioriza URL para modal nativo)
+  // Sincroniza modo padrão do item ao abrir (sempre prioriza vCard 100% offline)
   useEffect(() => {
     if (item) {
-      setEquipmentMode(item.encode_mode === "text" ? "text" : "url");
+      setEquipmentMode(item.encode_mode || "vcard");
     }
   }, [isOpen, item]);
 
@@ -302,15 +302,15 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </div>
           )}
 
-          {/* Informação de Formato para Equipamento: Sempre Modal Nativo iOS / Android */}
+          {/* Informação de Formato para Equipamento: Ficha Nativa iOS & Android 100% Offline */}
           {!isWifi && (
-            <div className="bg-blue-50/70 p-4 rounded-2xl border border-blue-200/80 space-y-1.5">
+            <div className="bg-emerald-50/80 p-4 rounded-2xl border border-emerald-200 space-y-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-sm">📱</span>
-                <p className="text-xs font-bold text-blue-900">Modal Nativo iOS & Android</p>
+                <span className="text-sm">📇</span>
+                <p className="text-xs font-bold text-emerald-950">Ficha Nativa iOS & Android (100% Offline)</p>
               </div>
-              <p className="text-[11px] text-blue-700/90 leading-relaxed">
-                Ao escanear com a câmera do celular ou pelo leitor do app, é exibido diretamente o <strong>Modal de Alerta Nativo</strong> (Cupertino no iOS e Material no Android) contendo apenas o botão <strong>OK</strong>.
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Ao apontar a câmera do celular (iPhone ou Android), o sistema abre diretamente a <strong>Ficha Técnica do Equipamento</strong> integrada ao sistema operacional, sem necessidade de internet, rede interna, navegador ou bloco de notas.
               </p>
             </div>
           )}
@@ -332,10 +332,12 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
               </>
             ) : (
               <>
-                <p><strong>Link de Leitura:</strong> {window.location.origin}/qr/{item.code}</p>
-                <p><strong>Visualização:</strong> Modal Nativo iOS (Cupertino) / Android (Material) com botão OK</p>
+                <p><strong>Padrão:</strong> vCard 3.0 Nativo (RFC 2426 - 100% Offline)</p>
+                <p><strong>Equipamento:</strong> {item.asset_name || item.title || "—"}</p>
+                <p><strong>Patrimônio:</strong> {item.code || "—"}</p>
                 <p><strong>Responsável:</strong> {item.collaborator || "—"}</p>
-                <p><strong>Patrimônio/Nome:</strong> {item.asset_name || item.title || "—"}</p>
+                {item.brand && <p><strong>Marca/Modelo:</strong> {item.brand} {item.model || ""}</p>}
+                {item.address && <p><strong>Local:</strong> {item.address}</p>}
               </>
             )}
           </div>

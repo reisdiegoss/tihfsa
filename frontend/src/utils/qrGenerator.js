@@ -66,16 +66,84 @@ export function formatEquipmentText(item) {
 }
 
 /**
+ * Formata o payload do Equipamento como Ficha Técnica Nativa vCard 3.0.
+ * Este formato é reconhecido nativamente pelas câmeras de fábrica do iOS (Apple Camera)
+ * e do Android (Samsung Camera / Google Lens) de forma 100% OFFLINE, sem precisar de
+ * conexão de rede, Wi-Fi interno ou navegador, abrindo diretamente a Ficha do Equipamento.
+ */
+export function formatEquipmentVCard(item) {
+  if (!item) return "";
+
+  const name = item.asset_name || item.title || "Equipamento TI";
+  const code = item.code ? `[${item.code}] ` : "";
+  const fullName = `${code}${name}`.trim();
+  const company = item.company || "Hotel Fasano Salvador";
+  const dept = "Tecnologia da Informação";
+  const brandModel = [item.brand, item.model].filter(Boolean).join(" • ");
+  
+  // Extrair telefone da mensagem de suporte ou ramal
+  let phone = "";
+  if (item.message) {
+    const phoneMatch = item.message.match(/\(?\d{2}\)?\s*9?\d{4}[-\s]?\d{4}/);
+    if (phoneMatch) {
+      phone = phoneMatch[0];
+    }
+  }
+
+  // Montar bloco descritivo de notas
+  const notes = [];
+  notes.push(`FICHA DE IDENTIFICAÇÃO DE EQUIPAMENTO`);
+  if (item.code) notes.push(`Patrimônio: ${item.code}`);
+  if (item.asset_name || item.title) notes.push(`Equipamento: ${item.asset_name || item.title}`);
+  if (item.collaborator) notes.push(`Responsável: ${item.collaborator}`);
+  if (brandModel) notes.push(`Marca/Modelo: ${brandModel}`);
+  if (item.address) notes.push(`Localização: ${item.address}`);
+  if (item.message) notes.push(`Instruções: ${item.message}`);
+
+  const vcardLines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN:${fullName}`,
+    `N:${name};;;;`,
+    `ORG:${company};${dept}`,
+  ];
+
+  if (brandModel || item.code) {
+    vcardLines.push(`TITLE:${[item.code ? `Patrimônio ${item.code}` : "", brandModel].filter(Boolean).join(" - ")}`);
+  }
+
+  if (item.collaborator) {
+    vcardLines.push(`ROLE:Responsável: ${item.collaborator}`);
+  }
+
+  if (phone) {
+    vcardLines.push(`TEL;TYPE=WORK,VOICE:${phone}`);
+  }
+
+  if (item.address) {
+    vcardLines.push(`ADR;TYPE=WORK:;;${item.address};Salvador;BA;;Brasil`);
+  }
+
+  vcardLines.push(`NOTE:${notes.join(" \\n ")}`);
+  vcardLines.push("END:VCARD");
+
+  return vcardLines.join("\n");
+}
+
+/**
  * Formata o payload para Equipamento.
- * Por padrão, utiliza Texto Sanitizado para abrir o MODAL NATIVO PROPRIETÁRIO do iOS / Android.
+ * Por padrão, utiliza o padrão vCard 3.0 para abrir a FICHA NATIVA DO IOS E ANDROID 100% OFFLINE.
  * Se o modo for "url", retorna o link da página web.
  */
 export function formatEquipmentPayload(item, modeOverride = null, origin = window.location.origin) {
-  const mode = modeOverride || item.encode_mode || "url";
+  const mode = modeOverride || item.encode_mode || "vcard";
   if (mode === "url" && item.code) {
     return `${origin}/qr/${item.code}`;
   }
-  return formatEquipmentText(item);
+  if (mode === "text") {
+    return formatEquipmentText(item);
+  }
+  return formatEquipmentVCard(item);
 }
 
 /**

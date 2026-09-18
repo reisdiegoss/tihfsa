@@ -144,26 +144,54 @@ export default function QRCodeScannerPage() {
     let displayTitle = "Hotel Fasano Salvador";
     let displayMessage = decodedText;
 
+    // Se o QR Code lido for uma Ficha vCard (100% Offline), extrai os dados estruturados
+    if (decodedText.includes("BEGIN:VCARD")) {
+      const fnMatch = decodedText.match(/^FN:(.*)$/m);
+      const orgMatch = decodedText.match(/^ORG:([^;\r\n]+)/m);
+      const noteMatch = decodedText.match(/^NOTE:(.*)$/m);
+
+      if (orgMatch && orgMatch[1]) {
+        displayTitle = orgMatch[1].trim();
+      } else if (fnMatch && fnMatch[1]) {
+        displayTitle = fnMatch[1].trim();
+      }
+
+      if (noteMatch && noteMatch[1]) {
+        displayMessage = noteMatch[1].replace(/\\n/g, "\n").trim();
+      } else {
+        const lines = [];
+        if (fnMatch) lines.push(`Equipamento: ${fnMatch[1].trim()}`);
+        const titleMatch = decodedText.match(/^TITLE:(.*)$/m);
+        if (titleMatch) lines.push(titleMatch[1].trim());
+        const roleMatch = decodedText.match(/^ROLE:(.*)$/m);
+        if (roleMatch) lines.push(roleMatch[1].trim());
+        const telMatch = decodedText.match(/^TEL[^:]*:(.*)$/m);
+        if (telMatch) lines.push(`Suporte: ${telMatch[1].trim()}`);
+        displayMessage = lines.join("\n");
+      }
+    }
     // Se o QR Code lido for uma URL de equipamento (/qr/QR-XXXX), busca os dados completos
-    const qrMatch = decodedText.match(/\/qr\/([A-Za-z0-9_-]+)/);
-    if (qrMatch && qrMatch[1]) {
-      try {
-        const res = await api.get(`/qrcodes/public/${qrMatch[1]}`);
-        if (res.data) {
-          const item = res.data;
-          displayTitle = item.company || "Hotel Fasano Salvador";
-          const lines = [];
-          if (item.asset_name || item.title) lines.push(`Equipamento: ${item.asset_name || item.title}`);
-          if (item.code) lines.push(`Patrimônio: ${item.code}`);
-          if (item.collaborator) lines.push(`Responsável: ${item.collaborator}`);
-          const brandModel = [item.brand, item.model].filter(Boolean).join(" • ");
-          if (brandModel) lines.push(`Marca/Modelo: ${brandModel}`);
-          if (item.address) lines.push(`Local: ${item.address}`);
-          if (item.message) lines.push(`\nInstruções:\n"${item.message}"`);
-          displayMessage = lines.join("\n");
+    else {
+      const qrMatch = decodedText.match(/\/qr\/([A-Za-z0-9_-]+)/);
+      if (qrMatch && qrMatch[1]) {
+        try {
+          const res = await api.get(`/qrcodes/public/${qrMatch[1]}`);
+          if (res.data) {
+            const item = res.data;
+            displayTitle = item.company || "Hotel Fasano Salvador";
+            const lines = [];
+            if (item.asset_name || item.title) lines.push(`Equipamento: ${item.asset_name || item.title}`);
+            if (item.code) lines.push(`Patrimônio: ${item.code}`);
+            if (item.collaborator) lines.push(`Responsável: ${item.collaborator}`);
+            const brandModel = [item.brand, item.model].filter(Boolean).join(" • ");
+            if (brandModel) lines.push(`Marca/Modelo: ${brandModel}`);
+            if (item.address) lines.push(`Local: ${item.address}`);
+            if (item.message) lines.push(`\nInstruções:\n"${item.message}"`);
+            displayMessage = lines.join("\n");
+          }
+        } catch (e) {
+          // Mantém texto original
         }
-      } catch (e) {
-        // Mantém texto original
       }
     }
 

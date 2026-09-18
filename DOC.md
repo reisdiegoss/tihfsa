@@ -521,16 +521,18 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Logo Central da Empresa com Correção de Erro Nível H (30%)**:
       - Modal dedicado (`QRCodeLogoModal.jsx`) para upload de imagem PNG com fundo transparente (`POST /api/v1/qrcodes/logo`), com persistência da logo padrão na tabela `qrcode_config`.
       - Renderização em tempo real da logo sobreposta no centro do QR Code via Canvas, com fundo branco arredondado e tolerância de erro `H` para garantir leitura instantânea e sem falhas.
-    - **QR Code de Equipamentos (Modal Nativo Fiel ao iOS Cupertino e Android Material 3 com Botão OK)**:
-      - Campos suportados: Colaborador, Nome do Equipamento / Hostname / Patrimônio, Marca, Modelo, Empresa, Endereço/Localização e Mensagem personalizada.
-      - **Modal Nativo Fiel e Eliminação de Balões/Bloco de Notas**:
-        - Os QR Codes de equipamentos geram a URL direta (`https://<host>/qr/:code`).
-        - Ao escanear pela câmera comum do celular ou pelo leitor do app, a tela abre diretamente o **`NativeAlertDialog.jsx`**, reproduzindo com fidelidade pixel-perfect os diálogos do sistema operacional:
-          - **🍎 iOS (Cupertino Alert Dialog)**: Fundo cinza translúcido `#f2f2f2` / `#252525` com blur de 20px, cantos arredondados de 14px, largura de 270px, título e mensagem centralizados, divisória fina inferior e botão único **"OK"** azul (`#007aff` / `#0a84ff`).
-          - **🤖 Android (Material 3 Alert Dialog)**: Card com cantos arredondados de 28px, título e mensagem alinhados à esquerda e botão único **"OK"** em destaque (`#6750a4`) no canto inferior direito.
-        - **Erradicação do Balão e Bloco de Notas**: O uso de texto puro com números de telefone no QR Code fazia os sistemas de fábrica (como Samsung One UI e iOS Camera) detectarem número telefônico e abrirem balões de chamada ou direcionarem o texto para o Samsung Notes / Bloco de Notas. Ao vincular o QR Code à URL protegida e renderizar o diálogo nativo, elimina-se 100% essa interferência dos assistentes do smartphone.
-        - Ao clicar em **"OK"**, o modal fecha e os dados do equipamento são copiados para a área de transferência.
-      - Endpoint público sem login: `GET /api/v1/qrcodes/public/{code}`.
+    - **QR Code de Equipamentos (Ficha Nativa iOS & Android 100% Offline via vCard 3.0)**:
+      - Campos suportados: Colaborador, Nome do Equipamento / Hostname / Patrimônio, Marca, Modelo, Empresa, Endereço/Localização e Mensagem personalizada com telefone de suporte.
+      - **Integração Direta com iOS e Android sem Dependência de Rede / Internet**:
+        - Projetado para o cenário em que o smartphone do colaborador ou cliente **não possui acesso à rede interna local** onde o servidor TIHFSA está hospedado (`192.168.168.29`).
+        - O QR Code armazena o payload no padrão internacional **vCard 3.0 (RFC 2426)**.
+        - **Comportamento Nativo no Smartphone**:
+          - **🍎 iOS (Apple Camera)**: A câmera do iPhone detecta instantaneamente o formato e abre diretamente a **Ficha Nativa de Identificação/Contato do iOS**, exibindo nome do equipamento, código de patrimônio, empresa Fasano, responsável e notas técnicas completas.
+          - **🤖 Android (Samsung Camera / Google Lens)**: A câmera abre diretamente a **Ficha Técnica Nativa do Sistema**, sem abrir o Bloco de Notas (Samsung Notes) e sem abrir balões isolados de chamada.
+          - **100% Offline**: Não consome dados, não necessita de Wi-Fi, VPN nem conectividade com o backend do hotel.
+      - **Compatibilidade com o Leitor Integrado do App (`/scan`)**:
+        - O leitor interno do TIHFSA realiza o parse automático das tags do vCard (`FN`, `ORG`, `TITLE`, `NOTE`), renderizando na tela o `NativeAlertDialog` com botão único **"OK"**.
+      - Endpoint público legado mantido para compatibilidade: `GET /api/v1/qrcodes/public/{code}`.
     - **QR Code de Wi-Fi para Eventos (Conexão Automática)**:
       - Padrão nativo industrial: `WIFI:T:WPA;S:{SSID};P:{SENHA};H:{OCULTA};;`.
       - Câmeras do iOS e Android reconhecem instantaneamente e conectam com 1 toque, sem digitação de senha.
