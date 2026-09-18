@@ -11,6 +11,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [printMode, setPrintMode] = useState(false);
   const [showPasswordOnPlacard, setShowPasswordOnPlacard] = useState(true);
+  const [qrDataUrl, setQrDataUrl] = useState("");
 
   const previewCanvasRef = useRef(null);
   const exportCanvasRef = useRef(null);
@@ -26,7 +27,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
     return formatEquipmentPayload(item);
   };
 
-  // Renderiza preview em tela
+  // Renderiza preview em tela e gera imagem para impressão
   useEffect(() => {
     if (!isOpen || !item || !previewCanvasRef.current) return;
 
@@ -36,11 +37,19 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
 
     renderQRCodeToCanvas(previewCanvasRef.current, {
       text,
-      size: 320,
+      size: 400,
       logoUrl: logoToUse,
       includeLogo: item.include_logo !== false,
     }).then(() => {
       setPreviewLoaded(true);
+      if (previewCanvasRef.current) {
+        try {
+          const url = previewCanvasRef.current.toDataURL("image/png");
+          setQrDataUrl(url);
+        } catch (e) {
+          console.error("Erro ao gerar dataUrl do QR:", e);
+        }
+      }
     });
   }, [isOpen, item, defaultLogoUrl]);
 
@@ -80,7 +89,17 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
 
   // Função para imprimir Display de Mesa / Placa
   const handlePrint = () => {
-    window.print();
+    if (previewCanvasRef.current) {
+      try {
+        const url = previewCanvasRef.current.toDataURL("image/png");
+        setQrDataUrl(url);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setTimeout(() => {
+      window.print();
+    }, 80);
   };
 
   if (!isOpen || !item) return null;
@@ -92,29 +111,31 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
       <style>{`
         @media print {
           body * {
-            visibility: hidden;
+            visibility: hidden !important;
           }
           #printable-qr-placard, #printable-qr-placard * {
-            visibility: visible;
+            visibility: visible !important;
           }
           #printable-qr-placard {
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 100vw;
-            height: 100vh;
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
             display: flex !important;
-            align-items: center;
-            justify-content: center;
+            align-items: center !important;
+            justify-content: center !important;
             background: white !important;
-            padding: 40px;
+            padding: 20px !important;
+            margin: 0 !important;
+            z-index: 999999 !important;
           }
         }
       `}</style>
 
       {/* Elemento Oculto de Impressão de Display de Mesa */}
       <div id="printable-qr-placard" className="hidden">
-        <div className="border-4 border-slate-900 rounded-3xl p-10 max-w-md w-full text-center flex flex-col items-center">
+        <div className="border-4 border-slate-900 rounded-3xl p-10 max-w-md w-full text-center flex flex-col items-center bg-white">
           <div className="mb-4">
             <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
               {item.company || "Hotel Fasano Salvador"}
@@ -124,8 +145,18 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </p>
           </div>
 
-          <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl my-4">
-            <canvas ref={previewCanvasRef} className="w-[280px] h-[280px]" />
+          <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl my-4 flex items-center justify-center">
+            {qrDataUrl ? (
+              <img 
+                src={qrDataUrl} 
+                alt="QR Code" 
+                className="w-[280px] h-[280px] object-contain"
+              />
+            ) : (
+              <div className="w-[280px] h-[280px] bg-slate-100 flex items-center justify-center text-xs text-slate-400">
+                Gerando QR Code...
+              </div>
+            )}
           </div>
 
           {isWifi ? (
