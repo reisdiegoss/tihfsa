@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   QrCode, Plus, Search, RefreshCw, Wifi, Laptop, 
   Edit2, Trash2, Image as ImageIcon, Calendar, 
-  MapPin, User, Building2, CheckCircle2, ShieldCheck, Download
+  MapPin, User, Building2, CheckCircle2, ShieldCheck, Download, Camera
 } from "lucide-react";
 import api from "../../api/client";
 import QRCodeFormModal from "../../components/admin/QRCodeFormModal";
@@ -10,6 +11,7 @@ import QRCodeExportModal from "../../components/admin/QRCodeExportModal";
 import QRCodeLogoModal from "../../components/admin/QRCodeLogoModal";
 
 export default function QRCodeManager() {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -114,6 +116,15 @@ export default function QRCodeManager() {
 
         {/* Botões de Ação */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => navigate("/admin/qrcodes/scan")}
+            className="px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold rounded-2xl border border-amber-200 transition-all cursor-pointer flex items-center gap-2 shadow-2xs"
+            title="Abrir câmera para escanear QR Code com modal de alerta e botão OK"
+          >
+            <Camera size={16} className="text-amber-600" />
+            <span>Escanear com Câmera</span>
+          </button>
+
           <button
             onClick={() => setLogoModalOpen(true)}
             className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-2xl border border-slate-200 transition-all cursor-pointer flex items-center gap-2 shadow-2xs"

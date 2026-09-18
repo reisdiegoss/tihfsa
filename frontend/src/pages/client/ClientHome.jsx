@@ -3,7 +3,7 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Ticket, Sparkles, ChevronRight, MapPin, LogOut } from "lucide-react";
+import { Plus, Ticket, Sparkles, ChevronRight, MapPin, LogOut, QrCode } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import StatusBadge from "../../components/ui/StatusBadge";
@@ -88,6 +88,23 @@ export default function ClientHome() {
               <Plus size={24} />
             </div>
           </div>
+        </button>
+
+        {/* Leitor de QR Code Rápido */}
+        <button
+          onClick={() => navigate("/scan")}
+          className="w-full bg-white hover:bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between shadow-xs transition-all cursor-pointer group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+              <QrCode size={20} />
+            </div>
+            <div className="text-left">
+              <p className="text-xs font-bold text-slate-800">Escanear QR Code</p>
+              <p className="text-[11px] text-slate-500">Leitor de tags de equipamentos e Wi-Fi</p>
+            </div>
+          </div>
+          <ChevronRight size={18} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
         </button>
 
         {/* Recent Tickets Section */}

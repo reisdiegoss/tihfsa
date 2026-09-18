@@ -536,4 +536,13 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - `1024 x 1024 px` (Placas de Mesa e Displays)
         - `2048 x 2048 px` (Totens e Banners em Ultra Definição)
       - Botão "Imprimir Display de Mesa" formatado para papel (A4/A5) com layout corporativo elegante para mesas de convenções e recepção, com opção de exibir ou ocultar a senha da rede na impressão.
+    - **Funcionalidade de Leitura e Câmera de QR Code no Aplicativo (`/scan` & `/admin/qrcodes/scan`)**:
+      - **Acesso Rápido**: Disponível via rota pública `/scan` (para qualquer celular acessar diretamente), botão `[ 📷 Escanear com Câmera ]` no Gerenciador de QR Codes (`QRCodeManager.jsx`) e card no portal de colaboradores (`ClientHome.jsx`).
+      - **Controle Total da Câmera (iOS & Android)**: Utiliza `html5-qrcode` com seleção automática da lente traseira (`facingMode: environment`), mira animada com cantos dourados Fasano, alternador de câmeras e botão de lanterna/torch para ambientes com pouca luz.
+      - **Fluxo de 5 Etapas Solicitado**:
+        1. O app abre a câmera para escanear o QR Code.
+        2. Assim que o código é detectado, o escaneamento pausa imediatamente (`html5QrCode.pause()` e trava de estado) prevenindo leituras duplicadas ou loop de modais.
+        3. Um modal de alerta (Alert Dialog) nativo do sistema operacional (`window.alert`) ou na tela é exibido contendo as informações completas extraídas do QR Code.
+        4. O modal contém estritamente um botão **"OK"**.
+        5. Ao clicar em **"OK"**, o modal é fechado e a câmera é reativada instantaneamente (`html5QrCode.resume()`) para permitir novas leituras consecutivas.
 
