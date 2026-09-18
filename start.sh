@@ -616,8 +616,9 @@ deploy_frontend() {
 }
 
 build_frontend() {
-    log_step "BUILD" "Compilando Frontend para produção (Vite)..."
+    log_step "BUILD" "Instalando dependências e compilando Frontend para produção (Vite)..."
     cd "$FRONTEND_DIR"
+    npm install
     npm run build
     cd "$SCRIPT_DIR"
     log_success "Frontend compilado com sucesso em: $FRONTEND_DIR/dist"
