@@ -521,10 +521,15 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Logo Central da Empresa com Correção de Erro Nível H (30%)**:
       - Modal dedicado (`QRCodeLogoModal.jsx`) para upload de imagem PNG com fundo transparente (`POST /api/v1/qrcodes/logo`), com persistência da logo padrão na tabela `qrcode_config`.
       - Renderização em tempo real da logo sobreposta no centro do QR Code via Canvas, com fundo branco arredondado e tolerância de erro `H` para garantir leitura instantânea e sem falhas.
-    - **QR Code de Equipamentos (Modal Proprietário Nativo do iOS e Android)**:
+    - **QR Code de Equipamentos (Modal Nativo Fiel ao iOS Cupertino e Android Material 3 com Botão OK)**:
       - Campos suportados: Colaborador, Nome do Equipamento / Hostname / Patrimônio, Marca, Modelo, Empresa, Endereço/Localização e Mensagem personalizada.
-      - **Modal Nativo Proprietário (Padrão Recomendado - 100% Offline sem Navegador)**: O QR Code armazena os dados em texto estruturado com sanitização inteligente através de caracteres invisíveis zero-width (`\u200B`). Essa técnica impede que as IAs das câmeras (Apple Data Detectors no iOS e Google Lens no Android) interpretem linhas de endereço físico (como `R. Praça Castro Alves, 05 - Salvador - Bahia`) como localização geográfica, eliminando o redirecionamento indevido para o Apple Maps ou Google Maps. Ao escanear, o iOS e o Android abrem diretamente na tela o seu **modal proprietário nativo de sistema** com as informações do equipamento e os botões de ação ("OK", "Copiar" e "Compartilhar").
-      - **Modo Alternativo: Navegador Web (`/qr/:code`)**: Permite gerar opcionalmente a URL pública para quem deseja abrir a ficha em página web no navegador.
+      - **Modal Nativo Fiel e Eliminação de Balões/Bloco de Notas**:
+        - Os QR Codes de equipamentos geram a URL direta (`https://<host>/qr/:code`).
+        - Ao escanear pela câmera comum do celular ou pelo leitor do app, a tela abre diretamente o **`NativeAlertDialog.jsx`**, reproduzindo com fidelidade pixel-perfect os diálogos do sistema operacional:
+          - **🍎 iOS (Cupertino Alert Dialog)**: Fundo cinza translúcido `#f2f2f2` / `#252525` com blur de 20px, cantos arredondados de 14px, largura de 270px, título e mensagem centralizados, divisória fina inferior e botão único **"OK"** azul (`#007aff` / `#0a84ff`).
+          - **🤖 Android (Material 3 Alert Dialog)**: Card com cantos arredondados de 28px, título e mensagem alinhados à esquerda e botão único **"OK"** em destaque (`#6750a4`) no canto inferior direito.
+        - **Erradicação do Balão e Bloco de Notas**: O uso de texto puro com números de telefone no QR Code fazia os sistemas de fábrica (como Samsung One UI e iOS Camera) detectarem número telefônico e abrirem balões de chamada ou direcionarem o texto para o Samsung Notes / Bloco de Notas. Ao vincular o QR Code à URL protegida e renderizar o diálogo nativo, elimina-se 100% essa interferência dos assistentes do smartphone.
+        - Ao clicar em **"OK"**, o modal fecha e os dados do equipamento são copiados para a área de transferência.
       - Endpoint público sem login: `GET /api/v1/qrcodes/public/{code}`.
     - **QR Code de Wi-Fi para Eventos (Conexão Automática)**:
       - Padrão nativo industrial: `WIFI:T:WPA;S:{SSID};P:{SENHA};H:{OCULTA};;`.
@@ -541,8 +546,9 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Controle Total da Câmera (iOS & Android)**: Utiliza `html5-qrcode` com seleção automática da lente traseira (`facingMode: environment`), mira animada com cantos dourados Fasano, alternador de câmeras e botão de lanterna/torch para ambientes com pouca luz.
       - **Fluxo de 5 Etapas Solicitado**:
         1. O app abre a câmera para escanear o QR Code.
-        2. Assim que o código é detectado, o escaneamento pausa imediatamente (`html5QrCode.pause()` e trava de estado) prevenindo leituras duplicadas ou loop de modais.
-        3. Um modal de alerta (Alert Dialog) nativo do sistema operacional (`window.alert`) ou na tela é exibido contendo as informações completas extraídas do QR Code.
-        4. O modal contém estritamente um botão **"OK"**.
-        5. Ao clicar em **"OK"**, o modal é fechado e a câmera é reativada instantaneamente (`html5QrCode.resume()`) para permitir novas leituras consecutivas.
+        2. Assim que o código é detectado, o escaneamento pausa imediatamente (`html5QrCode.pause()` e trava de estado `isPausedRef`) prevenindo leituras duplicadas ou loop de modais.
+        3. Um modal de alerta (`NativeAlertDialog`) nativo é exibido na tela contendo as informações completas extraídas do QR Code.
+        4. O modal contém estritamente o botão único **"OK"**.
+        5. Ao clicar em **"OK"**, o modal fecha e a câmera é reativada instantaneamente (`html5QrCode.resume()`) para permitir novas leituras consecutivas.
+
 

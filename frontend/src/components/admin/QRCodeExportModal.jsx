@@ -19,10 +19,10 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
 
   const isWifi = item?.type === "wifi";
 
-  // Sincroniza modo padrão do item ao abrir
+  // Sincroniza modo padrão do item ao abrir (sempre prioriza URL para modal nativo)
   useEffect(() => {
     if (item) {
-      setEquipmentMode(item.encode_mode || "url");
+      setEquipmentMode(item.encode_mode === "text" ? "text" : "url");
     }
   }, [isOpen, item]);
 
@@ -302,41 +302,16 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </div>
           )}
 
-          {/* Opção para Equipamento: Modal Nativo iOS / Android (Recomendado) ou Texto Puro */}
+          {/* Informação de Formato para Equipamento: Sempre Modal Nativo iOS / Android */}
           {!isWifi && (
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
-              <div>
-                <p className="text-xs font-bold text-slate-800">Formato dos Dados no QR Code</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  {equipmentMode === "url"
-                    ? "Modal Nativo iOS / Android (Recomendado): Ao escanear, o celular abre o modal idêntico ao nativo do iOS (Cupertino) ou do Android (Material) com os dados e apenas o botão OK."
-                    : "Texto Puro: Codifica o texto diretamente no QR Code (100% offline)."}
-                </p>
+            <div className="bg-blue-50/70 p-4 rounded-2xl border border-blue-200/80 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">📱</span>
+                <p className="text-xs font-bold text-blue-900">Modal Nativo iOS & Android</p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEquipmentMode("url")}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    equipmentMode === "url"
-                      ? "bg-white text-blue-700 shadow-xs border border-blue-200 ring-2 ring-blue-500/20"
-                      : "text-slate-500 hover:text-slate-800 border border-transparent"
-                  }`}
-                >
-                  <span>📱 Modal Nativo (Recomendado)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEquipmentMode("text")}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    equipmentMode === "text"
-                      ? "bg-white text-emerald-700 shadow-xs border border-emerald-200 ring-2 ring-emerald-500/20"
-                      : "text-slate-500 hover:text-slate-800 border border-transparent"
-                  }`}
-                >
-                  <span>📝 Texto Puro (Offline)</span>
-                </button>
-              </div>
+              <p className="text-[11px] text-blue-700/90 leading-relaxed">
+                Ao escanear com a câmera do celular ou pelo leitor do app, é exibido diretamente o <strong>Modal de Alerta Nativo</strong> (Cupertino no iOS e Material no Android) contendo apenas o botão <strong>OK</strong>.
+              </p>
             </div>
           )}
 
@@ -357,28 +332,10 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
               </>
             ) : (
               <>
-                {equipmentMode === "text" ? (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        Texto Codificado no QR:
-                      </p>
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                        100% Offline
-                      </span>
-                    </div>
-                    <pre className="font-mono text-[11px] text-slate-700 whitespace-pre-wrap bg-white p-2.5 rounded-xl border border-slate-200/80">
-                      {formatEquipmentText(item)}
-                    </pre>
-                  </div>
-                ) : (
-                  <>
-                    <p><strong>Link de Leitura:</strong> {window.location.origin}/qr/{item.code}</p>
-                    <p><strong>Visualização:</strong> Modal Nativo iOS (Cupertino) / Android (Material) com botão OK</p>
-                    <p><strong>Responsável:</strong> {item.collaborator || "—"}</p>
-                    <p><strong>Patrimônio/Nome:</strong> {item.asset_name || "—"}</p>
-                  </>
-                )}
+                <p><strong>Link de Leitura:</strong> {window.location.origin}/qr/{item.code}</p>
+                <p><strong>Visualização:</strong> Modal Nativo iOS (Cupertino) / Android (Material) com botão OK</p>
+                <p><strong>Responsável:</strong> {item.collaborator || "—"}</p>
+                <p><strong>Patrimônio/Nome:</strong> {item.asset_name || item.title || "—"}</p>
               </>
             )}
           </div>
