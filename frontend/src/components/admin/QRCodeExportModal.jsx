@@ -10,6 +10,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const [exporting, setExporting] = useState(false);
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [printMode, setPrintMode] = useState(false);
+  const [showPasswordOnPlacard, setShowPasswordOnPlacard] = useState(true);
 
   const previewCanvasRef = useRef(null);
   const exportCanvasRef = useRef(null);
@@ -131,12 +132,12 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-1.5 mt-2">
               <p className="text-xs font-bold text-slate-500 uppercase">Rede Wi-Fi (SSID):</p>
               <p className="text-lg font-black text-slate-900 font-mono">{item.ssid}</p>
-              {item.password && (
+              {showPasswordOnPlacard && item.password ? (
                 <>
                   <p className="text-xs font-bold text-slate-500 uppercase pt-1">Senha de Acesso:</p>
                   <p className="text-base font-bold text-slate-800 font-mono">{item.password}</p>
                 </>
-              )}
+              ) : null}
               <p className="text-[11px] text-slate-500 italic pt-2 text-center">
                 Aponte a câmera do seu celular para conectar automaticamente.
               </p>
@@ -237,12 +238,44 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </div>
           </div>
 
+          {/* Opção para Display de Mesa (Wi-Fi): Exibir ou Ocultar Senha */}
+          {isWifi && item.password && (
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold text-slate-800">
+                  Exibir senha no Display de Mesa
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {showPasswordOnPlacard
+                    ? "A senha do Wi-Fi será impressa de forma legível no display."
+                    : "A senha ficará oculta na impressão (conexão exclusivamente via leitura do QR Code)."}
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={showPasswordOnPlacard}
+                  onChange={(e) => setShowPasswordOnPlacard(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          )}
+
           {/* Destaque de Conexão ou Dados */}
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-1 text-slate-600">
             {isWifi ? (
               <>
                 <p><strong>Rede:</strong> {item.ssid}</p>
-                <p><strong>Senha:</strong> {item.password || "Nenhuma (Rede aberta)"}</p>
+                <p>
+                  <strong>Senha:</strong> {item.password || "Nenhuma (Rede aberta)"}
+                  {item.password && !showPasswordOnPlacard && (
+                    <span className="ml-2 text-amber-700 text-[10px] font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      Oculta no Display Impresso
+                    </span>
+                  )}
+                </p>
                 <p><strong>Criptografia:</strong> {item.security_type || "WPA"}</p>
               </>
             ) : (
