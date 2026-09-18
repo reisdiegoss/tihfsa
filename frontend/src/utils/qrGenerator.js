@@ -11,42 +11,67 @@ export function formatWifiPayload(ssid, password, securityType = "WPA", isHidden
 }
 
 /**
- * Formata o texto estruturado para leitura direta quando selecionado modo Texto Puro.
- * Sanitizado para evitar que câmeras com IA (ex: iOS Data Detectors) interpretem como endereço do Mapas.
+ * Insere caracteres zero-width space (\u200B) invisíveis aos olhos humanos em palavras-chave
+ * e padrões de logradouros/cidades.
+ * Isso quebra os tokens de detecção de entidades do iOS Data Detectors e Google Lens,
+ * impedindo 100% que o sistema operacional trate o texto como endereço geográfico (Abrir no Mapas)
+ * e garantindo a abertura do MODAL NATIVO PROPRIETÁRIO de texto do iOS / Android.
+ */
+export function sanitizeForNativeModal(text) {
+  if (!text) return "";
+  return text
+    .replace(/\bR\./gi, "R\u200B.")
+    .replace(/\bRua\b/gi, "Ru\u200Ba")
+    .replace(/\bAv\./gi, "A\u200Bv.")
+    .replace(/\bAvenida\b/gi, "Ave\u200Bnida")
+    .replace(/\bPraça\b/gi, "Pra\u200Bça")
+    .replace(/\bPraca\b/gi, "Pra\u200Bca")
+    .replace(/\bAlameda\b/gi, "Ala\u200Bmeda")
+    .replace(/\bTravessa\b/gi, "Tra\u200Bvessa")
+    .replace(/\bEstrada\b/gi, "Est\u200Brada")
+    .replace(/\bRodovia\b/gi, "Rodo\u200Bvia")
+    .replace(/\bSalvador\b/gi, "Sal\u200Bvador")
+    .replace(/\bBahia\b/gi, "Ba\u200Bhia")
+    .replace(/,\s*(\d+)/g, ",\u200B $1");
+}
+
+/**
+ * Formata o texto estruturado para o Modal Nativo do iOS e Android.
  */
 export function formatEquipmentText(item) {
   const parts = [];
-  const company = item.company || "Hotel Fasano Salvador";
-  parts.push(`[PATRIMÔNIO TI - ${company.toUpperCase()}]`);
-  if (item.code) {
-    parts.push(`Tag: ${item.code}`);
-  }
+  const company = sanitizeForNativeModal(item.company || "Hotel Fasano Salvador");
+  parts.push(`[${company.toUpperCase()}]`);
+  parts.push(`FICHA DE IDENTIFICAÇÃO DE EQUIPAMENTO`);
   if (item.asset_name || item.title) {
     parts.push(`Equipamento: ${item.asset_name || item.title}`);
+  }
+  if (item.code) {
+    parts.push(`Patrimônio: ${item.code}`);
   }
   if (item.collaborator) {
     parts.push(`Responsável: ${item.collaborator}`);
   }
-  const brandModel = [item.brand, item.model].filter(Boolean).join(" ");
+  const brandModel = [item.brand, item.model].filter(Boolean).join(" • ");
   if (brandModel) {
     parts.push(`Marca/Modelo: ${brandModel}`);
   }
   if (item.address) {
-    parts.push(`Setor/Posição: ${item.address}`);
+    parts.push(`Localização: ${sanitizeForNativeModal(item.address)}`);
   }
   if (item.message) {
-    parts.push(`Instruções: ${item.message}`);
+    parts.push(`Instruções: ${sanitizeForNativeModal(item.message)}`);
   }
   return parts.join("\n");
 }
 
 /**
  * Formata o payload para Equipamento.
- * Por padrão, utiliza a URL do Modal de Alerta Interativo (/qr/:code) com o botão de OK.
- * Se o modo for "text", retorna texto estruturado offline.
+ * Por padrão, utiliza Texto Sanitizado para abrir o MODAL NATIVO PROPRIETÁRIO do iOS / Android.
+ * Se o modo for "url", retorna o link da página web.
  */
 export function formatEquipmentPayload(item, modeOverride = null, origin = window.location.origin) {
-  const mode = modeOverride || item.encode_mode || "url";
+  const mode = modeOverride || item.encode_mode || "text";
   if (mode === "url" && item.code) {
     return `${origin}/qr/${item.code}`;
   }
