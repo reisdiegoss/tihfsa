@@ -1,12 +1,85 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   Activity, Ticket, Tv, ExternalLink, RefreshCw, 
   Clock, AlertTriangle, AlertCircle, ShieldAlert, CheckCircle2, 
-  Users, Building, ChevronRight, Layers, ArrowUpRight, Flame
+  Users, Building, ChevronRight, Layers, ArrowUpRight, Flame,
+  Volume2, VolumeX
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/client";
 import ZabbixPanel from "./ZabbixPanel";
+
+// Instância única de AudioContext
+let sharedAudioCtx = null;
+const getAudioContext = () => {
+  if (!sharedAudioCtx) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) sharedAudioCtx = new AudioCtx();
+  }
+  if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+};
+
+// Som 1: Chime suave para novos chamados
+const playNewTicketChime = () => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const now = ctx.currentTime;
+    const notes = [
+      { freq: 523.25, time: 0, dur: 0.35, gain: 0.3 },
+      { freq: 659.25, time: 0.12, dur: 0.35, gain: 0.35 },
+      { freq: 783.99, time: 0.25, dur: 0.55, gain: 0.4 }
+    ];
+
+    notes.forEach((n) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(n.freq, now + n.time);
+      gain.gain.setValueAtTime(n.gain, now + n.time);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + n.time + n.dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + n.time);
+      osc.stop(now + n.time + n.dur);
+    });
+  } catch (err) {
+    console.warn("Audio chime erro:", err);
+  }
+};
+
+// Som 2: Alerta urgente para chamados críticos ou estouro de SLA
+const playUrgentAlertSiren = () => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.setValueAtTime(587.33, now + 0.2);
+    osc.frequency.setValueAtTime(880, now + 0.4);
+
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.7);
+  } catch (err) {
+    console.warn("Audio siren erro:", err);
+  }
+};
 
 export default function MonitoringHub() {
   const navigate = useNavigate();
@@ -20,6 +93,48 @@ export default function MonitoringHub() {
   const [periodDays, setPeriodDays] = useState(7);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
+  // Áudio ativado por padrão
+  const [audioEnabled, setAudioEnabled] = useState(() => {
+    try {
+      const stored = localStorage.getItem("tihfsa_hub_audio_enabled");
+      return stored !== null ? stored === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const prevLatestTicketIdRef = useRef(null);
+  const prevLatestCriticalIdRef = useRef(null);
+  const prevBreachedCountRef = useRef(null);
+
+  const unlockAudio = () => {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      unlockAudio();
+    };
+    window.addEventListener("click", handleFirstInteraction);
+    return () => window.removeEventListener("click", handleFirstInteraction);
+  }, []);
+
+  const handleToggleAudio = () => {
+    const nextState = !audioEnabled;
+    setAudioEnabled(nextState);
+    try {
+      localStorage.setItem("tihfsa_hub_audio_enabled", String(nextState));
+    } catch (e) {}
+
+    unlockAudio();
+    if (nextState) {
+      playNewTicketChime();
+    }
+  };
+
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setSearchParams({ tab });
@@ -29,8 +144,33 @@ export default function MonitoringHub() {
     setLoadingHelpdesk(true);
     api.get(`/monitoring/helpdesk/summary?period_days=${periodDays}`)
       .then((res) => {
-        setSummaryData(res.data);
+        const data = res.data;
+        setSummaryData(data);
         setLastUpdate(new Date());
+
+        const curLatestId = data.latest_ticket_id || data.kpis?.latest_ticket_id || 0;
+        const curLatestCriticalId = data.latest_critical_ticket_id || data.kpis?.latest_critical_ticket_id || 0;
+        const curBreached = data.kpis?.sla_breached_count || data.kpis?.sla_estourado_count || 0;
+
+        if (prevLatestTicketIdRef.current === null) {
+          prevLatestTicketIdRef.current = curLatestId;
+          prevLatestCriticalIdRef.current = curLatestCriticalId;
+          prevBreachedCountRef.current = curBreached;
+        } else {
+          if (audioEnabled) {
+            if (curLatestCriticalId > prevLatestCriticalIdRef.current) {
+              playUrgentAlertSiren();
+            } else if (curLatestId > prevLatestTicketIdRef.current) {
+              playNewTicketChime();
+            } else if (curBreached > prevBreachedCountRef.current) {
+              playUrgentAlertSiren();
+            }
+          }
+
+          prevLatestTicketIdRef.current = curLatestId;
+          prevLatestCriticalIdRef.current = curLatestCriticalId;
+          prevBreachedCountRef.current = curBreached;
+        }
       })
       .catch((err) => {
         console.error("Erro ao carregar dados de monitoramento do Helpdesk:", err);
@@ -41,10 +181,10 @@ export default function MonitoringHub() {
   useEffect(() => {
     if (activeTab === "helpdesk") {
       fetchHelpdeskSummary();
-      const interval = setInterval(fetchHelpdeskSummary, 20000); // 20s refresh
+      const interval = setInterval(fetchHelpdeskSummary, 15000); // 15s refresh
       return () => clearInterval(interval);
     }
-  }, [activeTab, periodDays]);
+  }, [activeTab, periodDays, audioEnabled]);
 
   const kpis = summaryData?.kpis || {};
   const urgentQueue = summaryData?.urgent_queue || [];
@@ -80,8 +220,22 @@ export default function MonitoringHub() {
           </div>
         </div>
 
-        {/* Botões Rápidos para Abertura das TVs */}
+        {/* Botões Rápidos para Abertura das TVs e Alerta Sonoro */}
         <div className="flex flex-wrap items-center gap-3 shrink-0">
+          {/* Botão de Alerta Sonoro */}
+          <button
+            onClick={handleToggleAudio}
+            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-2xl transition-all font-bold text-xs cursor-pointer border ${
+              audioEnabled 
+                ? "bg-amber-50 text-amber-900 border-amber-300 shadow-xs" 
+                : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200"
+            }`}
+            title="Alerta sonoro para novos chamados e chamados críticos"
+          >
+            {audioEnabled ? <Volume2 size={16} className="text-amber-600 animate-pulse" /> : <VolumeX size={16} />}
+            <span>{audioEnabled ? "Alerta Sonoro Ativo" : "Alerta Silenciado"}</span>
+          </button>
+
           <a
             href="/noc"
             target="_blank"

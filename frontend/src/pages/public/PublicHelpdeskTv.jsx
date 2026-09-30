@@ -6,28 +6,93 @@ import {
 } from "lucide-react";
 import api from "../../api/client";
 
-// Alerta Sonoro usando Web Audio API nativa
-const playSlaAlertBeep = () => {
-  try {
+// Instância única de AudioContext com suporte a retomada em navegadores modernos
+let sharedAudioCtx = null;
+
+const getAudioContext = () => {
+  if (!sharedAudioCtx) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
+    if (AudioCtx) {
+      sharedAudioCtx = new AudioCtx();
+    }
+  }
+  if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+};
+
+// Som 1: Chime de Novo Chamado (3 notas harmônicas agradáveis: C5 -> E5 -> G5)
+const playNewTicketChime = () => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const now = ctx.currentTime;
+
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(523.25, now); // C5
+    gain1.gain.setValueAtTime(0.3, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.35);
+
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(659.25, now + 0.12); // E5
+    gain2.gain.setValueAtTime(0.35, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.5);
+
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.type = "sine";
+    osc3.frequency.setValueAtTime(783.99, now + 0.25); // G5
+    gain3.gain.setValueAtTime(0.4, now + 0.25);
+    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    osc3.connect(gain3);
+    gain3.connect(ctx.destination);
+    osc3.start(now + 0.25);
+    osc3.stop(now + 0.8);
+  } catch (err) {
+    console.warn("Web Audio API Chime erro:", err);
+  }
+};
+
+// Som 2: Alerta Urgente (Chamado Crítico ou SLA Estourado)
+const playUrgentAlertSiren = () => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(659.25, ctx.currentTime); // E5
-    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(880, now); // A5
+    osc.frequency.setValueAtTime(587.33, now + 0.2); // D5
+    osc.frequency.setValueAtTime(880, now + 0.4); // A5
 
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.6);
+    osc.start(now);
+    osc.stop(now + 0.7);
   } catch (err) {
-    console.warn("Web Audio API indisponível:", err);
+    console.warn("Web Audio API Siren erro:", err);
   }
 };
 
@@ -55,12 +120,48 @@ export default function PublicHelpdeskTv() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [countdown, setCountdown] = useState(15);
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  
+  // Áudio ativado por padrão com persistência no LocalStorage
+  const [audioEnabled, setAudioEnabled] = useState(() => {
+    try {
+      const stored = localStorage.getItem("tihfsa_tv_audio_enabled");
+      return stored !== null ? stored === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  const prevBreachedCountRef = useRef(0);
-  const prevCriticalCountRef = useRef(0);
+  // Refs de rastreamento para disparar som na detecção de alterações
+  const prevLatestTicketIdRef = useRef(null);
+  const prevLatestCriticalIdRef = useRef(null);
+  const prevBreachedCountRef = useRef(null);
+
+  // Desbloquear AudioContext com primeiro clique/toque
+  const unlockAudio = () => {
+    const ctx = getAudioContext();
+    if (ctx) {
+      if (ctx.state === "suspended") {
+        ctx.resume().then(() => setAudioUnlocked(true)).catch(() => {});
+      } else {
+        setAudioUnlocked(true);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      unlockAudio();
+    };
+    window.addEventListener("click", handleFirstInteraction);
+    window.addEventListener("keydown", handleFirstInteraction);
+    return () => {
+      window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("keydown", handleFirstInteraction);
+    };
+  }, []);
 
   // Relógio ao vivo atualizado a cada segundo
   useEffect(() => {
@@ -87,6 +188,19 @@ export default function PublicHelpdeskTv() {
     }
   };
 
+  const handleToggleAudio = () => {
+    const nextState = !audioEnabled;
+    setAudioEnabled(nextState);
+    try {
+      localStorage.setItem("tihfsa_tv_audio_enabled", String(nextState));
+    } catch (e) {}
+
+    unlockAudio();
+    if (nextState) {
+      playNewTicketChime();
+    }
+  };
+
   // Carregar dados de monitoramento
   const fetchData = async () => {
     try {
@@ -96,18 +210,30 @@ export default function PublicHelpdeskTv() {
       setLastUpdate(new Date());
       setCountdown(15);
 
-      // Tocar som se houver chamados estourados ou críticos novos e áudio estiver ligado
-      if (audioEnabled) {
-        const curBreached = summary.kpis?.sla_estourado_count || 0;
-        const curCritical = summary.kpis?.criticos || 0;
-        if (
-          (curBreached > 0 && curBreached > prevBreachedCountRef.current) ||
-          (curCritical > 0 && curCritical > prevCriticalCountRef.current)
-        ) {
-          playSlaAlertBeep();
-        }
+      const curLatestId = summary.latest_ticket_id || summary.kpis?.latest_ticket_id || 0;
+      const curLatestCriticalId = summary.latest_critical_ticket_id || summary.kpis?.latest_critical_ticket_id || 0;
+      const curBreached = summary.kpis?.sla_estourado_count || 0;
+
+      // Na primeira carga, apenas memorizamos os IDs sem tocar alarme
+      if (prevLatestTicketIdRef.current === null) {
+        prevLatestTicketIdRef.current = curLatestId;
+        prevLatestCriticalIdRef.current = curLatestCriticalId;
         prevBreachedCountRef.current = curBreached;
-        prevCriticalCountRef.current = curCritical;
+      } else {
+        // Nas leituras seguintes, detecta novos chamados ou estouro de SLA
+        if (audioEnabled) {
+          if (curLatestCriticalId > prevLatestCriticalIdRef.current) {
+            playUrgentAlertSiren();
+          } else if (curLatestId > prevLatestTicketIdRef.current) {
+            playNewTicketChime();
+          } else if (curBreached > prevBreachedCountRef.current) {
+            playUrgentAlertSiren();
+          }
+        }
+
+        prevLatestTicketIdRef.current = curLatestId;
+        prevLatestCriticalIdRef.current = curLatestCriticalId;
+        prevBreachedCountRef.current = curBreached;
       }
     } catch (err) {
       console.error("Erro ao carregar dados do Wallboard de Helpdesk:", err);
@@ -244,20 +370,16 @@ export default function PublicHelpdeskTv() {
         <div className="flex items-center gap-2 md:gap-3 w-full lg:w-auto justify-end">
           {/* Audio Alert Toggle */}
           <button
-            onClick={() => {
-              const nextState = !audioEnabled;
-              setAudioEnabled(nextState);
-              if (nextState) playSlaAlertBeep();
-            }}
+            onClick={handleToggleAudio}
             className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all border cursor-pointer ${
               audioEnabled
                 ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.25)]"
                 : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:bg-slate-800 hover:text-white"
             }`}
-            title="Ativar ou desativar alarme sonoro para chamados críticos"
+            title="Ativar/desativar som na TV (Toca para novos chamados e chamados críticos)"
           >
-            {audioEnabled ? <Volume2 size={18} className="animate-pulse" /> : <VolumeX size={18} />}
-            <span className="hidden sm:inline">{audioEnabled ? "Alarme Ativo" : "Alarme Silenciado"}</span>
+            {audioEnabled ? <Volume2 size={18} className="animate-pulse text-amber-400" /> : <VolumeX size={18} />}
+            <span className="hidden sm:inline">{audioEnabled ? "Alerta Sonoro Ativo" : "Alerta Silenciado"}</span>
           </button>
 
           {/* Fullscreen Button */}
@@ -293,6 +415,24 @@ export default function PublicHelpdeskTv() {
           </a>
         </div>
       </header>
+
+      {/* Banner de Autorização de Áudio pelo Navegador (se ainda não clicou na tela) */}
+      {audioEnabled && !audioUnlocked && (
+        <div 
+          onClick={unlockAudio}
+          className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold px-4 py-2.5 rounded-2xl mb-4 flex items-center justify-between gap-3 shadow-lg cursor-pointer animate-pulse"
+        >
+          <div className="flex items-center gap-2.5">
+            <Volume2 size={20} className="text-amber-400 shrink-0" />
+            <span>
+              O navegador bloqueia som automático. <strong>Clique em qualquer local desta tela para autorizar os alertas sonoros na TV!</strong>
+            </span>
+          </div>
+          <span className="bg-amber-500 text-slate-950 font-black px-3.5 py-1 rounded-xl text-xs uppercase tracking-wider shrink-0 shadow-sm">
+            Ativar Áudio
+          </span>
+        </div>
+      )}
 
       {/* ========================================================
           KPI CARDS GRID (HIGH CONTRAST & VISIBILITY FOR TV)

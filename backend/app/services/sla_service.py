@@ -354,8 +354,19 @@ def get_helpdesk_monitoring_summary(db: Session, period_days: int = 7) -> dict:
         for dept, cnt in sorted(dept_counts.items(), key=lambda item: item[1], reverse=True)[:6]
     ]
 
+    latest_ticket_id = db.query(func.max(Ticket.id)).scalar() or 0
+    latest_critical_ticket_id = db.query(func.max(Ticket.id)).filter(
+        (Ticket.priority == TicketPriority.CRITICAL) | 
+        (Ticket.priority == "Crítica") | 
+        (Ticket.priority == "CRITICAL")
+    ).scalar() or 0
+
     return {
+        "latest_ticket_id": latest_ticket_id,
+        "latest_critical_ticket_id": latest_critical_ticket_id,
         "kpis": {
+            "latest_ticket_id": latest_ticket_id,
+            "latest_critical_ticket_id": latest_critical_ticket_id,
             "total_open": total_open,
             "total_abertos": total_open,
             "new_count": new_count,
