@@ -176,10 +176,18 @@ export default function MonitoringHub() {
       unlockAudio();
     };
     window.addEventListener("click", handleFirstInteraction);
+    window.addEventListener("pointerdown", handleFirstInteraction);
+    window.addEventListener("mousedown", handleFirstInteraction);
     window.addEventListener("keydown", handleFirstInteraction);
+    window.addEventListener("touchstart", handleFirstInteraction);
+    window.addEventListener("focus", handleFirstInteraction);
     return () => {
       window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("pointerdown", handleFirstInteraction);
+      window.removeEventListener("mousedown", handleFirstInteraction);
       window.removeEventListener("keydown", handleFirstInteraction);
+      window.removeEventListener("touchstart", handleFirstInteraction);
+      window.removeEventListener("focus", handleFirstInteraction);
     };
   }, []);
 

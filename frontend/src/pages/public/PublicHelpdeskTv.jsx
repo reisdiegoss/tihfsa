@@ -194,12 +194,18 @@ export default function PublicHelpdeskTv() {
       unlockAudio();
     };
     window.addEventListener("click", handleFirstInteraction);
+    window.addEventListener("pointerdown", handleFirstInteraction);
+    window.addEventListener("mousedown", handleFirstInteraction);
     window.addEventListener("keydown", handleFirstInteraction);
     window.addEventListener("touchstart", handleFirstInteraction);
+    window.addEventListener("focus", handleFirstInteraction);
     return () => {
       window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("pointerdown", handleFirstInteraction);
+      window.removeEventListener("mousedown", handleFirstInteraction);
       window.removeEventListener("keydown", handleFirstInteraction);
       window.removeEventListener("touchstart", handleFirstInteraction);
+      window.removeEventListener("focus", handleFirstInteraction);
     };
   }, []);
 
@@ -395,21 +401,40 @@ export default function PublicHelpdeskTv() {
     }
   };
 
-  // Loop de polling
+  // Referência de timestamp para cálculo absoluto (resistente a throttling de janelas em segundo plano)
+  const lastFetchTimeRef = useRef(Date.now());
+
+  // Loop de polling contínuo imune a throttling de abas/janelas secundárias
   useEffect(() => {
     fetchData();
+    lastFetchTimeRef.current = Date.now();
 
     const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          fetchData();
-          return 15;
-        }
-        return prev - 1;
-      });
+      const elapsed = Math.floor((Date.now() - lastFetchTimeRef.current) / 1000);
+      const remaining = Math.max(0, 15 - elapsed);
+      setCountdown(remaining);
+
+      // Sempre que atingir ou ultrapassar 15 segundos, busca dados
+      if (elapsed >= 15) {
+        lastFetchTimeRef.current = Date.now();
+        fetchData();
+      }
     }, 1000);
 
-    return () => clearInterval(interval);
+    // Quando a tela/janela volta a ter visibilidade ou foco, dispara busca imediata
+    const handleSyncOnFocus = () => {
+      fetchData();
+      lastFetchTimeRef.current = Date.now();
+    };
+
+    document.addEventListener("visibilitychange", handleSyncOnFocus);
+    window.addEventListener("focus", handleSyncOnFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleSyncOnFocus);
+      window.removeEventListener("focus", handleSyncOnFocus);
+    };
   }, [audioEnabled]);
 
   const kpis = data.kpis || {};
