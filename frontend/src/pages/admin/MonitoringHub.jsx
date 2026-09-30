@@ -12,7 +12,7 @@ import ZabbixPanel from "./ZabbixPanel";
 // Instância única de AudioContext
 let sharedAudioCtx = null;
 const getAudioContext = () => {
-  if (!sharedAudioCtx) {
+  if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) sharedAudioCtx = new AudioCtx();
   }
@@ -27,118 +27,96 @@ const ensureAudioReady = async () => {
     try {
       await ctx.resume();
     } catch (e) {
-      console.warn("Autoplay impediu áudio sem interação:", e);
+      console.warn("Autoplay bloqueou áudio:", e);
     }
   }
   return ctx;
 };
 
-// Som 1: Chime de Novo Chamado (Harmonizado com o mesmo padrão suave de volume do NOC - masterGain 0.18)
+// Som 1: Chime de Novo Chamado (Harmonizado, suave e audível - C5 -> E5 -> G5)
 const playNewTicketChime = async () => {
   try {
     const ctx = await ensureAudioReady();
     if (!ctx) return;
 
-    const now = ctx.currentTime;
-    const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(0.18, now);
-    masterGain.connect(ctx.destination);
-
+    const start = ctx.currentTime + 0.05;
     const notes = [
-      { freq: 523.25, time: 0, dur: 0.35, peak: 0.16 },    // C5
-      { freq: 659.25, time: 0.10, dur: 0.38, peak: 0.18 },  // E5
-      { freq: 783.99, time: 0.20, dur: 0.55, peak: 0.22 }   // G5
+      { freq: 523.25, time: 0, dur: 0.35, gain: 0.24 },     // C5
+      { freq: 659.25, time: 0.12, dur: 0.40, gain: 0.26 },   // E5
+      { freq: 783.99, time: 0.24, dur: 0.60, gain: 0.28 }    // G5
     ];
 
     notes.forEach((n) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(n.freq, now + n.time);
-      gain.gain.setValueAtTime(0.01, now + n.time);
-      gain.gain.exponentialRampToValueAtTime(n.peak, now + n.time + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + n.time + n.dur);
+      osc.frequency.setValueAtTime(n.freq, start + n.time);
+      gain.gain.setValueAtTime(n.gain, start + n.time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + n.time + n.dur);
       osc.connect(gain);
-      gain.connect(masterGain);
-      osc.start(now + n.time);
-      osc.stop(now + n.time + n.dur + 0.01);
+      gain.connect(ctx.destination);
+      osc.start(start + n.time);
+      osc.stop(start + n.time + n.dur + 0.02);
     });
   } catch (err) {
-    console.warn("Audio chime erro:", err);
+    console.error("Audio chime erro:", err);
   }
 };
 
-// Som 2: Chime de resposta de solicitante / mensagem (Padrão suave NOC: D5 -> A5)
+// Som 2: Chime de resposta de solicitante / mensagem (Ding-Dong suave: D5 -> A5)
 const playRequesterReplyChime = async () => {
   try {
     const ctx = await ensureAudioReady();
     if (!ctx) return;
 
-    const now = ctx.currentTime;
-    const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(0.18, now);
-    masterGain.connect(ctx.destination);
+    const start = ctx.currentTime + 0.05;
+    const tones = [
+      { freq: 587.33, time: 0, dur: 0.25, gain: 0.25 },    // D5
+      { freq: 880.00, time: 0.12, dur: 0.50, gain: 0.28 }   // A5
+    ];
 
-    // Tom 1: 587.33 Hz (D5) - toque macio inicial
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = "sine";
-    osc1.frequency.setValueAtTime(587.33, now);
-    gain1.gain.setValueAtTime(0.01, now);
-    gain1.gain.exponentialRampToValueAtTime(0.18, now + 0.03);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-    osc1.connect(gain1);
-    gain1.connect(masterGain);
-    osc1.start(now);
-    osc1.stop(now + 0.13);
-
-    // Tom 2: 880 Hz (A5) - sino suave de atenção NOC
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = "sine";
-    osc2.frequency.setValueAtTime(880, now + 0.08);
-    gain2.gain.setValueAtTime(0.01, now + 0.08);
-    gain2.gain.exponentialRampToValueAtTime(0.22, now + 0.11);
-    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
-    osc2.connect(gain2);
-    gain2.connect(masterGain);
-    osc2.start(now + 0.08);
-    osc2.stop(now + 0.36);
+    tones.forEach((t) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(t.freq, start + t.time);
+      gain.gain.setValueAtTime(t.gain, start + t.time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + t.time + t.dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start + t.time);
+      osc.stop(start + t.time + t.dur + 0.02);
+    });
   } catch (err) {
-    console.warn("Audio requester chime erro:", err);
+    console.error("Audio requester chime erro:", err);
   }
 };
 
-// Som 3: Alerta urgente para chamados críticos ou estouro de SLA (moderado, masterGain 0.20)
+// Som 3: Alerta urgente para chamados críticos ou estouro de SLA (moderado)
 const playUrgentAlertSiren = async () => {
   try {
     const ctx = await ensureAudioReady();
     if (!ctx) return;
 
-    const now = ctx.currentTime;
-    const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(0.20, now);
-    masterGain.connect(ctx.destination);
-
+    const start = ctx.currentTime + 0.05;
     for (let i = 0; i < 2; i++) {
-      const offset = i * 0.28;
+      const offset = i * 0.30;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(750, now + offset);
-      osc.frequency.exponentialRampToValueAtTime(440, now + offset + 0.24);
+      osc.frequency.setValueAtTime(750, start + offset);
+      osc.frequency.exponentialRampToValueAtTime(440, start + offset + 0.24);
 
-      gain.gain.setValueAtTime(0.01, now + offset);
-      gain.gain.exponentialRampToValueAtTime(0.22, now + offset + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.25);
+      gain.gain.setValueAtTime(0.25, start + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + offset + 0.26);
 
       osc.connect(gain);
-      gain.connect(masterGain);
-      osc.start(now + offset);
-      osc.stop(now + offset + 0.26);
+      gain.connect(ctx.destination);
+      osc.start(start + offset);
+      osc.stop(start + offset + 0.28);
     }
   } catch (err) {
-    console.warn("Audio siren erro:", err);
+    console.error("Audio siren erro:", err);
   }
 };
 
