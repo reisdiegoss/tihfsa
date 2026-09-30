@@ -33,90 +33,97 @@ const ensureAudioReady = async () => {
   return ctx;
 };
 
-// Som 1: Chime de Novo Chamado (Harmonizado, suave e audível - C5 -> E5 -> G5)
+// Som 1: Chime de Novo Chamado (Acorde harmônico encorpado de alto volume: C5 -> E5 -> G5 -> C6)
 const playNewTicketChime = async () => {
   try {
     const ctx = await ensureAudioReady();
     if (!ctx) return;
 
-    const start = ctx.currentTime + 0.05;
-    const notes = [
-      { freq: 523.25, time: 0, dur: 0.35, gain: 0.24 },     // C5
-      { freq: 659.25, time: 0.12, dur: 0.40, gain: 0.26 },   // E5
-      { freq: 783.99, time: 0.24, dur: 0.60, gain: 0.28 }    // G5
-    ];
+    const playHarmonicBurst = (delay) => {
+      const now = ctx.currentTime + delay;
+      const notes = [
+        { freq: 523.25, time: 0, dur: 0.4, gain: 0.75 },     // C5
+        { freq: 659.25, time: 0.12, dur: 0.45, gain: 0.8 },   // E5
+        { freq: 783.99, time: 0.24, dur: 0.7, gain: 0.85 },   // G5
+        { freq: 1046.50, time: 0.36, dur: 0.9, gain: 0.85 }   // C6
+      ];
 
-    notes.forEach((n) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(n.freq, start + n.time);
-      gain.gain.setValueAtTime(n.gain, start + n.time);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + n.time + n.dur);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start + n.time);
-      osc.stop(start + n.time + n.dur + 0.02);
-    });
+      notes.forEach((n) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(n.freq, now + n.time);
+        gain.gain.setValueAtTime(n.gain, now + n.time);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.time + n.dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + n.time);
+        osc.stop(now + n.time + n.dur);
+      });
+    };
+
+    // Toca duas vezes sequencialmente para que o setor escute com nitidez
+    playHarmonicBurst(0.05);
+    playHarmonicBurst(0.75);
   } catch (err) {
-    console.error("Web Audio API Chime erro:", err);
+    console.warn("Web Audio API Chime erro:", err);
   }
 };
 
-// Som 2: Chime de Resposta do Solicitante / Interatividade (Ding-Dong suave: D5 -> A5)
+// Som 2: Chime de Resposta do Solicitante / Interatividade Externa (Ding-Dong duplo)
 const playRequesterReplyChime = async () => {
   try {
     const ctx = await ensureAudioReady();
     if (!ctx) return;
 
-    const start = ctx.currentTime + 0.05;
+    const now = ctx.currentTime + 0.05;
     const tones = [
-      { freq: 587.33, time: 0, dur: 0.25, gain: 0.25 },    // D5
-      { freq: 880.00, time: 0.12, dur: 0.50, gain: 0.28 }   // A5
+      { freq: 880, time: 0, dur: 0.35, gain: 0.8 },        // A5
+      { freq: 1174.66, time: 0.18, dur: 0.65, gain: 0.85 }  // D6
     ];
 
     tones.forEach((t) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(t.freq, start + t.time);
-      gain.gain.setValueAtTime(t.gain, start + t.time);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + t.time + t.dur);
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(t.freq, now + t.time);
+      gain.gain.setValueAtTime(t.gain, now + t.time);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + t.time + t.dur);
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(start + t.time);
-      osc.stop(start + t.time + t.dur + 0.02);
+      osc.start(now + t.time);
+      osc.stop(now + t.time + t.dur);
     });
   } catch (err) {
-    console.error("Web Audio API Requester Chime erro:", err);
+    console.warn("Web Audio API Requester Chime erro:", err);
   }
 };
 
-// Som 3: Alerta Urgente (Chamado Crítico ou SLA Estourado - moderado)
+// Som 3: Alerta Urgente (Chamado Crítico ou SLA Estourado)
 const playUrgentAlertSiren = async () => {
   try {
     const ctx = await ensureAudioReady();
     if (!ctx) return;
 
-    const start = ctx.currentTime + 0.05;
-    for (let i = 0; i < 2; i++) {
-      const offset = i * 0.30;
+    const now = ctx.currentTime + 0.05;
+    for (let i = 0; i < 3; i++) {
+      const offset = i * 0.35;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(750, start + offset);
-      osc.frequency.exponentialRampToValueAtTime(440, start + offset + 0.24);
+      osc.frequency.setValueAtTime(950, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(450, now + offset + 0.3);
 
-      gain.gain.setValueAtTime(0.25, start + offset);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + offset + 0.26);
+      gain.gain.setValueAtTime(0.8, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + offset + 0.3);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(start + offset);
-      osc.stop(start + offset + 0.28);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.3);
     }
   } catch (err) {
-    console.error("Web Audio API Siren erro:", err);
+    console.warn("Web Audio API Siren erro:", err);
   }
 };
 

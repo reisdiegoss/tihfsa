@@ -584,10 +584,10 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Carga por Técnico & Ranking de Setores**:
         - Distribuição de chamados ativos por analista de suporte e barras de gargalo por setor do hotel.
       - **Sistema Avançado de Alertas Sonoros & Visuais (Web Audio API & Toasts)**:
-        - **Sintetizador Harmônico Suave (Padrão de Volume NOC)**: Calibrado com `masterGain` em `0.18` (idêntico ao volume do painel NOC/Topologias), garantindo toque agradável e sem sobressaltos no ambiente.
-        - **Som 1: Novo Chamado (Acorde C5-E5-G5)**: Dispara um chime suave de 3 notas harmônicas com ataque macio e decaimento exponencial.
-        - **Som 2: Resposta de Solicitante / Interatividade (Ding-Dong NOC: D5-A5)**: Dispara um sino suave idêntico ao tom de atenção do NOC.
-        - **Som 3: Urgência / Crítico / SLA Estourado (Sirene moderada)**: Alarme duplo com ganho moderado (`0.20`) para sinalização clara sem estridência.
+        - **Sintetizador Harmônico de Alto Volume (Potência Plena)**: Calibrado com ganho de 0.75 a 0.85 para máxima nitidez em televisores e ambientes amplos de atendimento, permitindo que o volume final seja controlado diretamente no aparelho de TV ou caixa de som.
+        - **Som 1: Novo Chamado (Acorde C5-E5-G5-C6)**: Dispara um chime harmônico de 4 notas em dupla rajada com ganho elevado (0.75 - 0.85).
+        - **Som 2: Resposta de Solicitante / Interatividade (Ding-Dong duplo)**: Dispara um chime sonoro nítido com ganho 0.85 para mensagens e respostas recebidas.
+        - **Som 3: Urgência / Crítico / SLA Estourado (Sirene)**: Sirene enfática de 3 ondas (ganho 0.80) para sinalização de criticidade máxima.
         - **Notificações Visuais Flutuantes (Toasts)**: Card translúcido escuro de alto contraste no canto superior direito exibindo número do chamado, título, solicitante/autor da mensagem e horário, com auto-fechamento em 15 segundos ou fechamento manual.
         - **Persistência Inteligente (`localStorage`)**: Memoriza os últimos IDs de chamados e respostas visualizados, evitando alarmes repetitivos desnecessários, mas garantindo que chamados recentes toquem mesmo se a tela for recarregada.
         - **Botão "Testar Som"**: Disponível tanto no cabeçalho do Wallboard (`/tv/helpdesk`) quanto no Hub de Monitoramento (`/admin/monitoring`), permitindo que a equipe teste os alto-falantes e o volume a qualquer momento.
