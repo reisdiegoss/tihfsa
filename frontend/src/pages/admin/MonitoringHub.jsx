@@ -291,9 +291,12 @@ export default function MonitoringHub() {
               ) : (
                 <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
                   {urgentQueue.map((ticket) => {
-                    const sla = ticket.sla;
-                    const isBreached = sla.status === "BREACHED";
-                    const isWarning = sla.status === "WARNING";
+                    const sla = ticket.sla || {};
+                    const isBreached = (sla.status || ticket.sla_status) === "BREACHED";
+                    const isWarning = (sla.status || ticket.sla_status) === "WARNING";
+                    const remainingMins = ticket.sla_remaining_minutes !== undefined 
+                      ? ticket.sla_remaining_minutes 
+                      : (sla.remaining_minutes || 0);
 
                     return (
                       <div 
@@ -340,7 +343,7 @@ export default function MonitoringHub() {
                               : "bg-emerald-50 text-emerald-800 border border-emerald-200"
                           }`}>
                             <Clock size={12} />
-                            <span>{formatMinutesRemaining(sla.remaining_minutes)}</span>
+                            <span>{formatMinutesRemaining(remainingMins)}</span>
                           </span>
                         </div>
                       </div>

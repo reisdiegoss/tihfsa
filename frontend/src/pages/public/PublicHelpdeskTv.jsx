@@ -143,24 +143,24 @@ export default function PublicHelpdeskTv() {
   const formattedDate = currentTime.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
   const getPriorityBadge = (priority) => {
-    switch (priority) {
-      case "CRITICAL":
-      case "URGENTE":
-        return { label: "CRÍTICA", bg: "bg-red-500/20 text-red-400 border-red-500/40", pulse: true };
-      case "HIGH":
-      case "ALTA":
-        return { label: "ALTA", bg: "bg-amber-500/20 text-amber-400 border-amber-500/40", pulse: false };
-      case "MEDIUM":
-      case "MEDIA":
-        return { label: "MÉDIA", bg: "bg-blue-500/20 text-blue-400 border-blue-500/40", pulse: false };
-      default:
-        return { label: "BAIXA", bg: "bg-slate-500/20 text-slate-400 border-slate-500/40", pulse: false };
+    const p = String(priority || "").toUpperCase();
+    if (p.includes("CRIT") || p.includes("URG")) {
+      return { label: "CRÍTICA", bg: "bg-red-500/20 text-red-400 border-red-500/40", pulse: true };
     }
+    if (p.includes("ALT") || p.includes("HIGH")) {
+      return { label: "ALTA", bg: "bg-amber-500/20 text-amber-400 border-amber-500/40", pulse: false };
+    }
+    if (p.includes("MED")) {
+      return { label: "MÉDIA", bg: "bg-blue-500/20 text-blue-400 border-blue-500/40", pulse: false };
+    }
+    return { label: "BAIXA", bg: "bg-slate-500/20 text-slate-400 border-slate-500/40", pulse: false };
   };
 
   const getSlaDisplay = (ticket) => {
-    const status = ticket.sla_status;
-    const remaining = ticket.sla_remaining_minutes;
+    const status = ticket.sla_status || ticket.sla?.status;
+    const remaining = ticket.sla_remaining_minutes !== undefined 
+      ? ticket.sla_remaining_minutes 
+      : ticket.sla?.remaining_minutes;
 
     if (status === "BREACHED") {
       const overdueMins = Math.abs(remaining || 0);

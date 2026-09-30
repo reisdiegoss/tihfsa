@@ -9,7 +9,7 @@ from sqlalchemy import func
 from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.models.ticket_interaction import TicketInteraction
 from app.models.sla import SLAConfig, SLACategoryRule
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.department import Department
 from app.models.category import Category
 
@@ -103,12 +103,19 @@ def add_business_minutes(
     work_start_time = time(sh, sm)
     work_end_time = time(eh, em)
 
+    if work_start_time >= work_end_time:
+        return start_dt + timedelta(minutes=minutes_to_add)
+
     curr = start_dt
     remaining = minutes_to_add
 
     # Avança minuto a minuto de expediente (para máxima precisão em SLAs curtos)
     step = timedelta(minutes=1)
-    while remaining > 0:
+    max_steps = 60 * 24 * 60  # Limite de segurança de 60 dias para evitar loops
+    steps_count = 0
+
+    while remaining > 0 and steps_count < max_steps:
+        steps_count += 1
         day_code = DAY_NAME_MAP.get(curr.weekday(), "")
         is_work_day = day_code in valid_days
         curr_time = curr.time()
@@ -159,8 +166,8 @@ def evaluate_ticket_sla(
         due_resolution_at = created_at + timedelta(minutes=res_min)
 
     # Determinar tempo decorrido e se já foi resolvido
-    is_closed = ticket.status in [TicketStatus.CLOSED, TicketStatus.REJECTED, TicketStatus.PENDING_VALIDATION]
-    end_point = ticket.solved_at or ticket.closed_at or (now_dt if not is_closed else ticket.updated_at)
+    is_closed = ticket.status in [TicketStatus.CLOSED, TicketStatus.REJECTED]
+    end_point = ticket.solved_at or ticket.closed_at or (now_dt if not is_closed else (ticket.updated_at or now_dt))
     if end_point.tzinfo is None:
         end_point = end_point.replace(tzinfo=timezone.utc)
 
@@ -235,17 +242,24 @@ def get_helpdesk_monitoring_summary(db: Session, period_days: int = 7) -> dict:
         else:
             sla_ok_count += 1
 
+        req_name = getattr(t.requester, "display_name", None) or getattr(t.requester, "name", None) or "Não informado"
+        tech_name = getattr(t.technician, "display_name", None) or getattr(t.technician, "name", None)
+        dep_name = "Geral"
+        if t.requester and t.requester.department:
+            dep_name = getattr(t.requester.department, "name", "Geral")
+        cat_name = getattr(t.category, "name", "Sem Categoria") if t.category else "Sem Categoria"
+
         evaluated_active.append({
             "id": t.id,
             "title": t.title,
             "priority": t.priority.value if hasattr(t.priority, "value") else str(t.priority),
             "status": t.status.value if hasattr(t.status, "value") else str(t.status),
             "created_at": t.created_at.isoformat() if t.created_at else None,
-            "requester_name": t.requester.name if t.requester else "Não informado",
-            "department_name": (t.requester.department.name if t.requester and t.requester.department else "Geral"),
-            "technician_name": t.technician.name if t.technician else None,
-            "assigned_name": t.technician.name if t.technician else None,
-            "category_name": t.category.name if t.category else "Sem Categoria",
+            "requester_name": req_name,
+            "department_name": dep_name,
+            "technician_name": tech_name,
+            "assigned_name": tech_name,
+            "category_name": cat_name,
             "sla": sla_data,
             "sla_status": sla_data["status"],
             "sla_remaining_minutes": sla_data["remaining_minutes"],
@@ -299,16 +313,21 @@ def get_helpdesk_monitoring_summary(db: Session, period_days: int = 7) -> dict:
     mttr_minutes = round(total_resolution_minutes / resolved_count) if resolved_count > 0 else 0
 
     # 3. Carga por Técnico
-    technicians = db.query(User).filter(User.role.in_(["technician", "admin"])).all()
+    technicians = db.query(User).filter(
+        (User.role.in_([UserRole.TECHNICIAN, UserRole.ADMIN])) |
+        (User.role.in_(["technician", "admin"]))
+    ).all()
     tech_stats = []
     for tech in technicians:
         active_for_tech = [t for t in active_tickets if t.technician_id == tech.id]
         in_progress_tech = [t for t in active_for_tech if t.status == TicketStatus.IN_PROGRESS]
+        tech_d_name = getattr(tech, "display_name", None) or getattr(tech, "name", tech.email)
+        tech_r_val = tech.role.value if hasattr(tech.role, "value") else str(tech.role)
         tech_stats.append({
             "id": tech.id,
-            "name": tech.name,
+            "name": tech_d_name,
             "email": tech.email,
-            "role": tech.role,
+            "role": tech_r_val,
             "active_tickets_count": len(active_for_tech),
             "active_tickets": len(active_for_tech),
             "in_progress_count": len(in_progress_tech),
@@ -320,7 +339,9 @@ def get_helpdesk_monitoring_summary(db: Session, period_days: int = 7) -> dict:
     # 4. Ranking de Setores mais demandantes nos chamados ativos
     dept_counts: Dict[str, int] = {}
     for t in active_tickets:
-        dept_name = (t.requester.department.name if t.requester and t.requester.department else "Outros")
+        dept_name = "Outros"
+        if t.requester and t.requester.department:
+            dept_name = getattr(t.requester.department, "name", "Outros")
         dept_counts[dept_name] = dept_counts.get(dept_name, 0) + 1
 
     top_sectors = [
