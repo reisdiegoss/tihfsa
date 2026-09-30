@@ -801,6 +801,7 @@ check_status() {
 # ══════════════════════════════════════════════════════════════
 main() {
     banner
+    chmod +x "$SCRIPT_DIR/start.sh" 2>/dev/null || true
 
     local action="${1:-full}"
 
@@ -834,10 +835,12 @@ main() {
             log_step "UPDATE" "Atualizando repositório do Git e recompilando..."
             git fetch origin main || true
             git reset --hard origin/main || git pull || true
+            chmod +x "$SCRIPT_DIR/start.sh" 2>/dev/null || true
             build_frontend
             stop_services
             sleep 1
             start_services
+            chmod +x "$SCRIPT_DIR/start.sh" 2>/dev/null || true
             log_success "Aplicação atualizada, compilada e reiniciada com sucesso!"
             ;;
         --logs|-l)
