@@ -12,6 +12,7 @@ from app.models.asset_type import AssetTypeModel
 from app.models.integration_config import EvolutionConfig
 from app.models.network_map import NetworkMap
 from app.models.qrcode import QRCodeItem, QRCodeConfig
+from app.models.sla import SLAConfig, SLACategoryRule
 
 __all__ = [
     "User",
@@ -29,5 +30,7 @@ __all__ = [
     "NetworkMap",
     "QRCodeItem",
     "QRCodeConfig",
+    "SLAConfig",
+    "SLACategoryRule",
 ]
 

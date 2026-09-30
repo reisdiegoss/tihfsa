@@ -553,4 +553,39 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         4. O modal contém estritamente o botão único **"OK"**.
         5. Ao clicar em **"OK"**, o modal fecha e a câmera é reativada instantaneamente (`html5QrCode.resume()`) para permitir novas leituras consecutivas.
 
+23. **Central de Monitoramento, TV Wallboard de Helpdesk & Parametrização de SLA**:
+    - **Parametrização de SLA em Configurações (`/admin/settings` - Aba "Diretrizes de SLA")**:
+      - Componente dedicado `SLASettingsSection.jsx` e endpoints de persistência no backend (`GET /api/v1/sla/config`, `PUT /api/v1/sla/config`, `POST /api/v1/sla/category-rules`, `DELETE /api/v1/sla/category-rules/{id}`).
+      - **Cálculo de Expediente**: Alternância com 1 clique entre regime 24/7 (ininterrupto) e Horário Comercial, com parametrização customizável de horário de início, horário de término e dias úteis da semana (segunda a domingo).
+      - **Matriz de Prazos ITIL por Prioridade**:
+        - Prazos de Primeira Resposta e Resolução final para as 4 prioridades do sistema: Crítica, Alta, Média e Baixa.
+      - **Margem de Alerta Preventivo**:
+        - Percentual configurável (padrão 80% do tempo limite) para sinalizar visualmente que o chamado entrou na faixa amarela de risco iminente de estouro.
+      - **Regras Exclusivas por Categoria**:
+        - Capacidade de sobrepor os prazos globais para categorias específicas que demandem atendimento diferenciado (ex.: links de internet, checkout ou eventos no hotel).
+      - **Motor de Avaliação e Prazos (`sla_service.py`)**:
+        - Calcula o prazo exato em minutos corridos ou minutos comerciais úteis, avaliando o estado atual do chamado (`OK`, `WARNING`, `BREACHED` ou `MET`), tempo restante e percentual global de conformidade.
+    - **Central Unificada de Monitoramento (`/admin/monitoring` e `MonitoringHub.jsx`)**:
+      - Atualização da navegação da `Sidebar.jsx` apontando o item "Monitoramento" para o novo hub `/admin/monitoring`.
+      - **Abas Integradas**:
+        - *Helpdesk & SLA*: Painel tático com KPIs consolidados, fila urgente com cronômetros decrescentes de SLA, status da carga de cada técnico e setores mais demandantes.
+        - *NOC & Redes*: Painel completo de Zabbix, UniFi e Topologias de Rede integrado na mesma tela.
+      - **Lançadores Rápidos para TVs**:
+        - Atalhos em destaque no topo para disparar a **📺 TV 1: NOC & Redes** (`/noc`) e a **📺 TV 2: Helpdesk & SLA** (`/tv/helpdesk`) em abas separadas de tela cheia.
+    - **TV Wallboard de Helpdesk para Exibição Dedicada em TV (`/tv/helpdesk` e `/tv/tickets`)**:
+      - Tela pública (`PublicHelpdeskTv.jsx`) projetada para televisores 4K/Full HD de centrais de atendimento, sem necessidade de autenticação por senha para exibição contínua.
+      - **Dark Mode de Alto Contraste**: Fundo `#070b14` com tipografia ultra legível e badges luminosos para fácil leitura à distância.
+      - **Relógio de Parede Digital**: Exibe hora precisa (segundo a segundo) e data completa formatada para o fuso local do Hotel Fasano Salvador.
+      - **Cards de KPIs Gigantes**:
+        - Chamados Abertos, Sem Atendente (Fila Livre para triagem), Em Atendimento, Em Validação pelo Usuário, Chamados Críticos (com pulso visual em vermelho), % Geral de Cumprimento de SLA e Contador de Chamados com SLA Estourado.
+      - **Fila Prioritária com Contagem Regressiva de SLA em Tempo Real**:
+        - Lista ordenada por severidade e proximidade do vencimento de SLA.
+        - Exibe código `#ID`, título, solicitante, departamento, categoria, analista atribuído e badge de SLA com contagem decrescente (ou tempo de atraso caso estourado).
+      - **Carga por Técnico & Ranking de Setores**:
+        - Distribuição de chamados ativos por analista de suporte e barras de gargalo por setor do hotel.
+      - **Alarme Sonoro Inteligente (Web Audio API)**:
+        - Emite sinal sonoro harmônico de alerta ao detectar chamados críticos na fila ou estouro de SLA, com botão no cabeçalho para ativar/silenciar o áudio.
+      - **Sincronização Contínua**: Polling automático a cada 15 segundos com indicador visual de countdown e botão de tela cheia nativa (`requestFullscreen`).
+
+
 

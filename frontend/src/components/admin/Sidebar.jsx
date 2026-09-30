@@ -11,7 +11,7 @@ export default function Sidebar() {
     { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle },
     { name: "Ativos", path: "/admin/assets", icon: Monitor },
     { name: "QR Codes", path: "/admin/qrcodes", icon: QrCode },
-    { name: "Monitoramento", path: "/admin/zabbix", icon: Activity },
+    { name: "Monitoramento", path: "/admin/monitoring", icon: Activity },
     { name: "Configurações", path: "/admin/settings", icon: Settings },
   ];
 

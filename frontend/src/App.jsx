@@ -11,6 +11,8 @@ import NewTicket from "./pages/admin/NewTicket";
 import Assets from "./pages/admin/Assets";
 import Settings from "./pages/admin/Settings";
 import ZabbixPanel from "./pages/admin/ZabbixPanel";
+import MonitoringHub from "./pages/admin/MonitoringHub";
+import PublicHelpdeskTv from "./pages/public/PublicHelpdeskTv";
 
 // Client App Pages (Colaboradores / Vistorias)
 import ClientHome from "./pages/client/ClientHome";
@@ -57,6 +59,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/noc" element={<PublicNocPanel />} />
           <Route path="/noc/public" element={<PublicNocPanel />} />
+          <Route path="/tv/helpdesk" element={<PublicHelpdeskTv />} />
+          <Route path="/tv/tickets" element={<PublicHelpdeskTv />} />
           <Route path="/qr/:code" element={<PublicAssetTag />} />
           <Route path="/scan" element={<QRCodeScannerPage />} />
           <Route path="/" element={<RootRedirect />} />
@@ -73,7 +77,8 @@ export default function App() {
             <Route path="assets" element={<Assets />} />
             <Route path="qrcodes" element={<QRCodeManager />} />
             <Route path="qrcodes/scan" element={<QRCodeScannerPage />} />
-            <Route path="zabbix" element={<ZabbixPanel />} />
+            <Route path="monitoring" element={<MonitoringHub />} />
+            <Route path="zabbix" element={<Navigate to="/admin/monitoring" replace />} />
             <Route path="settings" element={<Settings />} />
             <Route path="ad-import" element={<Navigate to="/admin/settings" replace />} />
           </Route>

@@ -1,2 +1,4 @@
 .agents/
 .gitignore
+__pycache__/
+*.pyc

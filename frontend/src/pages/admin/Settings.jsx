@@ -46,6 +46,7 @@ import {
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import ChangePasswordModal from "../../components/common/ChangePasswordModal";
+import SLASettingsSection from "../../components/admin/SLASettingsSection";
 
 export default function Settings() {
   const { user, canChangePassword } = useAuth();
@@ -925,6 +926,17 @@ export default function Settings() {
           }`}
         >
           <Cpu size={16} /> Tipos de Equipamento
+        </button>
+
+        <button
+          onClick={() => setActiveTab("sla")}
+          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
+            activeTab === "sla"
+              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
+          }`}
+        >
+          <Clock size={16} /> Diretrizes de SLA
         </button>
 
         <button
@@ -2787,6 +2799,11 @@ export default function Settings() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB CONTENT: SLA & Diretrizes de Atendimento */}
+      {activeTab === "sla" && (
+        <SLASettingsSection />
       )}
 
       {/* Modal de Alteração de Senha */}

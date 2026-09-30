@@ -16,10 +16,12 @@ from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
-    attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes
+    attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes,
+    sla, monitoring
 )
 import app.models.network_map  # noqa: F401
 import app.models.qrcode       # noqa: F401
+import app.models.sla          # noqa: F401
 
 # Criar pasta uploads se não existir
 os.makedirs("uploads", exist_ok=True)
@@ -284,9 +286,47 @@ async def lifespan(app: FastAPI):
                     default_logo_url VARCHAR(500),
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
+                CREATE TABLE IF NOT EXISTS sla_config (
+                    id SERIAL PRIMARY KEY,
+                    calc_business_hours BOOLEAN DEFAULT FALSE NOT NULL,
+                    business_start_time VARCHAR(10) DEFAULT '08:00' NOT NULL,
+                    business_end_time VARCHAR(10) DEFAULT '18:00' NOT NULL,
+                    business_days VARCHAR(50) DEFAULT 'mon,tue,wed,thu,fri' NOT NULL,
+                    enable_category_sla BOOLEAN DEFAULT FALSE NOT NULL,
+                    critical_response_min INTEGER DEFAULT 15 NOT NULL,
+                    critical_resolution_min INTEGER DEFAULT 120 NOT NULL,
+                    high_response_min INTEGER DEFAULT 60 NOT NULL,
+                    high_resolution_min INTEGER DEFAULT 240 NOT NULL,
+                    medium_response_min INTEGER DEFAULT 120 NOT NULL,
+                    medium_resolution_min INTEGER DEFAULT 480 NOT NULL,
+                    low_response_min INTEGER DEFAULT 240 NOT NULL,
+                    low_resolution_min INTEGER DEFAULT 1440 NOT NULL,
+                    warning_threshold_percent INTEGER DEFAULT 75 NOT NULL,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+                );
+                CREATE TABLE IF NOT EXISTS sla_category_rules (
+                    id SERIAL PRIMARY KEY,
+                    category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE UNIQUE NOT NULL,
+                    response_min INTEGER,
+                    resolution_min INTEGER NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
             """))
             conn.execute(text("ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS encode_mode VARCHAR(20) DEFAULT 'vcard';"))
             conn.execute(text("UPDATE qrcodes SET encode_mode = 'vcard';"))
+            # Seed SLA config default se tabela estiver vazia
+            conn.execute(text("""
+                INSERT INTO sla_config (
+                    id, calc_business_hours, business_start_time, business_end_time, business_days,
+                    enable_category_sla, critical_response_min, critical_resolution_min,
+                    high_response_min, high_resolution_min, medium_response_min, medium_resolution_min,
+                    low_response_min, low_resolution_min, warning_threshold_percent
+                )
+                SELECT 1, FALSE, '08:00', '18:00', 'mon,tue,wed,thu,fri',
+                       FALSE, 15, 120, 60, 240, 120, 480, 240, 1440, 75
+                WHERE NOT EXISTS (SELECT 1 FROM sla_config);
+            """))
             conn.commit()
     except Exception as e:
         print(f"[DB Auto-Migration Error] {e}")
@@ -347,6 +387,8 @@ app.include_router(network_maps.router)
 app.include_router(integrations.router)
 app.include_router(integrations.router_unifi)
 app.include_router(qrcodes.router)
+app.include_router(sla.router)
+app.include_router(monitoring.router)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
