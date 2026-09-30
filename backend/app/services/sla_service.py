@@ -4,7 +4,7 @@ Service SLA — Cálculo de prazos, conformidade e métricas de Helpdesk para TV
 from datetime import datetime, timezone, timedelta, time
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_, not_
 
 from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.models.ticket_interaction import TicketInteraction
@@ -354,6 +354,8 @@ def get_helpdesk_monitoring_summary(db: Session, period_days: int = 7) -> dict:
         for dept, cnt in sorted(dept_counts.items(), key=lambda item: item[1], reverse=True)[:6]
     ]
 
+    from sqlalchemy import or_, not_
+
     latest_ticket_id = db.query(func.max(Ticket.id)).scalar() or 0
     latest_critical_ticket_id = db.query(func.max(Ticket.id)).filter(
         (Ticket.priority == TicketPriority.CRITICAL) | 
@@ -361,12 +363,66 @@ def get_helpdesk_monitoring_summary(db: Session, period_days: int = 7) -> dict:
         (Ticket.priority == "CRITICAL")
     ).scalar() or 0
 
+    latest_ticket_obj = db.query(Ticket).order_by(Ticket.id.desc()).first()
+    latest_ticket_info = None
+    if latest_ticket_obj:
+        req_d_name = getattr(latest_ticket_obj.requester, "display_name", None) or "Colaborador"
+        latest_ticket_info = {
+            "id": latest_ticket_obj.id,
+            "title": latest_ticket_obj.title,
+            "priority": latest_ticket_obj.priority.value if hasattr(latest_ticket_obj.priority, "value") else str(latest_ticket_obj.priority),
+            "requester_name": req_d_name,
+            "created_at": latest_ticket_obj.created_at.isoformat() if latest_ticket_obj.created_at else None,
+        }
+
+    # Última interação feita por solicitante/gestor/humano (não técnicos nem bots)
+    latest_requester_inter = (
+        db.query(TicketInteraction)
+        .join(Ticket, TicketInteraction.ticket_id == Ticket.id)
+        .join(User, TicketInteraction.user_id == User.id)
+        .filter(
+            not_(User.display_name.ilike('%NOC%')),
+            not_(User.display_name.ilike('%Sistema%')),
+            not_(TicketInteraction.message.ilike('%[Atualização%')),
+            not_(TicketInteraction.message.ilike('%[Sistema%')),
+            TicketInteraction.is_solution == False,
+            or_(
+                ~User.role.in_([UserRole.TECHNICIAN, UserRole.ADMIN]),
+                and_(
+                    TicketInteraction.user_id == Ticket.requester_id,
+                    or_(Ticket.technician_id == None, TicketInteraction.user_id != Ticket.technician_id)
+                )
+            )
+        )
+        .order_by(TicketInteraction.id.desc())
+        .first()
+    )
+
+    latest_requester_activity = None
+    latest_client_interaction_id = 0
+    if latest_requester_inter:
+        latest_client_interaction_id = latest_requester_inter.id
+        u_display = getattr(latest_requester_inter.user, "display_name", None) or "Solicitante"
+        t_title = latest_requester_inter.ticket.title if latest_requester_inter.ticket else f"Chamado #{latest_requester_inter.ticket_id}"
+        latest_requester_activity = {
+            "id": latest_requester_inter.id,
+            "ticket_id": latest_requester_inter.ticket_id,
+            "ticket_title": t_title,
+            "author_name": u_display,
+            "message": (latest_requester_inter.message[:150] + "...") if len(latest_requester_inter.message) > 150 else latest_requester_inter.message,
+            "created_at": latest_requester_inter.created_at.isoformat() if latest_requester_inter.created_at else None,
+        }
+
     return {
         "latest_ticket_id": latest_ticket_id,
         "latest_critical_ticket_id": latest_critical_ticket_id,
+        "latest_ticket_info": latest_ticket_info,
+        "latest_client_interaction_id": latest_client_interaction_id,
+        "latest_requester_activity": latest_requester_activity,
         "kpis": {
             "latest_ticket_id": latest_ticket_id,
             "latest_critical_ticket_id": latest_critical_ticket_id,
+            "latest_client_interaction_id": latest_client_interaction_id,
             "total_open": total_open,
             "total_abertos": total_open,
             "new_count": new_count,

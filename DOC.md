@@ -583,8 +583,15 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Exibe código `#ID`, título, solicitante, departamento, categoria, analista atribuído e badge de SLA com contagem decrescente (ou tempo de atraso caso estourado).
       - **Carga por Técnico & Ranking de Setores**:
         - Distribuição de chamados ativos por analista de suporte e barras de gargalo por setor do hotel.
-      - **Alarme Sonoro Inteligente (Web Audio API)**:
-        - Emite sinal sonoro harmônico de alerta ao detectar chamados críticos na fila ou estouro de SLA, com botão no cabeçalho para ativar/silenciar o áudio.
+      - **Sistema Avançado de Alertas Sonoros & Visuais (Web Audio API & Toasts)**:
+        - **Volume Elevado & Sintetizador Harmônico**: Calibrado com ganho de 0.75 a 0.85 para ser perfeitamente audível em ambientes de suporte e salas de TI.
+        - **Som 1: Novo Chamado (Acorde C5-E5-G5-C6)**: Dispara um chime harmônico de 4 notas em dupla rajada sempre que um novo chamado é criado no sistema (incluindo chamados criados nos últimos 15 minutos em caso de carregamento/recarga da página).
+        - **Som 2: Resposta de Solicitante / Interatividade Externa (Ding-Dong duplo)**: Dispara um chime característico de mensagem sempre que o solicitante ou qualquer usuário externo não técnico comenta no chamado.
+        - **Som 3: Urgência / Crítico / SLA Estourado (Sirene modulada de 3 ondas)**: Dispara uma sirene enfática ao detectar novo chamado com prioridade Crítica ou estouro do prazo limite de SLA.
+        - **Notificações Visuais Flutuantes (Toasts)**: Card translúcido escuro de alto contraste no canto superior direito exibindo número do chamado, título, solicitante/autor da mensagem e horário, com auto-fechamento em 15 segundos ou fechamento manual.
+        - **Persistência Inteligente (`localStorage`)**: Memoriza os últimos IDs de chamados e respostas visualizados, evitando alarmes repetitivos desnecessários, mas garantindo que chamados recentes toquem mesmo se a tela for recarregada.
+        - **Botão "Testar Som"**: Disponível tanto no cabeçalho do Wallboard (`/tv/helpdesk`) quanto no Hub de Monitoramento (`/admin/monitoring`), permitindo que a equipe teste os alto-falantes e o volume a qualquer momento.
+        - **Desbloqueio de Autoplay do Navegador**: Banner pulsante intuitivo para autorizar a reprodução de áudio caso a janela do navegador esteja em modo silencioso/suspenso por política de mídia do navegador.
       - **Sincronização Contínua**: Polling automático a cada 15 segundos com indicador visual de countdown e botão de tela cheia nativa (`requestFullscreen`).
 
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Tv, Clock, AlertTriangle, CheckCircle2, Volume2, VolumeX, Maximize2, Minimize2, 
   RefreshCw, UserCheck, UserX, Flame, Users, Layers, Activity, ArrowUpRight, 
-  ShieldAlert, Sparkles, Building2, HelpCircle
+  ShieldAlert, Sparkles, Building2, HelpCircle, BellRing, MessageSquare, X
 } from "lucide-react";
 import api from "../../api/client";
 
@@ -16,85 +16,119 @@ const getAudioContext = () => {
       sharedAudioCtx = new AudioCtx();
     }
   }
-  if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
-    sharedAudioCtx.resume().catch(() => {});
-  }
   return sharedAudioCtx;
 };
 
-// Som 1: Chime de Novo Chamado (3 notas harmônicas agradáveis: C5 -> E5 -> G5)
-const playNewTicketChime = () => {
+// Assegura que o contexto de áudio esteja rodando (despausado)
+const ensureAudioReady = async () => {
+  const ctx = getAudioContext();
+  if (!ctx) return null;
+  if (ctx.state === "suspended") {
+    try {
+      await ctx.resume();
+    } catch (e) {
+      console.warn("Autoplay impediu áudio sem interação prévia:", e);
+    }
+  }
+  return ctx;
+};
+
+// Som 1: Chime de Novo Chamado (Acorde harmônico encorpado de alto volume: C5 -> E5 -> G5 -> C6)
+const playNewTicketChime = async () => {
   try {
-    const ctx = getAudioContext();
+    const ctx = await ensureAudioReady();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
 
-    const now = ctx.currentTime;
+    const playHarmonicBurst = (delay) => {
+      const now = ctx.currentTime + delay;
+      const notes = [
+        { freq: 523.25, time: 0, dur: 0.4, gain: 0.75 },     // C5
+        { freq: 659.25, time: 0.12, dur: 0.45, gain: 0.8 },   // E5
+        { freq: 783.99, time: 0.24, dur: 0.7, gain: 0.85 },   // G5
+        { freq: 1046.50, time: 0.36, dur: 0.9, gain: 0.85 }   // C6
+      ];
 
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = "sine";
-    osc1.frequency.setValueAtTime(523.25, now); // C5
-    gain1.gain.setValueAtTime(0.3, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.35);
+      notes.forEach((n) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(n.freq, now + n.time);
+        gain.gain.setValueAtTime(n.gain, now + n.time);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.time + n.dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + n.time);
+        osc.stop(now + n.time + n.dur);
+      });
+    };
 
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = "sine";
-    osc2.frequency.setValueAtTime(659.25, now + 0.12); // E5
-    gain2.gain.setValueAtTime(0.35, now + 0.12);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.5);
-
-    const osc3 = ctx.createOscillator();
-    const gain3 = ctx.createGain();
-    osc3.type = "sine";
-    osc3.frequency.setValueAtTime(783.99, now + 0.25); // G5
-    gain3.gain.setValueAtTime(0.4, now + 0.25);
-    gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-    osc3.connect(gain3);
-    gain3.connect(ctx.destination);
-    osc3.start(now + 0.25);
-    osc3.stop(now + 0.8);
+    // Toca duas vezes sequencialmente para que o setor escute com nitidez
+    playHarmonicBurst(0.05);
+    playHarmonicBurst(0.75);
   } catch (err) {
     console.warn("Web Audio API Chime erro:", err);
   }
 };
 
-// Som 2: Alerta Urgente (Chamado Crítico ou SLA Estourado)
-const playUrgentAlertSiren = () => {
+// Som 2: Chime de Resposta do Solicitante / Interatividade Externa (Ding-Dong duplo)
+const playRequesterReplyChime = async () => {
   try {
-    const ctx = getAudioContext();
+    const ctx = await ensureAudioReady();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
 
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const now = ctx.currentTime + 0.05;
+    const tones = [
+      { freq: 880, time: 0, dur: 0.35, gain: 0.8 },        // A5
+      { freq: 1174.66, time: 0.18, dur: 0.65, gain: 0.85 }  // D6
+    ];
 
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(880, now); // A5
-    osc.frequency.setValueAtTime(587.33, now + 0.2); // D5
-    osc.frequency.setValueAtTime(880, now + 0.4); // A5
+    tones.forEach((t) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(t.freq, now + t.time);
+      gain.gain.setValueAtTime(t.gain, now + t.time);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + t.time + t.dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + t.time);
+      osc.stop(now + t.time + t.dur);
+    });
+  } catch (err) {
+    console.warn("Web Audio API Requester Chime erro:", err);
+  }
+};
 
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
+// Som 3: Alerta Urgente (Chamado Crítico ou SLA Estourado)
+const playUrgentAlertSiren = async () => {
+  try {
+    const ctx = await ensureAudioReady();
+    if (!ctx) return;
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.7);
+    const now = ctx.currentTime + 0.05;
+    for (let i = 0; i < 3; i++) {
+      const offset = i * 0.35;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(950, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(450, now + offset + 0.3);
+
+      gain.gain.setValueAtTime(0.8, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + offset + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.3);
+    }
   } catch (err) {
     console.warn("Web Audio API Siren erro:", err);
   }
 };
+
+const LAST_TICKET_KEY = "tihfsa_tv_last_seen_ticket_id";
+const LAST_INTER_KEY = "tihfsa_tv_last_seen_inter_id";
 
 export default function PublicHelpdeskTv() {
   const [data, setData] = useState({
@@ -134,10 +168,14 @@ export default function PublicHelpdeskTv() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // Notificação visual flutuante (Toast ativo)
+  const [activeToast, setActiveToast] = useState(null);
+
   // Refs de rastreamento para disparar som na detecção de alterações
   const prevLatestTicketIdRef = useRef(null);
   const prevLatestCriticalIdRef = useRef(null);
   const prevBreachedCountRef = useRef(null);
+  const prevLatestInterIdRef = useRef(null);
 
   // Desbloquear AudioContext com primeiro clique/toque
   const unlockAudio = () => {
@@ -157,11 +195,22 @@ export default function PublicHelpdeskTv() {
     };
     window.addEventListener("click", handleFirstInteraction);
     window.addEventListener("keydown", handleFirstInteraction);
+    window.addEventListener("touchstart", handleFirstInteraction);
     return () => {
       window.removeEventListener("click", handleFirstInteraction);
       window.removeEventListener("keydown", handleFirstInteraction);
+      window.removeEventListener("touchstart", handleFirstInteraction);
     };
   }, []);
+
+  // Timer para dispensar o Toast flutuante após 15 segundos
+  useEffect(() => {
+    if (!activeToast) return;
+    const timer = setTimeout(() => {
+      setActiveToast(null);
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [activeToast]);
 
   // Relógio ao vivo atualizado a cada segundo
   useEffect(() => {
@@ -201,6 +250,78 @@ export default function PublicHelpdeskTv() {
     }
   };
 
+  // Disparar teste sonoro manual pelo usuário
+  const handleTestAudio = async () => {
+    unlockAudio();
+    await playNewTicketChime();
+    setActiveToast({
+      type: "test",
+      badge: "TESTE DE SOM",
+      badgeClass: "bg-blue-500 text-white font-black",
+      title: "Alarme de Teste Acionado",
+      subtitle: "Áudio do Helpdesk funcionando normalmente",
+      details: "Os alarmes tocarão quando novos chamados ou respostas forem recebidos.",
+      timestamp: new Date()
+    });
+  };
+
+  // Disparar alerta de Novo Chamado
+  const triggerNewTicketAlert = (ticketInfo, isCritical) => {
+    if (audioEnabled) {
+      if (isCritical) {
+        playUrgentAlertSiren();
+      } else {
+        playNewTicketChime();
+      }
+    }
+
+    setActiveToast({
+      type: isCritical ? "urgent" : "ticket",
+      badge: isCritical ? "🚨 CHAMADO CRÍTICO" : "🔔 NOVO CHAMADO",
+      badgeClass: isCritical 
+        ? "bg-red-500 text-white font-black animate-pulse" 
+        : "bg-blue-500 text-white font-black animate-pulse",
+      title: ticketInfo ? `Chamado #${ticketInfo.id}: ${ticketInfo.title}` : "Novo Chamado Aberto no Sistema",
+      subtitle: ticketInfo?.requester_name ? `Solicitante: ${ticketInfo.requester_name}` : "Aguardando triagem técnica",
+      details: ticketInfo?.priority ? `Prioridade: ${ticketInfo.priority}` : "",
+      timestamp: new Date()
+    });
+  };
+
+  // Disparar alerta de Resposta do Solicitante / Interação Externa
+  const triggerRequesterAlert = (activity) => {
+    if (audioEnabled) {
+      playRequesterReplyChime();
+    }
+
+    setActiveToast({
+      type: "requester",
+      badge: "💬 RESPOSTA DO SOLICITANTE",
+      badgeClass: "bg-purple-600 text-white font-black animate-pulse",
+      title: activity ? `Chamado #${activity.ticket_id}: ${activity.ticket_title}` : "Interação de Solicitante Recebida",
+      subtitle: activity?.author_name ? `${activity.author_name} respondeu:` : "Nova mensagem adicionada",
+      details: activity?.message ? `"${activity.message}"` : "",
+      timestamp: new Date()
+    });
+  };
+
+  // Disparar alerta de Urgência / SLA Estourado
+  const triggerUrgentAlert = (title, subtitle) => {
+    if (audioEnabled) {
+      playUrgentAlertSiren();
+    }
+
+    setActiveToast({
+      type: "urgent",
+      badge: "🚨 SLA ESTOURADO",
+      badgeClass: "bg-red-600 text-white font-black animate-ping",
+      title: title || "Atenção: Chamado com SLA Estourado!",
+      subtitle: subtitle || "Verifique imediatamente a fila de atendimento",
+      details: "Tempo máximo de resolução excedido.",
+      timestamp: new Date()
+    });
+  };
+
   // Carregar dados de monitoramento
   const fetchData = async () => {
     try {
@@ -213,27 +334,59 @@ export default function PublicHelpdeskTv() {
       const curLatestId = summary.latest_ticket_id || summary.kpis?.latest_ticket_id || 0;
       const curLatestCriticalId = summary.latest_critical_ticket_id || summary.kpis?.latest_critical_ticket_id || 0;
       const curBreached = summary.kpis?.sla_estourado_count || 0;
+      const curLatestInterId = summary.latest_client_interaction_id || 0;
 
-      // Na primeira carga, apenas memorizamos os IDs sem tocar alarme
+      // Recupera IDs armazenados para persistência entre recarregamentos
+      let prevStoredTicketId = parseInt(localStorage.getItem(LAST_TICKET_KEY) || "0", 10);
+      let prevStoredInterId = parseInt(localStorage.getItem(LAST_INTER_KEY) || "0", 10);
+
       if (prevLatestTicketIdRef.current === null) {
+        // Primeira carga ao abrir/recarregar a tela
         prevLatestTicketIdRef.current = curLatestId;
         prevLatestCriticalIdRef.current = curLatestCriticalId;
         prevBreachedCountRef.current = curBreached;
-      } else {
-        // Nas leituras seguintes, detecta novos chamados ou estouro de SLA
-        if (audioEnabled) {
-          if (curLatestCriticalId > prevLatestCriticalIdRef.current) {
-            playUrgentAlertSiren();
-          } else if (curLatestId > prevLatestTicketIdRef.current) {
-            playNewTicketChime();
-          } else if (curBreached > prevBreachedCountRef.current) {
-            playUrgentAlertSiren();
+        prevLatestInterIdRef.current = curLatestInterId;
+
+        // Se o chamado for recente (criado nos últimos 15 min) e novo em relação ao histórico local
+        if (curLatestId > 0 && (prevStoredTicketId === 0 || curLatestId > prevStoredTicketId)) {
+          const tDate = summary.latest_ticket_info?.created_at ? new Date(summary.latest_ticket_info.created_at) : null;
+          const isFresh = tDate && (new Date() - tDate < 15 * 60 * 1000);
+          if (isFresh) {
+            const isCrit = curLatestCriticalId > 0 && curLatestCriticalId === curLatestId;
+            triggerNewTicketAlert(summary.latest_ticket_info, isCrit);
           }
+        }
+
+        // Se a interação de solicitante for recente (últimos 15 min) e nova em relação ao histórico
+        if (curLatestInterId > 0 && (prevStoredInterId === 0 || curLatestInterId > prevStoredInterId)) {
+          const iDate = summary.latest_requester_activity?.created_at ? new Date(summary.latest_requester_activity.created_at) : null;
+          const isFresh = iDate && (new Date() - iDate < 15 * 60 * 1000);
+          if (isFresh) {
+            triggerRequesterAlert(summary.latest_requester_activity);
+          }
+        }
+
+        localStorage.setItem(LAST_TICKET_KEY, String(curLatestId));
+        localStorage.setItem(LAST_INTER_KEY, String(curLatestInterId));
+      } else {
+        // Leituras subsequentes do polling
+        if (curLatestCriticalId > prevLatestCriticalIdRef.current) {
+          triggerNewTicketAlert(summary.latest_ticket_info, true);
+        } else if (curLatestId > prevLatestTicketIdRef.current) {
+          triggerNewTicketAlert(summary.latest_ticket_info, false);
+        } else if (curBreached > prevBreachedCountRef.current) {
+          triggerUrgentAlert("Atenção: SLA Estourado!", `Total de ${curBreached} chamados com prazo estourado`);
+        } else if (curLatestInterId > prevLatestInterIdRef.current) {
+          triggerRequesterAlert(summary.latest_requester_activity);
         }
 
         prevLatestTicketIdRef.current = curLatestId;
         prevLatestCriticalIdRef.current = curLatestCriticalId;
         prevBreachedCountRef.current = curBreached;
+        prevLatestInterIdRef.current = curLatestInterId;
+
+        localStorage.setItem(LAST_TICKET_KEY, String(curLatestId));
+        localStorage.setItem(LAST_INTER_KEY, String(curLatestInterId));
       }
     } catch (err) {
       console.error("Erro ao carregar dados do Wallboard de Helpdesk:", err);
@@ -379,7 +532,17 @@ export default function PublicHelpdeskTv() {
             title="Ativar/desativar som na TV (Toca para novos chamados e chamados críticos)"
           >
             {audioEnabled ? <Volume2 size={18} className="animate-pulse text-amber-400" /> : <VolumeX size={18} />}
-            <span className="hidden sm:inline">{audioEnabled ? "Alerta Sonoro Ativo" : "Alerta Silenciado"}</span>
+            <span className="hidden sm:inline">{audioEnabled ? "Alerta Ativo" : "Silenciado"}</span>
+          </button>
+
+          {/* Test Audio Button */}
+          <button
+            onClick={handleTestAudio}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/30 transition-all cursor-pointer"
+            title="Testar som do alarme na TV agora"
+          >
+            <BellRing size={16} className="text-indigo-400" />
+            <span className="hidden sm:inline">Testar Som</span>
           </button>
 
           {/* Fullscreen Button */}
@@ -407,7 +570,7 @@ export default function PublicHelpdeskTv() {
             href="/noc"
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/30 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30 transition-all cursor-pointer"
           >
             <Activity size={16} />
             <span>TV NOC</span>
@@ -415,6 +578,57 @@ export default function PublicHelpdeskTv() {
           </a>
         </div>
       </header>
+
+      {/* Toast Flutuante de Alerta de Chamado / Resposta */}
+      {activeToast && (
+        <div 
+          onClick={unlockAudio}
+          className="fixed top-5 right-5 z-50 max-w-lg w-[calc(100%-2.5rem)] sm:w-auto bg-slate-900/95 border-2 border-amber-500/80 rounded-2xl p-4 shadow-[0_0_35px_rgba(245,158,11,0.4)] backdrop-blur-xl animate-in slide-in-from-top-4 duration-300 cursor-pointer"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0 mt-0.5 border border-amber-500/30">
+                {activeToast.type === "requester" ? (
+                  <MessageSquare size={24} className="animate-pulse text-purple-400" />
+                ) : activeToast.type === "urgent" ? (
+                  <ShieldAlert size={24} className="animate-bounce text-red-500" />
+                ) : (
+                  <BellRing size={24} className="animate-bounce text-amber-400" />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-[10px] px-2.5 py-0.5 rounded-full ${activeToast.badgeClass || 'bg-blue-500 text-white font-black'}`}>
+                    {activeToast.badge}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-400">
+                    {activeToast.timestamp?.toLocaleTimeString("pt-BR")}
+                  </span>
+                </div>
+                <h3 className="text-sm font-black text-white leading-snug">
+                  {activeToast.title}
+                </h3>
+                {activeToast.subtitle && (
+                  <p className="text-xs font-semibold text-slate-300 mt-1">
+                    {activeToast.subtitle}
+                  </p>
+                )}
+                {activeToast.details && (
+                  <p className="text-xs text-slate-400 mt-1 italic line-clamp-2">
+                    {activeToast.details}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setActiveToast(null); }}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Banner de Autorização de Áudio pelo Navegador (se ainda não clicou na tela) */}
       {audioEnabled && !audioUnlocked && (
