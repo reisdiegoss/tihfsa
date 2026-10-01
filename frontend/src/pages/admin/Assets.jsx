@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Search, Monitor, HardDrive, Wifi, Phone, Plus, Server, 
   CheckCircle, AlertTriangle, AlertCircle, RefreshCw, CloudDownload, 
-  X, Edit3, Trash2, Tag, Cpu, MapPin, Hash, ShieldAlert, Layers, Activity, Bell, Volume2
+  X, Edit3, Trash2, Tag, Cpu, MapPin, Hash, ShieldAlert, Layers, Activity, Bell, Volume2,
+  User, Building, ChevronDown, Check
 } from "lucide-react";
 import api from "../../api/client";
 import ZabbixItemsConfigModal from "../../components/ZabbixItemsConfigModal";
@@ -376,6 +377,223 @@ function UnifiSyncModal({ isOpen, onClose, onImported }) {
   );
 }
 
+// Componente de Seleção Dinâmica e Autocomplete de Colaborador / UH
+function UserSelectCombobox({ value, onChange, usersList = [] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState("all"); // 'all', 'users', 'rooms'
+
+  const selectedUser = useMemo(() => {
+    if (!value) return null;
+    return usersList.find((u) => String(u.id) === String(value));
+  }, [value, usersList]);
+
+  const filteredUsers = useMemo(() => {
+    let list = usersList;
+    if (filterType === "users") list = list.filter((u) => !u.is_room);
+    if (filterType === "rooms") list = list.filter((u) => u.is_room);
+
+    if (!search.trim()) return list.slice(0, 60);
+
+    const q = search.toLowerCase().trim();
+    return list.filter((u) => {
+      const matchName = (u.display_name || "").toLowerCase().includes(q);
+      const matchAd = (u.ad_username || "").toLowerCase().includes(q);
+      const matchEmail = (u.email || "").toLowerCase().includes(q);
+      const matchDept = (u.department_name || "").toLowerCase().includes(q);
+      const matchRoom = (u.room_number || "").toLowerCase().includes(q);
+      return matchName || matchAd || matchEmail || matchDept || matchRoom;
+    }).slice(0, 60);
+  }, [usersList, search, filterType]);
+
+  return (
+    <div className="relative space-y-1">
+      <div className="flex items-center justify-between">
+        <label className="block text-slate-800 font-extrabold text-xs">
+          Colaborador ou Apartamento Responsável
+        </label>
+        {selectedUser && (
+          <button
+            type="button"
+            onClick={() => { onChange(""); setSearch(""); }}
+            className="text-[11px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
+          >
+            Remover Vínculo
+          </button>
+        )}
+      </div>
+
+      {/* Caixa do Usuário Selecionado */}
+      {selectedUser ? (
+        <div className="flex items-center justify-between p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+              selectedUser.is_room ? "bg-amber-100 text-amber-700" : "bg-blue-600 text-white"
+            }`}>
+              {selectedUser.is_room ? <Building size={16} /> : <User size={16} />}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-slate-900 truncate">
+                {selectedUser.display_name}
+              </p>
+              <p className="text-[10px] font-semibold text-slate-500 truncate">
+                {selectedUser.is_room 
+                  ? `Apartamento / UH ${selectedUser.room_number || ""}` 
+                  : `${selectedUser.department_name || "Geral"} • @${selectedUser.ad_username || "sem login"}`}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className="px-2.5 py-1 text-xs font-bold bg-white text-blue-700 border border-blue-200 hover:bg-blue-100/50 rounded-lg cursor-pointer transition-colors"
+          >
+            Trocar
+          </button>
+        </div>
+      ) : (
+        /* Campo de Busca Quando Nenhum Está Selecionado */
+        <div className="relative">
+          <input
+            type="text"
+            placeholder={usersList.length > 0 ? "Buscar colaborador por nome, login do AD (ex: diego.reis) ou setor..." : "Carregando usuários..."}
+            value={search}
+            onFocus={() => setIsOpen(true)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setIsOpen(true);
+            }}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2.5 outline-none focus:border-blue-500 font-medium text-xs text-slate-800 placeholder-slate-400"
+          />
+          <Search size={15} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Dropdown Flutuante de Busca Dinâmica */}
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden p-2 space-y-2 animate-in fade-in zoom-in-95 duration-150 max-h-72 flex flex-col">
+          {/* Barra de Filtros e Busca Rápida dentro do Dropdown */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg shrink-0 text-[11px] font-bold">
+            <button
+              type="button"
+              onClick={() => setFilterType("all")}
+              className={`flex-1 py-1 rounded-md transition-all cursor-pointer ${
+                filterType === "all" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-500"
+              }`}
+            >
+              Todos ({usersList.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType("users")}
+              className={`flex-1 py-1 rounded-md transition-all cursor-pointer ${
+                filterType === "users" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-500"
+              }`}
+            >
+              Colaboradores (AD)
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType("rooms")}
+              className={`flex-1 py-1 rounded-md transition-all cursor-pointer ${
+                filterType === "rooms" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-500"
+              }`}
+            >
+              Apartamentos
+            </button>
+          </div>
+
+          {selectedUser && (
+            <div className="relative shrink-0">
+              <input
+                type="text"
+                placeholder="Filtrar colaboradores..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2 py-1.5 text-xs outline-none focus:border-blue-500"
+              />
+              <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400 pointer-events-none" />
+            </div>
+          )}
+
+          {/* Lista de Resultados com Scroll */}
+          <div className="overflow-y-auto space-y-1 flex-1 pr-1">
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+                setIsOpen(false);
+              }}
+              className="w-full text-left p-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 flex items-center justify-between cursor-pointer"
+            >
+              <span>Nenhum / Não Atribuído</span>
+              {!value && <Check size={14} className="text-blue-600" />}
+            </button>
+
+            {filteredUsers.length === 0 ? (
+              <div className="p-4 text-center text-xs text-slate-400">
+                {usersList.length === 0 ? "Nenhum usuário carregado do sistema." : `Nenhum usuário encontrado para "${search}".`}
+              </div>
+            ) : (
+              filteredUsers.map((u) => {
+                const isSelected = String(u.id) === String(value);
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(String(u.id));
+                      setIsOpen(false);
+                      setSearch("");
+                    }}
+                    className={`w-full text-left p-2 rounded-xl text-xs transition-colors flex items-center justify-between gap-2 cursor-pointer ${
+                      isSelected ? "bg-blue-50 border border-blue-200 text-blue-900" : "hover:bg-slate-50 text-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                        u.is_room ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {u.is_room ? <Building size={14} /> : <User size={14} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold truncate">{u.display_name}</p>
+                        <p className="text-[10px] text-slate-400 truncate">
+                          {u.is_room ? `UH ${u.room_number || ""}` : `${u.department_name || "Geral"} • @${u.ad_username || ""}`}
+                        </p>
+                      </div>
+                    </div>
+                    {isSelected && <Check size={14} className="text-blue-600 shrink-0" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 flex justify-end shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-800 px-3 py-1 rounded-md"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Modal de Cadastrar / Editar Ativo (CMDB)
 
 function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, locationsList, assetTypesConfig = [] }) {
@@ -557,21 +775,13 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
               </select>
             </div>
 
-            {/* Colaborador ou Apt Responsável */}
-            <div className="space-y-1">
-              <label className="block text-slate-800 font-extrabold">Colaborador / Apt Responsável</label>
-              <select
+            {/* Colaborador ou Apt Responsável (Seleção Dinâmica com Busca AD) */}
+            <div className="sm:col-span-2">
+              <UserSelectCombobox
                 value={formData.assigned_user_id}
-                onChange={(e) => setFormData({ ...formData, assigned_user_id: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-blue-500 font-medium cursor-pointer"
-              >
-                <option value="">Nenhum / Não Atribuído</option>
-                {usersList.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.is_room ? `🏢 ${u.display_name}` : `👤 ${u.display_name} (${u.department_name || "Geral"})`}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setFormData({ ...formData, assigned_user_id: val })}
+                usersList={usersList}
+              />
             </div>
 
             {/* Endereço IP */}

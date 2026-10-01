@@ -4,15 +4,14 @@ Router Users — CRUD de usuários e apartamentos.
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.auth.dependencies import get_current_user, require_admin, require_technician
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserSimple
+from app.models.department import Department
 
 router = APIRouter(prefix="/api/v1/users", tags=["Usuários"])
-
-
-from app.models.department import Department
 
 def _format_user_response(user: User) -> dict:
     role_str = user.role.value if isinstance(user.role, UserRole) else str(user.role)
