@@ -122,7 +122,7 @@ function Get-SystemMetrics {
         }
     } catch {}
 
-    # Discos Físicos (Locais)
+    # Discos Lógicos (Partições locais C:, D:, etc.)
     $disks = @()
     try {
         $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue | ForEach-Object {
@@ -140,6 +140,36 @@ function Get-SystemMetrics {
             }
         })
     } catch {}
+
+    # Discos Físicos (Hardware SSD, NVMe, HDD)
+    $physicalDisks = @()
+    try {
+        $pDisks = Get-PhysicalDisk -ErrorAction SilentlyContinue
+        if ($pDisks) {
+            $physicalDisks = @($pDisks | ForEach-Object {
+                $mType = if ($_.MediaType -and $_.MediaType -ne "Unspecified") { $_.MediaType } else { "SSD" }
+                $szGb = [math]::Round($_.Size / 1GB, 0)
+                @{
+                    model      = $_.FriendlyName.Trim()
+                    media_type = $mType
+                    size_gb    = $szGb
+                }
+            })
+        }
+    } catch {}
+    if ($physicalDisks.Count -eq 0) {
+        try {
+            $physicalDisks = @(Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | ForEach-Object {
+                $szGb = [math]::Round($_.Size / 1GB, 0)
+                $isSsd = ($_.Model -like "*SSD*" -or $_.MediaType -like "*SSD*")
+                @{
+                    model      = $_.Model.Trim()
+                    media_type = if ($isSsd) { "SSD" } else { "Disco" }
+                    size_gb    = $szGb
+                }
+            })
+        } catch {}
+    }
 
     # Endereço IPv4 Ativo & MAC Address
     $ipAddress = "unknown"
@@ -210,6 +240,7 @@ function Get-SystemMetrics {
         ram_total_mb   = $ramTotalMB
         ram_usage_pct  = $ramPct
         disks          = [object[]]@($disks)
+        physical_disks = [object[]]@($physicalDisks)
         uptime_hours   = $uptimeHours
         os_name        = if ($os) { $os.Caption } else { "Windows" }
         brand          = $brand

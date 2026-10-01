@@ -35,6 +35,7 @@ class AgentCheckinPayload(BaseModel):
     ram_total_mb: Optional[int] = None
     ram_usage_pct: Optional[float] = None
     disks: Optional[list[dict] | dict] = None
+    physical_disks: Optional[list[dict] | dict] = None
     uptime_hours: Optional[float] = None
     os_name: Optional[str] = None
     brand: Optional[str] = None
@@ -123,6 +124,13 @@ def agent_checkin(
     elif isinstance(data.disks, list):
         disks_normalized = data.disks
 
+    physical_disks_normalized = []
+    if getattr(data, "physical_disks", None):
+        if isinstance(data.physical_disks, dict):
+            physical_disks_normalized = [data.physical_disks]
+        elif isinstance(data.physical_disks, list):
+            physical_disks_normalized = data.physical_disks
+
     # Avaliação do status de saúde (warning se disco > 90% ou CPU > 95%)
     has_warning = False
     if data.cpu_usage_pct and data.cpu_usage_pct >= 95:
@@ -169,13 +177,63 @@ def agent_checkin(
     if not asset and ip_clean not in ("unknown", "127.0.0.1", ""):
         asset = db.query(Asset).filter(Asset.ip_address == ip_clean).first()
 
+    # Cálculo da Memória RAM (ex: "16 GB", "8 GB", "32 GB")
+    ram_formatted = None
+    if data.ram_total_mb and data.ram_total_mb > 0:
+        ram_gb = round(data.ram_total_mb / 1024)
+        ram_formatted = f"{ram_gb} GB"
+
+    # Cálculo do Armazenamento (suporte inteligente a múltiplas unidades e SSD)
+    storage_units = []
+    if disks_normalized:
+        for d in disks_normalized:
+            if isinstance(d, dict):
+                drive = d.get("drive", "").strip()
+                total_gb = d.get("total_gb", 0)
+                if total_gb:
+                    if total_gb >= 950:
+                        sz_str = f"{round(total_gb / 1024, 1)} TB".replace(".0 TB", " TB")
+                    elif 450 <= total_gb <= 520:
+                        sz_str = "512 GB"
+                    elif 220 <= total_gb <= 260:
+                        sz_str = "256 GB"
+                    elif 900 <= total_gb <= 1050:
+                        sz_str = "1 TB"
+                    else:
+                        sz_str = f"{int(round(total_gb))} GB"
+                    unit_label = f"{drive} {sz_str}".strip() if drive else sz_str
+                    storage_units.append(unit_label)
+
+    p_types = [p.get("media_type") for p in physical_disks_normalized if isinstance(p, dict) and p.get("media_type")]
+    has_ssd = any("ssd" in str(t).lower() or "nvme" in str(t).lower() for t in p_types)
+
+    storage_formatted = None
+    if storage_units:
+        storage_formatted = ", ".join(storage_units)
+        if has_ssd and "ssd" not in storage_formatted.lower():
+            storage_formatted += " SSD"
+    elif physical_disks_normalized:
+        p_parts = []
+        for p in physical_disks_normalized:
+            if isinstance(p, dict):
+                sz = p.get("size_gb", 0)
+                mtype = p.get("media_type", "SSD")
+                if sz:
+                    sz_str = f"{round(sz / 1024, 1)} TB".replace(".0 TB", " TB") if sz >= 950 else f"{int(round(sz))} GB"
+                    p_parts.append(f"{sz_str} {mtype}".strip())
+        if p_parts:
+            storage_formatted = ", ".join(p_parts)
+
     specs_payload = {
         "cpu": data.cpu_model,
+        "ram": ram_formatted,
+        "storage": storage_formatted,
         "cpu_usage_pct": data.cpu_usage_pct,
         "ram_total_mb": data.ram_total_mb,
         "ram_used_mb": data.ram_used_mb,
         "ram_usage_pct": data.ram_usage_pct,
         "disks": disks_normalized,
+        "physical_disks": physical_disks_normalized,
         "os": data.os_name,
         "uptime_hours": data.uptime_hours,
         "mac_address": data.mac_address,
@@ -216,8 +274,10 @@ def agent_checkin(
         if user and not asset.assigned_user_id:
             asset.assigned_user_id = user.id
 
-        merged_specs = asset.specs or {}
-        merged_specs.update(specs_payload)
+        merged_specs = dict(asset.specs or {})
+        for k, v in specs_payload.items():
+            if v is not None:
+                merged_specs[k] = v
         asset.specs = merged_specs
 
     # 3. Formatação do nome de usuário exibido
@@ -480,6 +540,35 @@ function Get-SystemMetrics {{
         }}
     }})
 
+    $physicalDisks = @()
+    try {{
+        $pDisks = Get-PhysicalDisk -ErrorAction SilentlyContinue
+        if ($pDisks) {{
+            $physicalDisks = @($pDisks | ForEach-Object {{
+                $mType = if ($_.MediaType -and $_.MediaType -ne "Unspecified") {{ $_.MediaType }} else {{ "SSD" }}
+                $szGb = [math]::Round($_.Size / 1GB, 0)
+                @{{
+                    model      = $_.FriendlyName.Trim()
+                    media_type = $mType
+                    size_gb    = $szGb
+                }}
+            }})
+        }}
+    }} catch {{}}
+    if ($physicalDisks.Count -eq 0) {{
+        try {{
+            $physicalDisks = @(Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | ForEach-Object {{
+                $szGb = [math]::Round($_.Size / 1GB, 0)
+                $isSsd = ($_.Model -like "*SSD*" -or $_.MediaType -like "*SSD*")
+                @{{
+                    model      = $_.Model.Trim()
+                    media_type = if ($isSsd) {{ "SSD" }} else {{ "Disco" }}
+                    size_gb    = $szGb
+                }}
+            }})
+        }} catch {{}}
+    }}
+
     $ipAddress = "unknown"
     $macAddress = $null
     try {{
@@ -537,6 +626,7 @@ function Get-SystemMetrics {{
         ram_total_mb   = [int]$ramTotalMB
         ram_usage_pct  = [double]$ramPct
         disks          = [object[]]@($disks)
+        physical_disks = [object[]]@($physicalDisks)
         uptime_hours   = $uptimeHours
         os_name        = $os.Caption
         brand          = $brand

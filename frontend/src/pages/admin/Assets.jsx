@@ -378,15 +378,26 @@ function UnifiSyncModal({ isOpen, onClose, onImported }) {
 }
 
 // Componente de Seleção Dinâmica e Autocomplete de Colaborador / UH
-function UserSelectCombobox({ value, onChange, usersList = [] }) {
+function UserSelectCombobox({ value, fallbackUserName, onChange, usersList = [] }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all"); // 'all', 'users', 'rooms'
 
   const selectedUser = useMemo(() => {
     if (!value) return null;
-    return usersList.find((u) => String(u.id) === String(value));
-  }, [value, usersList]);
+    const found = usersList.find((u) => String(u.id) === String(value));
+    if (found) return found;
+    if (fallbackUserName) {
+      return {
+        id: value,
+        display_name: fallbackUserName,
+        ad_username: "",
+        department_name: "Colaborador Vinculado",
+        is_room: false,
+      };
+    }
+    return null;
+  }, [value, usersList, fallbackUserName]);
 
   const filteredUsers = useMemo(() => {
     let list = usersList;
@@ -615,6 +626,29 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
 
   useEffect(() => {
     if (assetToEdit) {
+      let initialSpecs = assetToEdit.specs ? { ...assetToEdit.specs } : {};
+
+      // Auto-preenche RAM caso ainda não esteja preenchida como texto formatado
+      if (!initialSpecs.ram && initialSpecs.ram_total_mb) {
+        const gb = Math.round(initialSpecs.ram_total_mb / 1024);
+        initialSpecs.ram = `${gb} GB`;
+      }
+
+      // Auto-preenche Armazenamento caso ainda não esteja preenchido e haja discos reportados
+      if (!initialSpecs.storage && initialSpecs.disks && Array.isArray(initialSpecs.disks) && initialSpecs.disks.length > 0) {
+        const units = initialSpecs.disks.map((d) => {
+          const drive = (d.drive || "").trim();
+          const gb = d.total_gb || 0;
+          let szStr = `${Math.round(gb)} GB`;
+          if (gb >= 950) szStr = `${(gb / 1024).toFixed(1).replace(".0", "")} TB`;
+          else if (gb >= 450 && gb <= 520) szStr = "512 GB";
+          else if (gb >= 220 && gb <= 260) szStr = "256 GB";
+          else if (gb >= 900 && gb <= 1050) szStr = "1 TB";
+          return drive ? `${drive} ${szStr}` : szStr;
+        });
+        initialSpecs.storage = units.join(", ") + " SSD";
+      }
+
       setFormData({
         name: assetToEdit.name || "",
         type: assetToEdit.type || "Desktop",
@@ -627,7 +661,7 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
         assigned_user_id: assetToEdit.assigned_user_id ? String(assetToEdit.assigned_user_id) : "",
         location_id: assetToEdit.location_id ? String(assetToEdit.location_id) : "",
         description: assetToEdit.description || "",
-        specs: assetToEdit.specs || {},
+        specs: initialSpecs,
       });
     } else {
       setFormData({
@@ -779,6 +813,7 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
             <div className="sm:col-span-2">
               <UserSelectCombobox
                 value={formData.assigned_user_id}
+                fallbackUserName={assetToEdit?.assigned_user_name}
                 onChange={(val) => setFormData({ ...formData, assigned_user_id: val })}
                 usersList={usersList}
               />
@@ -870,6 +905,9 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
                           {field.options?.map((opt) => (
                             <option key={opt} value={opt}>{opt}</option>
                           ))}
+                          {formData.specs?.[field.key] && !field.options?.includes(formData.specs[field.key]) && (
+                            <option value={formData.specs[field.key]}>{formData.specs[field.key]}</option>
+                          )}
                         </select>
                       ) : field.field_type === "boolean" ? (
                         <label className="flex items-center gap-2 pt-1 font-bold text-slate-700 cursor-pointer text-xs">
