@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Monitor, RefreshCw, Search, CheckCircle2, AlertTriangle,
   Clock, HardDrive, Cpu, Terminal, Copy, Check, Trash2,
-  ExternalLink, User, Shield, Info, X, Zap
+  ExternalLink, User, Shield, Info, X, Zap, Download
 } from "lucide-react";
 import api from "../../api/client";
 
@@ -80,6 +80,58 @@ export default function StationMonitoringTab() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* ─── BANNER DE DOWNLOAD & COMANDOS DO AGENTE ─── */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-5 rounded-3xl text-white shadow-lg border border-indigo-900/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              Servidor Conectado
+            </span>
+            <span className="text-xs font-mono font-bold text-slate-300 truncate">
+              {window.location.origin}
+            </span>
+          </div>
+          <h3 className="text-base font-black text-white">
+            TIHFSA Sentinel Agent — Telemetria de Estações
+          </h3>
+          <p className="text-xs text-slate-400 max-w-xl">
+            Identifique em tempo real o <strong>usuário logado no Windows</strong>, consumo de CPU, memória RAM e saúde dos discos em qualquer máquina da rede.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {/* Botão de Download Direto do Script .ps1 */}
+          <a
+            href={`${apiBase}/monitoring/agent/script?download=true`}
+            download="tihfsa-agent.ps1"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
+            title="Baixar arquivo tihfsa-agent.ps1 já configurado com o IP deste servidor"
+          >
+            <Download size={15} className="text-emerald-400" />
+            <span>Baixar Script (.ps1)</span>
+          </a>
+
+          {/* Botão Copiar Comando Rápido */}
+          <button
+            onClick={() => copyToClipboard(oneLineCommand)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition-all shadow-md cursor-pointer"
+            title="Copiar comando PowerShell pronto com a URL e IP deste servidor"
+          >
+            {copiedCmd ? <Check size={15} className="text-emerald-300" /> : <Copy size={15} />}
+            <span>{copiedCmd ? "Comando Copiado!" : "Copiar Comando (1-Clique)"}</span>
+          </button>
+
+          {/* Botão Abrir Guia Completo */}
+          <button
+            onClick={() => setShowInstallModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer border border-white/10"
+            title="Ver instruções para Tarefa Agendada e GPO"
+          >
+            <Terminal size={15} />
+            <span className="hidden sm:inline">Guia Completo</span>
+          </button>
+        </div>
+      </div>
       {/* ─── BARRA DE KPIs E CONTADORES ─── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total */}

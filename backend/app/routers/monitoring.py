@@ -258,10 +258,11 @@ def delete_agent_machine(
 
 
 @router.get("/agent/script", summary="Download do script PowerShell do Agente")
-def get_agent_powershell_script(request: Request):
+def get_agent_powershell_script(request: Request, download: bool = False):
     """
     Retorna o script PowerShell configurado com a URL do servidor atual,
-    permitindo instalação imediata via 'irm http://servidor/api/v1/monitoring/agent/script | iex'.
+    permitindo instalação imediata via '(curl.exe -k -s "..." | Out-String) | iex'
+    ou download direto do arquivo .ps1 pelo navegador.
     """
     # Detecta a base URL do servidor a partir do Host da requisição
     host = request.headers.get("Host", "127.0.0.1:8000")
@@ -342,4 +343,7 @@ try {{
     }} catch {{}}
 }}
 """
-    return Response(content=ps_script, media_type="text/plain; charset=utf-8")
+    resp_headers = {}
+    if download:
+        resp_headers["Content-Disposition"] = 'attachment; filename="tihfsa-agent.ps1"'
+    return Response(content=ps_script, media_type="text/plain; charset=utf-8", headers=resp_headers)
