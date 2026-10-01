@@ -60,6 +60,9 @@ O **TIHFSA** foi concebido para transformar a operação diária de TI da hotela
   $$\text{Novo (NEW)} \longrightarrow \text{Em Andamento (IN\_PROGRESS)} \longrightarrow \text{Aguardando Validação (PENDING\_VALIDATION)} \longrightarrow \text{Fechado (CLOSED) / Rejeitado (REJECTED)}$$
 - **Aprovação do Gestor**: Ao concluir a manutenção, o chamado vai para `Aguardando Validação`. O sistema envia um e-mail com **Token JWT de Uso Único** e botão direto para o Gestor do setor homologar com 1 clique (sem necessidade de login complexo).
 - **Hierarquia do Active Directory (AD/LDAP)**: Importação e sincronização automática da árvore organizacional (`Colaborador` $\rightarrow$ `Gestor Responsável` $\rightarrow$ `Setor`), garantindo roteamento de aprovação sem falhas humanas.
+- **Formulário Público de Chamados (`/chamado`) com Auditoria Anti-Fraude**:
+  - Rota pública sem login onde o colaborador apenas digita seu login de rede (AD) ou nome para autocompletar e selecionar sua identidade.
+  - **Auditoria Transparente**: Captura automática e silenciosa do IP de origem (`X-Forwarded-For` / `X-Real-IP`), resolução reversa de **Hostname da máquina** (com timeout assíncrono resiliente de 800ms), **User-Agent** e carimbo de **Data/Hora**, gravando os dados diretamente na descrição do chamado e nas notificações via WhatsApp para coibir e rastrear chamados abertos em nome de terceiros.
 - **Entidades de Apartamentos / UH**: Além de colaboradores do backoffice, os apartamentos do hotel são cadastrados como unidades solicitantes e vinculadas aos equipamentos instalados em cada quarto (Smart TVs, decodificadores SKY, antenas UniFi AP).
 
 ### 2. CMDB & Inventário de Ativos
@@ -98,6 +101,11 @@ O **TIHFSA** foi concebido para transformar a operação diária de TI da hotela
 - **Idempotência Rigorosa**:
   - Impede a abertura repetida de chamados a cada minuto para o mesmo incidente no mesmo dia.
   - Reabertura automática caso o evento reincida após resolução.
+- **TIHFSA Sentinel Agent (Substituição Nativa Zabbix - Fase 1)**:
+  - Telemetria de estações de trabalho em tempo real sem depender de servidores intermediários.
+  - Agente nativo PowerShell (`scripts/tihfsa-agent.ps1`) executado silenciosamente a cada 1 minuto via Agendador de Tarefas do Windows.
+  - Coleta contínua do **Usuário Logado no Windows**, uso de CPU (%), consumo de RAM (MB e %), integridade das partições de Disco (espaço livre e %), IP ativo e Uptime.
+  - Dashboard de Estações & Telemetria integrado diretamente ao Hub de Monitoramento (`/admin/monitoring?tab=stations`), com comando de instalação 1-clique para rápida implantação nos computadores da equipe.
 
 ### 5. Notificações Multicanal (WhatsApp & E-mail Dual)
 - **WhatsApp via Evolution API v2**:

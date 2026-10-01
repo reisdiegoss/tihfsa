@@ -13,6 +13,7 @@ from app.models.integration_config import EvolutionConfig
 from app.models.network_map import NetworkMap
 from app.models.qrcode import QRCodeItem, QRCodeConfig
 from app.models.sla import SLAConfig, SLACategoryRule
+from app.models.monitoring import AgentCheckin
 
 __all__ = [
     "User",
@@ -32,5 +33,6 @@ __all__ = [
     "QRCodeConfig",
     "SLAConfig",
     "SLACategoryRule",
+    "AgentCheckin",
 ]
 

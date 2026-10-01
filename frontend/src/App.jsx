@@ -13,6 +13,7 @@ import Settings from "./pages/admin/Settings";
 import ZabbixPanel from "./pages/admin/ZabbixPanel";
 import MonitoringHub from "./pages/admin/MonitoringHub";
 import PublicHelpdeskTv from "./pages/public/PublicHelpdeskTv";
+import PublicTicketForm from "./pages/public/PublicTicketForm";
 
 // Client App Pages (Colaboradores / Vistorias)
 import ClientHome from "./pages/client/ClientHome";
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/tv/tickets" element={<PublicHelpdeskTv />} />
           <Route path="/qr/:code" element={<PublicAssetTag />} />
           <Route path="/scan" element={<QRCodeScannerPage />} />
+          <Route path="/chamado" element={<PublicTicketForm />} />
           <Route path="/" element={<RootRedirect />} />
           
           {/* Main Admin UI Route */}

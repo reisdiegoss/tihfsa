@@ -27,7 +27,7 @@ api.interceptors.response.use(
       localStorage.removeItem("tihfsa_token");
       localStorage.removeItem("tihfsa_user");
       // Não redireciona para login se estiver navegando em rotas públicas (como o painel NOC de TV ou Helpdesk TV)
-      const isPublicPath = window.location.pathname.startsWith("/noc") || window.location.pathname.startsWith("/tv");
+      const isPublicPath = window.location.pathname.startsWith("/noc") || window.location.pathname.startsWith("/tv") || window.location.pathname.startsWith("/chamado");
       if (window.location.pathname !== "/login" && !isPublicPath) {
         window.location.href = "/login";
       }

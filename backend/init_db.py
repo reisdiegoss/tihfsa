@@ -127,6 +127,28 @@ def apply_migrations():
         ("network_maps.in_carousel", "ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS in_carousel BOOLEAN DEFAULT TRUE NOT NULL;"),
         ("network_maps.carousel_order", "ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS carousel_order INTEGER DEFAULT 0 NOT NULL;"),
         ("network_maps.carousel_seconds", "ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS carousel_seconds INTEGER DEFAULT 20 NOT NULL;"),
+
+        # TIHFSA Agent Telemetry (Substituição Zabbix)
+        ("agent_checkins", """
+            CREATE TABLE IF NOT EXISTS agent_checkins (
+                id SERIAL PRIMARY KEY,
+                hostname VARCHAR(150) UNIQUE NOT NULL,
+                logged_user VARCHAR(150),
+                ip_address VARCHAR(45) NOT NULL,
+                cpu_usage_pct INTEGER,
+                ram_used_mb INTEGER,
+                ram_total_mb INTEGER,
+                ram_usage_pct NUMERIC(5,2),
+                disk_metrics JSONB,
+                uptime_hours NUMERIC(8,1),
+                os_name VARCHAR(150),
+                status VARCHAR(20) DEFAULT 'online' NOT NULL,
+                last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_checkins_hostname ON agent_checkins(hostname);
+            CREATE INDEX IF NOT EXISTS idx_agent_checkins_ip ON agent_checkins(ip_address);
+        """),
     ]
 
     with engine.connect() as conn:

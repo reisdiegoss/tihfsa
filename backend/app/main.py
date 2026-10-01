@@ -17,7 +17,7 @@ from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
     attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes,
-    sla, monitoring
+    sla, monitoring, public_tickets
 )
 import app.models.network_map  # noqa: F401
 import app.models.qrcode       # noqa: F401
@@ -315,6 +315,27 @@ async def lifespan(app: FastAPI):
             """))
             conn.execute(text("ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS encode_mode VARCHAR(20) DEFAULT 'vcard';"))
             conn.execute(text("UPDATE qrcodes SET encode_mode = 'vcard';"))
+            # Tabela de Telemetria do TIHFSA Agent (Substituição Nativa Zabbix)
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS agent_checkins (
+                    id SERIAL PRIMARY KEY,
+                    hostname VARCHAR(150) UNIQUE NOT NULL,
+                    logged_user VARCHAR(150),
+                    ip_address VARCHAR(45) NOT NULL,
+                    cpu_usage_pct INTEGER,
+                    ram_used_mb INTEGER,
+                    ram_total_mb INTEGER,
+                    ram_usage_pct NUMERIC(5,2),
+                    disk_metrics JSONB,
+                    uptime_hours NUMERIC(8,1),
+                    os_name VARCHAR(150),
+                    status VARCHAR(20) DEFAULT 'online' NOT NULL,
+                    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                    asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_checkins_hostname ON agent_checkins(hostname);
+                CREATE INDEX IF NOT EXISTS idx_agent_checkins_ip ON agent_checkins(ip_address);
+            """))
             # Seed SLA config default se tabela estiver vazia
             conn.execute(text("""
                 INSERT INTO sla_config (
@@ -389,6 +410,7 @@ app.include_router(integrations.router_unifi)
 app.include_router(qrcodes.router)
 app.include_router(sla.router)
 app.include_router(monitoring.router)
+app.include_router(public_tickets.router)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

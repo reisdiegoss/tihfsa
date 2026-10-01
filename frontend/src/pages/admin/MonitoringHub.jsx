@@ -3,11 +3,12 @@ import {
   Activity, Ticket, Tv, ExternalLink, RefreshCw, 
   Clock, AlertTriangle, AlertCircle, ShieldAlert, CheckCircle2, 
   Users, Building, ChevronRight, Layers, ArrowUpRight, Flame,
-  Volume2, VolumeX, BellRing, MessageSquare, X
+  Volume2, VolumeX, BellRing, MessageSquare, X, Monitor
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/client";
 import ZabbixPanel from "./ZabbixPanel";
+import StationMonitoringTab from "../../components/admin/StationMonitoringTab";
 
 // Instância única de AudioContext
 let sharedAudioCtx = null;
@@ -619,6 +620,18 @@ export default function MonitoringHub() {
           <Activity size={17} />
           <span>NOC & Infraestrutura (Zabbix)</span>
         </button>
+
+        <button
+          onClick={() => handleTabChange("stations")}
+          className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
+            activeTab === "stations"
+              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
+          }`}
+        >
+          <Monitor size={17} />
+          <span>Estações & Agentes (Telemetria)</span>
+        </button>
       </div>
 
       {/* ======================================================== */}
@@ -914,6 +927,13 @@ export default function MonitoringHub() {
         <div className="space-y-6 animate-fade-in">
           <ZabbixPanel />
         </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* ABA 3: ESTAÇÕES & AGENTES (SUBSTITUTO NATIVO ZABBIX)       */}
+      {/* ======================================================== */}
+      {activeTab === "stations" && (
+        <StationMonitoringTab />
       )}
 
     </div>
