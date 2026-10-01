@@ -628,10 +628,27 @@ function AssetFormModal({ isOpen, onClose, assetToEdit, onSaved, usersList, loca
     if (assetToEdit) {
       let initialSpecs = assetToEdit.specs ? { ...assetToEdit.specs } : {};
 
-      // Auto-preenche RAM caso ainda não esteja preenchida como texto formatado
-      if (!initialSpecs.ram && initialSpecs.ram_total_mb) {
-        const gb = Math.round(initialSpecs.ram_total_mb / 1024);
-        initialSpecs.ram = `${gb} GB`;
+      const ramGbCalculated = initialSpecs.ram_gb || (initialSpecs.ram_total_mb ? Math.round(initialSpecs.ram_total_mb / 1024) : (initialSpecs.ram ? parseInt(initialSpecs.ram, 10) : null));
+
+      // Suporte bidirecional de RAM: chave 'ram' (Desktop/Notebook) e 'ram_gb' (Servidor)
+      if (!initialSpecs.ram && ramGbCalculated) {
+        initialSpecs.ram = `${ramGbCalculated} GB`;
+      }
+      if (!initialSpecs.ram_gb && ramGbCalculated) {
+        initialSpecs.ram_gb = ramGbCalculated;
+      }
+
+      // Suporte a Processador / vCPU para Servidores
+      if (!initialSpecs.vcpu && initialSpecs.vcpu_count) {
+        initialSpecs.vcpu = initialSpecs.vcpu_count;
+      }
+      if (!initialSpecs.cpu && initialSpecs.vcpu) {
+        initialSpecs.cpu = `${initialSpecs.vcpu} vCPUs`;
+      }
+
+      // Sistema Operacional para Servidores (chave 'os')
+      if (!initialSpecs.os && assetToEdit.specs?.os) {
+        initialSpecs.os = assetToEdit.specs.os;
       }
 
       // Auto-preenche Armazenamento caso ainda não esteja preenchido e haja discos reportados

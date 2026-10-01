@@ -43,6 +43,7 @@ class AgentCheckinPayload(BaseModel):
     serial_number: Optional[str] = None
     mac_address: Optional[str] = None
     device_type: Optional[str] = None
+    vcpu_count: Optional[int] = None
 
 
 class AgentMachineResponse(BaseModel):
@@ -227,21 +228,35 @@ def agent_checkin(
     specs_payload = {
         "cpu": data.cpu_model,
         "ram": ram_formatted,
+        "vcpu": data.vcpu_count,
+        "ram_gb": ram_gb,
         "storage": storage_formatted,
+        "os": data.os_name,
         "cpu_usage_pct": data.cpu_usage_pct,
         "ram_total_mb": data.ram_total_mb,
         "ram_used_mb": data.ram_used_mb,
         "ram_usage_pct": data.ram_usage_pct,
         "disks": disks_normalized,
         "physical_disks": physical_disks_normalized,
-        "os": data.os_name,
         "uptime_hours": data.uptime_hours,
         "mac_address": data.mac_address,
     }
 
+    # Inferência inteligente do tipo de ativo (Servidor, Notebook ou Desktop)
+    is_server_detected = bool(
+        (data.os_name and "server" in data.os_name.lower())
+        or (data.device_type and "servidor" in data.device_type.lower())
+    )
+
     if not asset:
         # Auto-cadastro do Ativo no CMDB (Fase 1 Sentinel Agent)
-        asset_type = data.device_type if data.device_type in ("Notebook", "Desktop") else "Notebook"
+        if is_server_detected:
+            asset_type = "Servidor"
+        elif data.device_type in ("Notebook", "Desktop", "Servidor"):
+            asset_type = data.device_type
+        else:
+            asset_type = "Desktop"
+
         asset = Asset(
             name=hostname_clean,
             type=asset_type,
@@ -269,7 +284,9 @@ def agent_checkin(
             asset.mac_address = data.mac_address
         if ip_clean not in ("unknown", "127.0.0.1", ""):
             asset.ip_address = ip_clean
-        if data.device_type and asset.type in ("Outro", "Desconhecido"):
+        if is_server_detected and asset.type in ("Desktop", "Notebook", "Outro", "Desconhecido"):
+            asset.type = "Servidor"
+        elif data.device_type and asset.type in ("Outro", "Desconhecido"):
             asset.type = data.device_type
         if user and not asset.assigned_user_id:
             asset.assigned_user_id = user.id
@@ -516,20 +533,68 @@ function Get-LoggedUser {{
 function Get-SystemMetrics {{
     $cpu = 0
     $cpuModel = ""
+    $vcpuCount = 0
     try {{
         $proc = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $proc) {{
+            $proc = Get-WmiObject Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        }}
         if ($proc) {{
-            $cpuModel = $proc.Name.Trim()
-            $cpuAvg = (Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Measure-Object -Property LoadPercentage -Average).Average
-            $cpu = [int]$cpuAvg
+            if ($proc.Name) {{ $cpuModel = $proc.Name.Trim() }}
+            if ($proc.NumberOfLogicalProcessors) {{ $vcpuCount = [int]$proc.NumberOfLogicalProcessors }}
+            if ($proc.LoadPercentage -ne $null) {{ $cpu = [int]$proc.LoadPercentage }}
         }}
     }} catch {{}}
 
-    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
-    $ramTotalMB = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
-    $ramFreeMB = [math]::Round($os.FreePhysicalMemory / 1024, 0)
-    $ramUsedMB = $ramTotalMB - $ramFreeMB
-    $ramPct = [math]::Round(($ramUsedMB / $ramTotalMB) * 100, 1)
+    # Fallback ultra-resiliente para CPU e vCPU (Funciona 100% em qualquer Windows Server ou Workstation)
+    if (-not $cpuModel) {{
+        try {{
+            $regCpu = (Get-ItemProperty -Path "HKLM:\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0" -Name "ProcessorNameString" -ErrorAction SilentlyContinue).ProcessorNameString
+            if ($regCpu) {{ $cpuModel = $regCpu.Trim() }}
+        }} catch {{}}
+    }}
+    if ($vcpuCount -eq 0) {{
+        try {{
+            $vcpuCount = [int]$env:NUMBER_OF_PROCESSORS
+        }} catch {{}}
+    }}
+
+    $os = $null
+    $ramTotalMB = 0
+    $ramUsedMB = 0
+    $ramPct = 0.0
+    try {{
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+        if (-not $os) {{
+            $os = Get-WmiObject Win32_OperatingSystem -ErrorAction SilentlyContinue
+        }}
+        if ($os -and $os.TotalVisibleMemorySize) {{
+            $ramTotalMB = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
+            $ramFreeMB = [math]::Round($os.FreePhysicalMemory / 1024, 0)
+            $ramUsedMB = $ramTotalMB - $ramFreeMB
+        }}
+    }} catch {{}}
+
+    # Fallback de RAM via ComputerSystem / PhysicalMemory caso Win32_OperatingSystem venha zerado
+    if ($ramTotalMB -eq 0) {{
+        try {{
+            $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+            if (-not $cs) {{ $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction SilentlyContinue }}
+            if ($cs -and $cs.TotalPhysicalMemory) {{
+                $ramTotalMB = [math]::Round($cs.TotalPhysicalMemory / 1MB, 0)
+            }}
+        }} catch {{}}
+        if ($ramTotalMB -eq 0) {{
+            try {{
+                $pmSum = (Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue | Measure-Object -Property Capacity -Sum).Sum
+                if ($pmSum) {{ $ramTotalMB = [math]::Round($pmSum / 1MB, 0) }}
+            }} catch {{}}
+        }}
+    }}
+
+    if ($ramTotalMB -gt 0 -and $ramUsedMB -gt 0) {{
+        $ramPct = [math]::Round(($ramUsedMB / $ramTotalMB) * 100, 1)
+    }}
 
     $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue | ForEach-Object {{
         @{{
@@ -585,6 +650,29 @@ function Get-SystemMetrics {{
     $serialNumber = "Desconhecido"
     $deviceType = "Desktop"
 
+    # Detecção nativa de Windows Server (ProductType 2 ou 3)
+    if ($os -and ($os.ProductType -in 2, 3 -or $os.Caption -like "*Server*")) {{
+        $deviceType = "Servidor"
+    }} else {{
+        try {{
+            $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
+            if ($null -ne $battery) {{
+                $deviceType = "Notebook"
+            }} else {{
+                $enclosure = Get-CimInstance Win32_SystemEnclosure -ErrorAction SilentlyContinue
+                if ($enclosure.ChassisTypes) {{
+                    $portableTypes = @(8, 9, 10, 11, 12, 14, 18, 21, 31, 32)
+                    foreach ($ct in $enclosure.ChassisTypes) {{
+                        if ($portableTypes -contains [int]$ct) {{
+                            $deviceType = "Notebook"
+                            break
+                        }}
+                    }}
+                }}
+            }}
+        }} catch {{}}
+    }}
+
     try {{
         $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
         if ($cs.Manufacturer) {{ $brand = $cs.Manufacturer.Trim() }}
@@ -596,25 +684,12 @@ function Get-SystemMetrics {{
         if ($bios.SerialNumber) {{ $serialNumber = $bios.SerialNumber.Trim() }}
     }} catch {{}}
 
+    $uptimeHours = 0.0
     try {{
-        $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
-        if ($null -ne $battery) {{
-            $deviceType = "Notebook"
-        }} else {{
-            $enclosure = Get-CimInstance Win32_SystemEnclosure -ErrorAction SilentlyContinue
-            if ($enclosure.ChassisTypes) {{
-                $portableTypes = @(8, 9, 10, 11, 12, 14, 18, 21, 31, 32)
-                foreach ($ct in $enclosure.ChassisTypes) {{
-                    if ($portableTypes -contains [int]$ct) {{
-                        $deviceType = "Notebook"
-                        break
-                    }}
-                }}
-            }}
+        if ($os -and $os.LastBootUpTime) {{
+            $uptimeHours = [math]::Round((((Get-Date) - $os.LastBootUpTime).TotalHours), 1)
         }}
     }} catch {{}}
-
-    $uptimeHours = [math]::Round((((Get-Date) - $os.LastBootUpTime).TotalHours), 1)
 
     return @{{
         hostname       = $env:COMPUTERNAME
@@ -622,13 +697,14 @@ function Get-SystemMetrics {{
         ip_address     = $ipAddress
         cpu_usage_pct  = $cpu
         cpu_model      = $cpuModel
+        vcpu_count     = [int]$vcpuCount
         ram_used_mb    = [int]$ramUsedMB
         ram_total_mb   = [int]$ramTotalMB
         ram_usage_pct  = [double]$ramPct
         disks          = [object[]]@($disks)
         physical_disks = [object[]]@($physicalDisks)
         uptime_hours   = $uptimeHours
-        os_name        = $os.Caption
+        os_name        = if ($os -and $os.Caption) {{ $os.Caption }} else {{ "Windows" }}
         brand          = $brand
         model          = $model
         serial_number  = $serialNumber

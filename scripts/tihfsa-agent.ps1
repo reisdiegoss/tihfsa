@@ -99,28 +99,68 @@ function Get-SystemMetrics {
     # CPU
     $cpu = 0
     $cpuModel = ""
+    $vcpuCount = 0
     try {
         $proc = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $proc) {
+            $proc = Get-WmiObject Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        }
         if ($proc) {
-            $cpuModel = $proc.Name.Trim()
-            $cpuAvg = (Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Measure-Object -Property LoadPercentage -Average).Average
-            $cpu = [int]$cpuAvg
+            if ($proc.Name) { $cpuModel = $proc.Name.Trim() }
+            if ($proc.NumberOfLogicalProcessors) { $vcpuCount = [int]$proc.NumberOfLogicalProcessors }
+            if ($proc.LoadPercentage -ne $null) { $cpu = [int]$proc.LoadPercentage }
         }
     } catch {}
 
-    # Memória RAM
+    # Fallback ultra-resiliente para CPU e vCPU (Funciona 100% em qualquer Windows Server ou Workstation)
+    if (-not $cpuModel) {
+        try {
+            $regCpu = (Get-ItemProperty -Path "HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0" -Name "ProcessorNameString" -ErrorAction SilentlyContinue).ProcessorNameString
+            if ($regCpu) { $cpuModel = $regCpu.Trim() }
+        } catch {}
+    }
+    if ($vcpuCount -eq 0) {
+        try {
+            $vcpuCount = [int]$env:NUMBER_OF_PROCESSORS
+        } catch {}
+    }
+
+    $os = $null
     $ramTotalMB = 0
     $ramUsedMB = 0
     $ramPct = 0.0
     try {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
-        $ramTotalMB = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
-        $ramFreeMB = [math]::Round($os.FreePhysicalMemory / 1024, 0)
-        $ramUsedMB = $ramTotalMB - $ramFreeMB
-        if ($ramTotalMB -gt 0) {
-            $ramPct = [math]::Round(($ramUsedMB / $ramTotalMB) * 100, 1)
+        if (-not $os) {
+            $os = Get-WmiObject Win32_OperatingSystem -ErrorAction SilentlyContinue
+        }
+        if ($os -and $os.TotalVisibleMemorySize) {
+            $ramTotalMB = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
+            $ramFreeMB = [math]::Round($os.FreePhysicalMemory / 1024, 0)
+            $ramUsedMB = $ramTotalMB - $ramFreeMB
         }
     } catch {}
+
+    # Fallback de RAM via ComputerSystem / PhysicalMemory caso Win32_OperatingSystem venha zerado
+    if ($ramTotalMB -eq 0) {
+        try {
+            $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+            if (-not $cs) { $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction SilentlyContinue }
+            if ($cs -and $cs.TotalPhysicalMemory) {
+                $ramTotalMB = [math]::Round($cs.TotalPhysicalMemory / 1MB, 0)
+            }
+        } catch {}
+        if ($ramTotalMB -eq 0) {
+            try {
+                $pmSum = (Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue | Measure-Object -Property Capacity -Sum).Sum
+                if ($pmSum) { $ramTotalMB = [math]::Round($pmSum / 1MB, 0) }
+            } catch {}
+        }
+    }
+
+    if ($ramTotalMB -gt 0 -and $ramUsedMB -gt 0) {
+        $ramPct = [math]::Round(($ramUsedMB / $ramTotalMB) * 100, 1)
+    }
 
     # Discos Lógicos (Partições locais C:, D:, etc.)
     $disks = @()
@@ -193,6 +233,29 @@ function Get-SystemMetrics {
     $serialNumber = "Desconhecido"
     $deviceType = "Desktop"
 
+    # Detecção nativa de Windows Server (ProductType 2 ou 3)
+    if ($os -and ($os.ProductType -in 2, 3 -or $os.Caption -like "*Server*")) {
+        $deviceType = "Servidor"
+    } else {
+        try {
+            $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
+            if ($null -ne $battery) {
+                $deviceType = "Notebook"
+            } else {
+                $enclosure = Get-CimInstance Win32_SystemEnclosure -ErrorAction SilentlyContinue
+                if ($enclosure.ChassisTypes) {
+                    $portableTypes = @(8, 9, 10, 11, 12, 14, 18, 21, 31, 32)
+                    foreach ($ct in $enclosure.ChassisTypes) {
+                        if ($portableTypes -contains [int]$ct) {
+                            $deviceType = "Notebook"
+                            break
+                        }
+                    }
+                }
+            }
+        } catch {}
+    }
+
     try {
         $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
         if ($cs.Manufacturer) { $brand = $cs.Manufacturer.Trim() }
@@ -204,28 +267,10 @@ function Get-SystemMetrics {
         if ($bios.SerialNumber) { $serialNumber = $bios.SerialNumber.Trim() }
     } catch {}
 
-    try {
-        $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
-        if ($null -ne $battery) {
-            $deviceType = "Notebook"
-        } else {
-            $enclosure = Get-CimInstance Win32_SystemEnclosure -ErrorAction SilentlyContinue
-            if ($enclosure.ChassisTypes) {
-                $portableTypes = @(8, 9, 10, 11, 12, 14, 18, 21, 31, 32)
-                foreach ($ct in $enclosure.ChassisTypes) {
-                    if ($portableTypes -contains [int]$ct) {
-                        $deviceType = "Notebook"
-                        break
-                    }
-                }
-            }
-        }
-    } catch {}
-
     # Uptime em horas
     $uptimeHours = 0.0
     try {
-        if ($os.LastBootUpTime) {
+        if ($os -and $os.LastBootUpTime) {
             $uptimeHours = [math]::Round((((Get-Date) - $os.LastBootUpTime).TotalHours), 1)
         }
     } catch {}
@@ -236,13 +281,14 @@ function Get-SystemMetrics {
         ip_address     = $ipAddress
         cpu_usage_pct  = $cpu
         cpu_model      = $cpuModel
+        vcpu_count     = [int]$vcpuCount
         ram_used_mb    = $ramUsedMB
         ram_total_mb   = $ramTotalMB
         ram_usage_pct  = $ramPct
         disks          = [object[]]@($disks)
         physical_disks = [object[]]@($physicalDisks)
         uptime_hours   = $uptimeHours
-        os_name        = if ($os) { $os.Caption } else { "Windows" }
+        os_name        = if ($os -and $os.Caption) { $os.Caption } else { "Windows" }
         brand          = $brand
         model          = $model
         serial_number  = $serialNumber
