@@ -68,6 +68,8 @@ O **TIHFSA** foi concebido para transformar a operação diária de TI da hotela
 ### 2. CMDB & Inventário de Ativos
 - **Rastreabilidade Completa**: Cadastro de Switches, Racks, Servidores, Access Points, Impressoras, Desktops, Telefonia IP e TV/Áudio.
 - **Vínculos Dinâmicos**: Associação direta entre Ativo $\leftrightarrow$ Localização Física (Rack, Andar, Setor, UH) $\leftrightarrow$ Histórico de Chamados.
+- **Auto-Provisionamento via TIHFSA Sentinel Agent**: Qualquer estação de trabalho ou servidor corporativo que reporte telemetria é cadastrado ou atualizado automaticamente no CMDB com suas especificações completas (Fabricante, Modelo, Service Tag/Número de Série, MAC, CPU, RAM, Discos e Uptime).
+- **Detecção Inteligente do Usuário Real (Anti-Admin)**: Algoritmo multi-camada no agente PowerShell que inspeciona o proprietário do processo `explorer.exe` na sessão gráfica interativa, o console físico do Windows e o registro (`LastLoggedOnUser`), descartando contas de técnicos (`adm_*`, `suporte*`) ou serviços (`SYSTEM`) para sempre vincular o equipamento ao colaborador corporativo dono da máquina.
 - **Sincronização com Ferramentas de Rede**: Coleta e associação automática de endereços MAC, endereços IP, números de série e modelos com a controladora UniFi e o Zabbix.
 
 ### 3. Painel NOC & Topologia de Rede (TV 4K Ready)
