@@ -21,8 +21,9 @@ const getAudioContext = () => {
 
 // Assegura que o contexto de áudio esteja rodando (despausado)
 const ensureAudioReady = async () => {
-  const ctx = getAudioContext();
+  let ctx = getAudioContext();
   if (!ctx) return null;
+
   if (ctx.state === "suspended") {
     try {
       await ctx.resume();
@@ -30,14 +31,34 @@ const ensureAudioReady = async () => {
       console.warn("Autoplay bloqueou áudio:", e);
     }
   }
-  return ctx;
+
+  // Se continuar suspenso ou fechado/interrompido, tenta criar um novo AudioContext
+  if (ctx.state !== "running") {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        sharedAudioCtx = new AudioCtx();
+        ctx = sharedAudioCtx;
+        if (ctx.state === "suspended") {
+          await ctx.resume().catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn("Falha ao recriar AudioContext:", e);
+    }
+  }
+
+  return ctx.state === "running" ? ctx : null;
 };
 
 // Som 1: Chime de Novo Chamado (Acorde harmônico encorpado de alto volume: C5 -> E5 -> G5 -> C6)
 const playNewTicketChime = async () => {
   try {
     const ctx = await ensureAudioReady();
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn("AudioContext não está em estado running. Áudio bloqueado pelo navegador.");
+      return false;
+    }
 
     const playHarmonicBurst = (delay) => {
       const now = ctx.currentTime + delay;
@@ -65,8 +86,10 @@ const playNewTicketChime = async () => {
     // Toca duas vezes sequencialmente para que o setor escute com nitidez
     playHarmonicBurst(0.05);
     playHarmonicBurst(0.75);
+    return true;
   } catch (err) {
     console.warn("Web Audio API Chime erro:", err);
+    return false;
   }
 };
 
@@ -74,7 +97,7 @@ const playNewTicketChime = async () => {
 const playRequesterReplyChime = async () => {
   try {
     const ctx = await ensureAudioReady();
-    if (!ctx) return;
+    if (!ctx) return false;
 
     const now = ctx.currentTime + 0.05;
     const tones = [
@@ -94,8 +117,10 @@ const playRequesterReplyChime = async () => {
       osc.start(now + t.time);
       osc.stop(now + t.time + t.dur);
     });
+    return true;
   } catch (err) {
     console.warn("Web Audio API Requester Chime erro:", err);
+    return false;
   }
 };
 
@@ -103,7 +128,7 @@ const playRequesterReplyChime = async () => {
 const playUrgentAlertSiren = async () => {
   try {
     const ctx = await ensureAudioReady();
-    if (!ctx) return;
+    if (!ctx) return false;
 
     const now = ctx.currentTime + 0.05;
     for (let i = 0; i < 3; i++) {
@@ -122,8 +147,10 @@ const playUrgentAlertSiren = async () => {
       osc.start(now + offset);
       osc.stop(now + offset + 0.3);
     }
+    return true;
   } catch (err) {
     console.warn("Web Audio API Siren erro:", err);
+    return false;
   }
 };
 
@@ -177,22 +204,26 @@ export default function PublicHelpdeskTv() {
   const prevBreachedCountRef = useRef(null);
   const prevLatestInterIdRef = useRef(null);
 
-  // Desbloquear AudioContext com primeiro clique/toque
-  const unlockAudio = () => {
-    const ctx = getAudioContext();
-    if (ctx) {
-      if (ctx.state === "suspended") {
-        ctx.resume().then(() => setAudioUnlocked(true)).catch(() => {});
-      } else {
-        setAudioUnlocked(true);
-      }
+  // Desbloquear AudioContext com primeiro clique/toque (garantindo estado running)
+  const unlockAudio = async () => {
+    const ctx = await ensureAudioReady();
+    if (ctx && ctx.state === "running") {
+      setAudioUnlocked(true);
+      return true;
     }
+    return false;
   };
 
   useEffect(() => {
-    const handleFirstInteraction = () => {
-      unlockAudio();
+    // Verifica se o navegador já tem permissão de autoplay ativa no carregamento
+    if (sharedAudioCtx && sharedAudioCtx.state === "running") {
+      setAudioUnlocked(true);
+    }
+
+    const handleFirstInteraction = async () => {
+      await unlockAudio();
     };
+
     window.addEventListener("click", handleFirstInteraction);
     window.addEventListener("pointerdown", handleFirstInteraction);
     window.addEventListener("mousedown", handleFirstInteraction);
@@ -243,30 +274,47 @@ export default function PublicHelpdeskTv() {
     }
   };
 
-  const handleToggleAudio = () => {
+  const handleToggleAudio = async () => {
     const nextState = !audioEnabled;
     setAudioEnabled(nextState);
     try {
       localStorage.setItem("tihfsa_tv_audio_enabled", String(nextState));
     } catch (e) {}
 
-    unlockAudio();
     if (nextState) {
-      playNewTicketChime();
+      const ok = await unlockAudio();
+      if (ok) {
+        await playNewTicketChime();
+      }
     }
   };
 
-  // Disparar teste sonoro manual pelo usuário
+  // Disparar teste sonoro manual pelo usuário com diagnóstico completo
   const handleTestAudio = async () => {
-    unlockAudio();
-    await playNewTicketChime();
+    const isReady = await unlockAudio();
+    if (isReady) {
+      const played = await playNewTicketChime();
+      if (played) {
+        setActiveToast({
+          type: "test",
+          badge: "TESTE DE SOM: SUCESSO 🔔",
+          badgeClass: "bg-emerald-600 text-white font-black",
+          title: "Sinal Sonoro Disparado na Potência Plena",
+          subtitle: "O navegador emitiu o som com sucesso (Web Audio API ativo).",
+          details: "Se não ouvir na TV: 1) Ajuste o volume no controle da TV; 2) No Windows, confirme a TV como Saída de Som Padrão; 3) Verifique se a aba não está com 'Desativar som do site'.",
+          timestamp: new Date()
+        });
+        return;
+      }
+    }
+
     setActiveToast({
-      type: "test",
-      badge: "TESTE DE SOM",
-      badgeClass: "bg-blue-500 text-white font-black",
-      title: "Alarme de Teste Acionado",
-      subtitle: "Áudio do Helpdesk funcionando normalmente",
-      details: "Os alarmes tocarão quando novos chamados ou respostas forem recebidos.",
+      type: "urgent",
+      badge: "ÁUDIO BLOQUEADO PELO NAVEGADOR ⚠️",
+      badgeClass: "bg-amber-500 text-slate-950 font-black animate-pulse",
+      title: "Permissão de Som Exigida pelo Chrome",
+      subtitle: "O navegador nesta tela ainda não autorizou a reprodução automática.",
+      details: "Dê um clique direto no botão 'Liberar Áudio' ou em qualquer ponto da tela da TV para ativar.",
       timestamp: new Date()
     });
   };
@@ -551,20 +599,32 @@ export default function PublicHelpdeskTv() {
             onClick={handleToggleAudio}
             className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all border cursor-pointer ${
               audioEnabled
-                ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.25)]"
+                ? (audioUnlocked 
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.25)]" 
+                    : "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.25)] animate-pulse")
                 : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:bg-slate-800 hover:text-white"
             }`}
-            title="Ativar/desativar som na TV (Toca para novos chamados e chamados críticos)"
+            title={
+              audioEnabled 
+                ? (audioUnlocked ? "Áudio Pronto (Potência Plena 0.85). Clique para silenciar." : "Clique para liberar o som no navegador nesta tela.")
+                : "Áudio Silenciado. Clique para ativar."
+            }
           >
-            {audioEnabled ? <Volume2 size={18} className="animate-pulse text-amber-400" /> : <VolumeX size={18} />}
-            <span className="hidden sm:inline">{audioEnabled ? "Alerta Ativo" : "Silenciado"}</span>
+            {audioEnabled ? (
+              audioUnlocked ? <Volume2 size={18} className="text-emerald-400" /> : <Volume2 size={18} className="animate-ping text-amber-400" />
+            ) : (
+              <VolumeX size={18} />
+            )}
+            <span className="hidden sm:inline">
+              {audioEnabled ? (audioUnlocked ? "Áudio Pronto" : "Liberar Áudio") : "Silenciado"}
+            </span>
           </button>
 
           {/* Test Audio Button */}
           <button
             onClick={handleTestAudio}
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/30 transition-all cursor-pointer"
-            title="Testar som do alarme na TV agora"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/30 transition-all cursor-pointer shadow-md active:scale-95"
+            title="Testar alarme sonoro na TV agora"
           >
             <BellRing size={16} className="text-indigo-400" />
             <span className="hidden sm:inline">Testar Som</span>
@@ -658,17 +718,22 @@ export default function PublicHelpdeskTv() {
       {/* Banner de Autorização de Áudio pelo Navegador (se ainda não clicou na tela) */}
       {audioEnabled && !audioUnlocked && (
         <div 
-          onClick={unlockAudio}
-          className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold px-4 py-2.5 rounded-2xl mb-4 flex items-center justify-between gap-3 shadow-lg cursor-pointer animate-pulse"
+          onClick={async () => {
+            const ok = await unlockAudio();
+            if (ok) {
+              await playNewTicketChime();
+            }
+          }}
+          className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold px-4 py-2.5 rounded-2xl mb-4 flex items-center justify-between gap-3 shadow-lg cursor-pointer animate-pulse hover:bg-amber-500/30 transition-all"
         >
           <div className="flex items-center gap-2.5">
             <Volume2 size={20} className="text-amber-400 shrink-0" />
             <span>
-              O navegador bloqueia som automático. <strong>Clique em qualquer local desta tela para autorizar os alertas sonoros na TV!</strong>
+              O navegador bloqueia sons em telas secundárias sem interação. <strong>Clique aqui nesta tela para liberar os alertas na TV!</strong>
             </span>
           </div>
           <span className="bg-amber-500 text-slate-950 font-black px-3.5 py-1 rounded-xl text-xs uppercase tracking-wider shrink-0 shadow-sm">
-            Ativar Áudio
+            Liberar Áudio da TV
           </span>
         </div>
       )}

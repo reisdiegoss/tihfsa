@@ -21,8 +21,9 @@ const getAudioContext = () => {
 
 // Assegura que o contexto de áudio esteja rodando (despausado)
 const ensureAudioReady = async () => {
-  const ctx = getAudioContext();
+  let ctx = getAudioContext();
   if (!ctx) return null;
+
   if (ctx.state === "suspended") {
     try {
       await ctx.resume();
@@ -30,14 +31,34 @@ const ensureAudioReady = async () => {
       console.warn("Autoplay bloqueou áudio:", e);
     }
   }
-  return ctx;
+
+  // Se continuar suspenso ou fechado/interrompido, tenta criar um novo AudioContext
+  if (ctx.state !== "running") {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        sharedAudioCtx = new AudioCtx();
+        ctx = sharedAudioCtx;
+        if (ctx.state === "suspended") {
+          await ctx.resume().catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn("Falha ao recriar AudioContext:", e);
+    }
+  }
+
+  return ctx.state === "running" ? ctx : null;
 };
 
 // Som 1: Chime encorpado para novos chamados
 const playNewTicketChime = async () => {
   try {
     const ctx = await ensureAudioReady();
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn("AudioContext não está em running");
+      return false;
+    }
 
     const playBurst = (delay) => {
       const now = ctx.currentTime + delay;
@@ -64,8 +85,10 @@ const playNewTicketChime = async () => {
 
     playBurst(0.05);
     playBurst(0.75);
+    return true;
   } catch (err) {
     console.warn("Audio chime erro:", err);
+    return false;
   }
 };
 
@@ -73,7 +96,7 @@ const playNewTicketChime = async () => {
 const playRequesterReplyChime = async () => {
   try {
     const ctx = await ensureAudioReady();
-    if (!ctx) return;
+    if (!ctx) return false;
 
     const now = ctx.currentTime + 0.05;
     const tones = [
@@ -93,8 +116,10 @@ const playRequesterReplyChime = async () => {
       osc.start(now + t.time);
       osc.stop(now + t.time + t.dur);
     });
+    return true;
   } catch (err) {
     console.warn("Audio requester chime erro:", err);
+    return false;
   }
 };
 
@@ -102,7 +127,7 @@ const playRequesterReplyChime = async () => {
 const playUrgentAlertSiren = async () => {
   try {
     const ctx = await ensureAudioReady();
-    if (!ctx) return;
+    if (!ctx) return false;
 
     const now = ctx.currentTime + 0.05;
     for (let i = 0; i < 3; i++) {
@@ -121,8 +146,10 @@ const playUrgentAlertSiren = async () => {
       osc.start(now + offset);
       osc.stop(now + offset + 0.3);
     }
+    return true;
   } catch (err) {
     console.warn("Audio siren erro:", err);
+    return false;
   }
 };
 
@@ -160,20 +187,22 @@ export default function MonitoringHub() {
   const prevBreachedCountRef = useRef(null);
   const prevLatestInterIdRef = useRef(null);
 
-  const unlockAudio = () => {
-    const ctx = getAudioContext();
-    if (ctx) {
-      if (ctx.state === "suspended") {
-        ctx.resume().then(() => setAudioUnlocked(true)).catch(() => {});
-      } else {
-        setAudioUnlocked(true);
-      }
+  const unlockAudio = async () => {
+    const ctx = await ensureAudioReady();
+    if (ctx && ctx.state === "running") {
+      setAudioUnlocked(true);
+      return true;
     }
+    return false;
   };
 
   useEffect(() => {
-    const handleFirstInteraction = () => {
-      unlockAudio();
+    if (sharedAudioCtx && sharedAudioCtx.state === "running") {
+      setAudioUnlocked(true);
+    }
+
+    const handleFirstInteraction = async () => {
+      await unlockAudio();
     };
     window.addEventListener("click", handleFirstInteraction);
     window.addEventListener("pointerdown", handleFirstInteraction);
@@ -200,29 +229,46 @@ export default function MonitoringHub() {
     return () => clearTimeout(timer);
   }, [activeToast]);
 
-  const handleToggleAudio = () => {
+  const handleToggleAudio = async () => {
     const nextState = !audioEnabled;
     setAudioEnabled(nextState);
     try {
       localStorage.setItem("tihfsa_hub_audio_enabled", String(nextState));
     } catch (e) {}
 
-    unlockAudio();
     if (nextState) {
-      playNewTicketChime();
+      const ok = await unlockAudio();
+      if (ok) {
+        await playNewTicketChime();
+      }
     }
   };
 
   const handleTestAudio = async () => {
-    unlockAudio();
-    await playNewTicketChime();
+    const isReady = await unlockAudio();
+    if (isReady) {
+      const played = await playNewTicketChime();
+      if (played) {
+        setActiveToast({
+          type: "test",
+          badge: "TESTE DE SOM: SUCESSO 🔔",
+          badgeClass: "bg-emerald-600 text-white font-black",
+          title: "Sinal Sonoro Disparado",
+          subtitle: "Web Audio API ativo na potência plena (0.85).",
+          details: "Se não ouvir som: verifique a saída de áudio padrão do Windows ou se o site está silenciado na aba.",
+          timestamp: new Date()
+        });
+        return;
+      }
+    }
+
     setActiveToast({
-      type: "test",
-      badge: "TESTE DE SOM",
-      badgeClass: "bg-blue-600 text-white font-black",
-      title: "Alarme de Teste Acionado",
-      subtitle: "Áudio do Helpdesk funcionando normalmente",
-      details: "Os alarmes tocarão quando novos chamados ou respostas forem recebidos.",
+      type: "urgent",
+      badge: "ÁUDIO BLOQUEADO PELO NAVEGADOR ⚠️",
+      badgeClass: "bg-amber-500 text-slate-950 font-black animate-pulse",
+      title: "Permissão de Som Exigida pelo Chrome",
+      subtitle: "Clique em qualquer ponto desta tela para autorizar o áudio.",
+      details: "O navegador requer interação do usuário nesta janela para tocar alertas.",
       timestamp: new Date()
     });
   };
@@ -402,13 +448,19 @@ export default function MonitoringHub() {
             onClick={handleToggleAudio}
             className={`flex items-center gap-2 px-3.5 py-2.5 rounded-2xl transition-all font-bold text-xs cursor-pointer border ${
               audioEnabled 
-                ? "bg-amber-50 text-amber-900 border-amber-300 shadow-xs" 
+                ? (audioUnlocked 
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs" 
+                    : "bg-amber-50 text-amber-900 border-amber-300 shadow-xs animate-pulse")
                 : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200"
             }`}
-            title="Alerta sonoro para novos chamados e chamados críticos"
+            title={audioEnabled ? (audioUnlocked ? "Áudio Pronto (Potência Plena). Clique para silenciar." : "Clique para liberar áudio nesta tela.") : "Alerta Silenciado"}
           >
-            {audioEnabled ? <Volume2 size={16} className="text-amber-600 animate-pulse" /> : <VolumeX size={16} />}
-            <span>{audioEnabled ? "Alerta Sonoro Ativo" : "Alerta Silenciado"}</span>
+            {audioEnabled ? (
+              audioUnlocked ? <Volume2 size={16} className="text-emerald-600" /> : <Volume2 size={16} className="text-amber-600 animate-ping" />
+            ) : (
+              <VolumeX size={16} />
+            )}
+            <span>{audioEnabled ? (audioUnlocked ? "Áudio Pronto" : "Liberar Áudio") : "Alerta Silenciado"}</span>
           </button>
 
           {/* Botão de Testar Som */}

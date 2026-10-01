@@ -588,11 +588,15 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - **Som 1: Novo Chamado (Acorde C5-E5-G5-C6)**: Dispara um chime harmônico de 4 notas em dupla rajada com ganho elevado (0.75 - 0.85).
         - **Som 2: Resposta de Solicitante / Interatividade (Ding-Dong duplo)**: Dispara um chime sonoro nítido com ganho 0.85 para mensagens e respostas recebidas.
         - **Som 3: Urgência / Crítico / SLA Estourado (Sirene)**: Sirene enfática de 3 ondas (ganho 0.80) para sinalização de criticidade máxima.
+        - **Operação Concorrente Multi-Telas (NOC + Helpdesk no mesmo computador)**:
+          - Ambos os painéis operam com contextos de áudio e chaves de `localStorage` totalmente segregadas (`tihfsa_tv_*` para Helpdesk vs `tihfsa_hub_*` e `tihfsa_noc_*` para o NOC), permitindo que rodem simultaneamente em monitores diferentes sem colisões.
+          - **Diagnóstico em Tempo Real**: O botão de alerta no topo indica visualmente se o áudio está pronto (`🟢 Áudio Pronto`) ou se o Chrome bloqueou por falta de interação na janela (`⚠️ Liberar Áudio`).
+          - **Garantia de Estado `running`**: Toda tentativa de reprodução verifica e restaura o `AudioContext` do navegador para o estado `running` antes do disparo das frequências, eliminando nós de som descartados.
         - **Notificações Visuais Flutuantes (Toasts)**: Card translúcido escuro de alto contraste no canto superior direito exibindo número do chamado, título, solicitante/autor da mensagem e horário, com auto-fechamento em 15 segundos ou fechamento manual.
         - **Persistência Inteligente (`localStorage`)**: Memoriza os últimos IDs de chamados e respostas visualizados, evitando alarmes repetitivos desnecessários, mas garantindo que chamados recentes toquem mesmo se a tela for recarregada.
-        - **Botão "Testar Som"**: Disponível tanto no cabeçalho do Wallboard (`/tv/helpdesk`) quanto no Hub de Monitoramento (`/admin/monitoring`), permitindo que a equipe teste os alto-falantes e o volume a qualquer momento.
-        - **Desbloqueio de Autoplay do Navegador**: Banner pulsante intuitivo para autorizar a reprodução de áudio caso a janela do navegador esteja em modo silencioso/suspenso por política de mídia do navegador.
-      - **Sincronização Contínua**: Polling automático a cada 15 segundos com indicador visual de countdown e botão de tela cheia nativa (`requestFullscreen`).
+        - **Botão "Testar Som"**: Disponível tanto no cabeçalho do Wallboard (`/tv/helpdesk`) quanto no Hub de Monitoramento (`/admin/monitoring`), com feedback imediato via toast sobre o disparo e orientações sobre dispositivo de áudio padrão do Windows e desativação de som do site.
+        - **Desbloqueio de Autoplay do Navegador**: Banner pulsante intuitivo para autorizar a reprodução de áudio com um único clique em janelas secundárias/estendidas.
+      - **Sincronização Contínua**: Polling automático a cada 15 segundos imune a throttling de abas em segundo plano com indicador visual de countdown e botão de tela cheia nativa (`requestFullscreen`).
 
 
 
