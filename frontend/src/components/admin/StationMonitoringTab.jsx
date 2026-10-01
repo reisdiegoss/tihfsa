@@ -76,7 +76,7 @@ export default function StationMonitoringTab() {
   }, [data.machines, searchTerm, statusFilter]);
 
   const apiBase = import.meta.env.VITE_API_URL || window.location.origin + "/api/v1";
-  const oneLineCommand = `[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; irm "${apiBase}/monitoring/agent/script" | iex`;
+  const oneLineCommand = `(curl.exe -k -s "${apiBase}/monitoring/agent/script" | Out-String) | iex`;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -419,15 +419,14 @@ export default function StationMonitoringTab() {
               </p>
               <div className="p-3 bg-slate-900 rounded-xl text-slate-300 font-mono text-[11px] leading-relaxed relative group">
                 <pre className="overflow-x-auto whitespace-pre-wrap">{`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null
-[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
-Invoke-WebRequest -Uri "${apiBase}/monitoring/agent/script" -OutFile "C:\\TIHFSA\\tihfsa-agent.ps1"
+curl.exe -k -s "${apiBase}/monitoring/agent/script" -o "C:\\TIHFSA\\tihfsa-agent.ps1"
 $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NonInteractive -NoProfile -ExecutionPolicy Bypass -File C:\\TIHFSA\\tihfsa-agent.ps1"
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName "TIHFSASentinelAgent" -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest -Force
 Start-ScheduledTask -TaskName "TIHFSASentinelAgent"`}</pre>
                 <button
-                  onClick={() => copyToClipboard(`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null\n[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}\nInvoke-WebRequest -Uri "${apiBase}/monitoring/agent/script" -OutFile "C:\\TIHFSA\\tihfsa-agent.ps1"\n$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NonInteractive -NoProfile -ExecutionPolicy Bypass -File C:\\TIHFSA\\tihfsa-agent.ps1"\n$Trigger = New-ScheduledTaskTrigger -AtStartup\n$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\nRegister-ScheduledTask -TaskName "TIHFSASentinelAgent" -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest -Force\nStart-ScheduledTask -TaskName "TIHFSASentinelAgent"`)}
+                  onClick={() => copyToClipboard(`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null\ncurl.exe -k -s "${apiBase}/monitoring/agent/script" -o "C:\\TIHFSA\\tihfsa-agent.ps1"\n$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NonInteractive -NoProfile -ExecutionPolicy Bypass -File C:\\TIHFSA\\tihfsa-agent.ps1"\n$Trigger = New-ScheduledTaskTrigger -AtStartup\n$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\nRegister-ScheduledTask -TaskName "TIHFSASentinelAgent" -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest -Force\nStart-ScheduledTask -TaskName "TIHFSASentinelAgent"`)}
                   className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
                 >
                   <Copy size={12} />
