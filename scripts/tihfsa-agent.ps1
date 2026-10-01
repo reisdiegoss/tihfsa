@@ -17,7 +17,7 @@
 #>
 
 param(
-    [string]$ServerUrl = "http://192.168.168.26:8000/api/v1/monitoring/agent/checkin",
+    [string]$ServerUrl = "https://192.168.168.29/api/v1/monitoring/agent/checkin",
     [string]$AgentSecret = "tihfsa-agent-token-fasano-2026"
 )
 
@@ -67,7 +67,7 @@ function Get-SystemMetrics {
     # Discos Físicos (Locais)
     $disks = @()
     try {
-        $disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue | ForEach-Object {
+        $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue | ForEach-Object {
             $totalGB = [math]::Round($_.Size / 1GB, 1)
             $freeGB = [math]::Round($_.FreeSpace / 1GB, 1)
             $usedPct = 0
@@ -80,7 +80,7 @@ function Get-SystemMetrics {
                 free_gb  = $freeGB
                 used_pct = $usedPct
             }
-        }
+        })
     } catch {}
 
     # Endereço IPv4 Ativo
@@ -110,25 +110,33 @@ function Get-SystemMetrics {
         ram_used_mb   = $ramUsedMB
         ram_total_mb  = $ramTotalMB
         ram_usage_pct = $ramPct
-        disks         = $disks
+        disks         = [object[]]@($disks)
         uptime_hours  = $uptimeHours
         os_name       = if ($os) { $os.Caption } else { "Windows" }
     }
 }
 
 # Execução do Check-in
-try {
-    $payloadObj = Get-SystemMetrics
-    $payloadJson = $payloadObj | ConvertTo-Json -Depth 4
-    $headers = @{
-        "Content-Type"  = "application/json"
-        "X-Agent-Token" = $AgentSecret
-    }
+$payloadObj = Get-SystemMetrics
+$payloadJson = $payloadObj | ConvertTo-Json -Depth 4
+$headers = @{
+    "Content-Type"  = "application/json"
+    "X-Agent-Token" = $AgentSecret
+}
 
+try {
     $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $payloadJson -Headers $headers -TimeoutSec 10
+    Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $ServerUrl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
 } catch {
     try {
         # Fallback resiliente via curl.exe nativo do Windows
-        $payloadJson | curl.exe -k -s -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AgentSecret" --data-binary "@-" $ServerUrl | Out-Null
-    } catch {}
+        $curlOut = $payloadJson | curl.exe -k -s -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AgentSecret" --data-binary "@-" $ServerUrl
+        if ($curlOut -like '*"status":"ok"*') {
+            Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via curl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
+        } else {
+            Write-Warning "[AVISO] Falha ao enviar telemetria: $curlOut"
+        }
+    } catch {
+        Write-Error "[ERRO] Não foi possível conectar ao servidor $ServerUrl : $_"
+    }
 }

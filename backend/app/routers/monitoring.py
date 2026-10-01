@@ -32,7 +32,7 @@ class AgentCheckinPayload(BaseModel):
     ram_used_mb: Optional[int] = None
     ram_total_mb: Optional[int] = None
     ram_usage_pct: Optional[float] = None
-    disks: Optional[list[dict]] = None
+    disks: Optional[list[dict] | dict] = None
     uptime_hours: Optional[float] = None
     os_name: Optional[str] = None
 
@@ -101,12 +101,19 @@ def agent_checkin(
         forwarded = request.headers.get("X-Forwarded-For")
         ip_clean = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
 
+    # Normalização de discos (pode vir como list ou como dict unitário do PowerShell)
+    disks_normalized = []
+    if isinstance(data.disks, dict):
+        disks_normalized = [data.disks]
+    elif isinstance(data.disks, list):
+        disks_normalized = data.disks
+
     # Avaliação do status de saúde (warning se disco > 90% ou CPU > 95%)
     has_warning = False
     if data.cpu_usage_pct and data.cpu_usage_pct >= 95:
         has_warning = True
-    if data.disks:
-        for d in data.disks:
+    if disks_normalized:
+        for d in disks_normalized:
             if isinstance(d, dict) and d.get("used_pct", 0) >= 90:
                 has_warning = True
                 break
@@ -130,7 +137,7 @@ def agent_checkin(
             ram_used_mb=data.ram_used_mb,
             ram_total_mb=data.ram_total_mb,
             ram_usage_pct=data.ram_usage_pct,
-            disk_metrics=data.disks,
+            disk_metrics=disks_normalized,
             uptime_hours=data.uptime_hours,
             os_name=data.os_name,
             status=calculated_status,
@@ -146,7 +153,7 @@ def agent_checkin(
         checkin.ram_used_mb = data.ram_used_mb
         checkin.ram_total_mb = data.ram_total_mb
         checkin.ram_usage_pct = data.ram_usage_pct
-        checkin.disk_metrics = data.disks
+        checkin.disk_metrics = disks_normalized
         checkin.uptime_hours = data.uptime_hours
         checkin.os_name = data.os_name
         checkin.status = calculated_status
@@ -301,14 +308,14 @@ function Get-SystemMetrics {{
     $ramUsedMB = $ramTotalMB - $ramFreeMB
     $ramPct = [math]::Round(($ramUsedMB / $ramTotalMB) * 100, 1)
 
-    $disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {{
+    $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {{
         @{{
             drive = $_.DeviceID
             total_gb = [math]::Round($_.Size / 1GB, 1)
             free_gb = [math]::Round($_.FreeSpace / 1GB, 1)
             used_pct = [math]::Round((($_.Size - $_.FreeSpace) / $_.Size) * 100, 1)
         }}
-    }}
+    }})
 
     $ipInfo = Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Ethernet*","Wi-Fi*" -ErrorAction SilentlyContinue |
               Where-Object {{ $_.IPAddress -notlike "169.254*" -and $_.IPAddress -ne "127.0.0.1" }} |
@@ -324,23 +331,32 @@ function Get-SystemMetrics {{
         ram_used_mb    = [int]$ramUsedMB
         ram_total_mb   = [int]$ramTotalMB
         ram_usage_pct  = [double]$ramPct
-        disks          = $disks
+        disks          = [object[]]@($disks)
         uptime_hours   = $uptimeHours
         os_name        = $os.Caption
     }}
 }}
 
 try {{
-    $payload = Get-SystemMetrics | ConvertTo-Json -Depth 4
+    $metrics = Get-SystemMetrics
+    $payload = $metrics | ConvertTo-Json -Depth 4
     $headers = @{{
         "Content-Type"  = "application/json"
         "X-Agent-Token" = $AGENT_SECRET
     }}
-    Invoke-RestMethod -Uri $SERVER_URL -Method POST -Body $payload -Headers $headers -TimeoutSec 10
+    $res = Invoke-RestMethod -Uri $SERVER_URL -Method POST -Body $payload -Headers $headers -TimeoutSec 10
+    Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $SERVER_URL ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
 }} catch {{
     try {{
-        $payload | curl.exe -k -s -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AGENT_SECRET" --data-binary "@-" $SERVER_URL | Out-Null
-    }} catch {{}}
+        $curlOut = $payload | curl.exe -k -s -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AGENT_SECRET" --data-binary "@-" $SERVER_URL
+        if ($curlOut -like '*"status":"ok"*') {{
+            Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via curl ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
+        }} else {{
+            Write-Warning "[AVISO] Falha ao enviar telemetria: $curlOut"
+        }}
+    }} catch {{
+        Write-Error "[ERRO] Nao foi possivel conectar ao servidor: $_"
+    }}
 }}
 """
     resp_headers = {}
