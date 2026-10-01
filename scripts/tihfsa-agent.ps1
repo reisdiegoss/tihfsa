@@ -24,30 +24,88 @@ param(
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
 
-function Get-LoggedUser {
-    try {
-        # 1. Tentar capturar usuário interativo do console
-        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
-        if ($cs.UserName) { return $cs.UserName }
+function Test-IsAdminOrServiceAccount {
+    param([string]$AccountName)
+    if ([string]::IsNullOrWhiteSpace($AccountName)) { return $true }
+    $clean = ($AccountName -split '\\')[-1].Trim().ToLower()
+    $blackList = @('system', 'local service', 'network service', 'administrator', 'administrador', 'root', 'defaultuser0', 'guest', 'convidado')
+    if ($blackList -contains $clean) { return $true }
+    if ($clean -like 'adm_*' -or $clean -like 'adm-*' -or $clean -like 'suporte*' -or $clean -like 'admin*') { return $true }
+    return $false
+}
 
-        # 2. Fallback via query user
-        $quser = query user 2>$null | Select-Object -Skip 1
-        if ($quser) {
-            $user = ($quser[0] -split '\s+')[1]
-            return $user.Replace('>', '')
+function Get-LoggedUser {
+    $detectedUser = $null
+
+    # Camada 1: Proprietário do processo explorer.exe da sessão interativa gráfica
+    # Garante que mesmo com o script rodando como Administrador ou SYSTEM, pega o usuário na tela
+    try {
+        $explorers = Get-CimInstance Win32_Process -Filter "Name = 'explorer.exe'" -ErrorAction SilentlyContinue
+        foreach ($proc in $explorers) {
+            $owner = Invoke-CimMethod -InputObject $proc -MethodName GetOwner -ErrorAction SilentlyContinue
+            if ($owner -and $owner.User) {
+                $candidate = if ($owner.Domain) { "$($owner.Domain)\$($owner.User)" } else { $owner.User }
+                if (-not (Test-IsAdminOrServiceAccount $candidate)) {
+                    return $candidate
+                }
+                if (-not $detectedUser) { $detectedUser = $candidate }
+            }
         }
     } catch {}
 
-    # 3. Fallback para variável de ambiente da sessão
+    # Camada 2: Sessão de console interativo via Win32_ComputerSystem
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+        if ($cs.UserName) {
+            if (-not (Test-IsAdminOrServiceAccount $cs.UserName)) {
+                return $cs.UserName
+            }
+            if (-not $detectedUser) { $detectedUser = $cs.UserName }
+        }
+    } catch {}
+
+    # Camada 3: Sessão de console ativa via query user
+    try {
+        $quser = query user 2>$null | Select-Object -Skip 1
+        foreach ($line in $quser) {
+            $parts = $line.Trim() -split '\s+'
+            if ($parts.Count -ge 2) {
+                $u = $parts[0].Replace('>', '').Trim()
+                if (-not (Test-IsAdminOrServiceAccount $u)) {
+                    return $u
+                }
+            }
+        }
+    } catch {}
+
+    # Camada 4: Registro do Windows (Último usuário real logado — ótimo se rodar no boot antes do login)
+    try {
+        $lastLogon = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI" -ErrorAction SilentlyContinue).LastLoggedOnUser
+        if ($lastLogon -and (-not (Test-IsAdminOrServiceAccount $lastLogon))) {
+            return $lastLogon
+        }
+        $defUser = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -ErrorAction SilentlyContinue).DefaultUserName
+        if ($defUser -and (-not (Test-IsAdminOrServiceAccount $defUser))) {
+            return $defUser
+        }
+    } catch {}
+
+    # Fallback seguro
+    if ($detectedUser) { return $detectedUser }
     return $env:USERNAME
 }
 
 function Get-SystemMetrics {
     # CPU
     $cpu = 0
+    $cpuModel = ""
     try {
-        $cpuAvg = (Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Measure-Object -Property LoadPercentage -Average).Average
-        $cpu = [int]$cpuAvg
+        $proc = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($proc) {
+            $cpuModel = $proc.Name.Trim()
+            $cpuAvg = (Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Measure-Object -Property LoadPercentage -Average).Average
+            $cpu = [int]$cpuAvg
+        }
     } catch {}
 
     # Memória RAM
@@ -83,14 +141,54 @@ function Get-SystemMetrics {
         })
     } catch {}
 
-    # Endereço IPv4 Ativo
+    # Endereço IPv4 Ativo & MAC Address
     $ipAddress = "unknown"
+    $macAddress = $null
     try {
         $ipInfo = Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Ethernet*","Wi-Fi*" -ErrorAction SilentlyContinue |
                   Where-Object { $_.IPAddress -notlike "169.254*" -and $_.IPAddress -ne "127.0.0.1" } |
                   Select-Object -First 1
         if ($ipInfo) {
             $ipAddress = $ipInfo.IPAddress
+        }
+        $netAdapter = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($netAdapter.MACAddress) {
+            $macAddress = $netAdapter.MACAddress.Trim()
+        }
+    } catch {}
+
+    # Hardware para CMDB (Assets)
+    $brand = "Desconhecido"
+    $model = "Desconhecido"
+    $serialNumber = "Desconhecido"
+    $deviceType = "Desktop"
+
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+        if ($cs.Manufacturer) { $brand = $cs.Manufacturer.Trim() }
+        if ($cs.Model) { $model = $cs.Model.Trim() }
+    } catch {}
+
+    try {
+        $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
+        if ($bios.SerialNumber) { $serialNumber = $bios.SerialNumber.Trim() }
+    } catch {}
+
+    try {
+        $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
+        if ($null -ne $battery) {
+            $deviceType = "Notebook"
+        } else {
+            $enclosure = Get-CimInstance Win32_SystemEnclosure -ErrorAction SilentlyContinue
+            if ($enclosure.ChassisTypes) {
+                $portableTypes = @(8, 9, 10, 11, 12, 14, 18, 21, 31, 32)
+                foreach ($ct in $enclosure.ChassisTypes) {
+                    if ($portableTypes -contains [int]$ct) {
+                        $deviceType = "Notebook"
+                        break
+                    }
+                }
+            }
         }
     } catch {}
 
@@ -103,16 +201,22 @@ function Get-SystemMetrics {
     } catch {}
 
     return @{
-        hostname      = $env:COMPUTERNAME
-        logged_user   = Get-LoggedUser
-        ip_address    = $ipAddress
-        cpu_usage_pct = $cpu
-        ram_used_mb   = $ramUsedMB
-        ram_total_mb  = $ramTotalMB
-        ram_usage_pct = $ramPct
-        disks         = [object[]]@($disks)
-        uptime_hours  = $uptimeHours
-        os_name       = if ($os) { $os.Caption } else { "Windows" }
+        hostname       = $env:COMPUTERNAME
+        logged_user    = Get-LoggedUser
+        ip_address     = $ipAddress
+        cpu_usage_pct  = $cpu
+        cpu_model      = $cpuModel
+        ram_used_mb    = $ramUsedMB
+        ram_total_mb   = $ramTotalMB
+        ram_usage_pct  = $ramPct
+        disks          = [object[]]@($disks)
+        uptime_hours   = $uptimeHours
+        os_name        = if ($os) { $os.Caption } else { "Windows" }
+        brand          = $brand
+        model          = $model
+        serial_number  = $serialNumber
+        mac_address    = $macAddress
+        device_type    = $deviceType
     }
 }
 

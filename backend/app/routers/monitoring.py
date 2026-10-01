@@ -1,6 +1,7 @@
 """
 Router Monitoring — Central unificada de dados de monitoramento (Helpdesk & NOC) e Telemetria Nativa de Agentes.
 """
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -29,12 +30,18 @@ class AgentCheckinPayload(BaseModel):
     logged_user: Optional[str] = None
     ip_address: str
     cpu_usage_pct: Optional[int] = None
+    cpu_model: Optional[str] = None
     ram_used_mb: Optional[int] = None
     ram_total_mb: Optional[int] = None
     ram_usage_pct: Optional[float] = None
     disks: Optional[list[dict] | dict] = None
     uptime_hours: Optional[float] = None
     os_name: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    mac_address: Optional[str] = None
+    device_type: Optional[str] = None
 
 
 class AgentMachineResponse(BaseModel):
@@ -43,6 +50,7 @@ class AgentMachineResponse(BaseModel):
     logged_user: Optional[str] = None
     ip_address: str
     cpu_usage_pct: Optional[int] = None
+    cpu_model: Optional[str] = None
     ram_used_mb: Optional[int] = None
     ram_total_mb: Optional[int] = None
     ram_usage_pct: Optional[float] = None
@@ -55,6 +63,13 @@ class AgentMachineResponse(BaseModel):
     seconds_ago: int
     asset_id: Optional[int] = None
     asset_name: Optional[str] = None
+    asset_tag: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    device_type: Optional[str] = None
+    assigned_user_id: Optional[int] = None
+    assigned_user_name: Optional[str] = None
 
 
 class AgentSummaryResponse(BaseModel):
@@ -120,7 +135,97 @@ def agent_checkin(
 
     calculated_status = "warning" if has_warning else "online"
 
-    # Busca registro existente do hostname
+    # 1. Identificação do Usuário no banco de dados (users)
+    clean_user = ""
+    if data.logged_user:
+        clean_user = re.sub(r"^.*?\\", "", data.logged_user).strip().lower()
+        clean_user = clean_user.split("@")[0].strip()
+
+    blacklisted_accounts = {"system", "local service", "network service", "administrator", "administrador", "root", "defaultuser0", "guest", "convidado"}
+    is_admin_or_service = (
+        clean_user in blacklisted_accounts
+        or clean_user.startswith(("adm_", "adm-", "suporte", "admin"))
+    )
+    user = None
+    if clean_user and not is_admin_or_service:
+        user = (
+            db.query(User)
+            .filter(
+                or_(
+                    User.ad_username.ilike(clean_user),
+                    User.email.ilike(f"{clean_user}@%"),
+                )
+            )
+            .first()
+        )
+
+    # 2. Localização do Ativo no CMDB (por Serial Number, Hostname ou IP)
+    asset = None
+    valid_serial = bool(data.serial_number and data.serial_number.strip().lower() not in ("desconhecido", "to be filled by o.e.m.", "none", ""))
+    if valid_serial:
+        asset = db.query(Asset).filter(Asset.serial_number == data.serial_number.strip()).first()
+    if not asset:
+        asset = db.query(Asset).filter(Asset.name.ilike(hostname_clean)).first()
+    if not asset and ip_clean not in ("unknown", "127.0.0.1", ""):
+        asset = db.query(Asset).filter(Asset.ip_address == ip_clean).first()
+
+    specs_payload = {
+        "cpu": data.cpu_model,
+        "cpu_usage_pct": data.cpu_usage_pct,
+        "ram_total_mb": data.ram_total_mb,
+        "ram_used_mb": data.ram_used_mb,
+        "ram_usage_pct": data.ram_usage_pct,
+        "disks": disks_normalized,
+        "os": data.os_name,
+        "uptime_hours": data.uptime_hours,
+        "mac_address": data.mac_address,
+    }
+
+    if not asset:
+        # Auto-cadastro do Ativo no CMDB (Fase 1 Sentinel Agent)
+        asset_type = data.device_type if data.device_type in ("Notebook", "Desktop") else "Notebook"
+        asset = Asset(
+            name=hostname_clean,
+            type=asset_type,
+            brand=data.brand.strip() if data.brand and data.brand.strip().lower() != "desconhecido" else None,
+            model=data.model.strip() if data.model and data.model.strip().lower() != "desconhecido" else None,
+            serial_number=data.serial_number.strip() if valid_serial else None,
+            mac_address=data.mac_address,
+            ip_address=ip_clean if ip_clean != "unknown" else None,
+            category_id=1,  # Hardware
+            assigned_user_id=user.id if user else None,
+            specs=specs_payload,
+            is_active=True,
+        )
+        db.add(asset)
+        db.flush()
+    else:
+        # Atualização contínua do Ativo existente
+        if data.brand and data.brand.strip().lower() != "desconhecido":
+            asset.brand = data.brand.strip()
+        if data.model and data.model.strip().lower() != "desconhecido":
+            asset.model = data.model.strip()
+        if valid_serial:
+            asset.serial_number = data.serial_number.strip()
+        if data.mac_address:
+            asset.mac_address = data.mac_address
+        if ip_clean not in ("unknown", "127.0.0.1", ""):
+            asset.ip_address = ip_clean
+        if data.device_type and asset.type in ("Outro", "Desconhecido"):
+            asset.type = data.device_type
+        if user and not asset.assigned_user_id:
+            asset.assigned_user_id = user.id
+
+        merged_specs = asset.specs or {}
+        merged_specs.update(specs_payload)
+        asset.specs = merged_specs
+
+    # 3. Formatação do nome de usuário exibido
+    display_user = data.logged_user
+    if user:
+        display_user = f"{user.display_name} ({user.ad_username})"
+
+    # 4. Busca registro existente do hostname para telemetria
     checkin = (
         db.query(AgentCheckin)
         .filter(AgentCheckin.hostname.ilike(hostname_clean))
@@ -131,7 +236,7 @@ def agent_checkin(
         # Novo agente detectado
         checkin = AgentCheckin(
             hostname=hostname_clean,
-            logged_user=data.logged_user,
+            logged_user=display_user,
             ip_address=ip_clean,
             cpu_usage_pct=data.cpu_usage_pct,
             ram_used_mb=data.ram_used_mb,
@@ -142,12 +247,13 @@ def agent_checkin(
             os_name=data.os_name,
             status=calculated_status,
             last_seen_at=now,
+            asset_id=asset.id,
         )
         db.add(checkin)
     else:
         # Atualização de máquina já cadastrada
         checkin.hostname = hostname_clean
-        checkin.logged_user = data.logged_user
+        checkin.logged_user = display_user
         checkin.ip_address = ip_clean
         checkin.cpu_usage_pct = data.cpu_usage_pct
         checkin.ram_used_mb = data.ram_used_mb
@@ -158,21 +264,7 @@ def agent_checkin(
         checkin.os_name = data.os_name
         checkin.status = calculated_status
         checkin.last_seen_at = now
-
-    # Associação automática com Ativo no CMDB (por IP ou por Nome do equipamento)
-    if not checkin.asset_id:
-        matched_asset = (
-            db.query(Asset)
-            .filter(
-                or_(
-                    Asset.ip_address == ip_clean,
-                    Asset.name.ilike(hostname_clean),
-                )
-            )
-            .first()
-        )
-        if matched_asset:
-            checkin.asset_id = matched_asset.id
+        checkin.asset_id = asset.id
 
     db.commit()
     db.refresh(checkin)
@@ -181,6 +273,7 @@ def agent_checkin(
         "status": "ok",
         "hostname": checkin.hostname,
         "asset_id": checkin.asset_id,
+        "assigned_user": user.display_name if user else None,
         "server_time": now.isoformat(),
     }
 
@@ -224,6 +317,7 @@ def list_agent_machines(
                 logged_user=r.logged_user,
                 ip_address=r.ip_address,
                 cpu_usage_pct=r.cpu_usage_pct,
+                cpu_model=r.asset.specs.get("cpu") if (r.asset and isinstance(r.asset.specs, dict)) else None,
                 ram_used_mb=r.ram_used_mb,
                 ram_total_mb=r.ram_total_mb,
                 ram_usage_pct=r.ram_usage_pct,
@@ -236,6 +330,13 @@ def list_agent_machines(
                 seconds_ago=diff_seconds,
                 asset_id=r.asset_id,
                 asset_name=r.asset.name if r.asset else None,
+                asset_tag=r.asset.asset_tag if r.asset else None,
+                brand=r.asset.brand if r.asset else None,
+                model=r.asset.model if r.asset else None,
+                serial_number=r.asset.serial_number if r.asset else None,
+                device_type=r.asset.type if r.asset else None,
+                assigned_user_id=r.asset.assigned_user_id if r.asset else None,
+                assigned_user_name=r.asset.assigned_user.display_name if (r.asset and r.asset.assigned_user) else None,
             )
         )
 
@@ -287,28 +388,90 @@ def get_agent_powershell_script(request: Request, download: bool = False):
 $SERVER_URL = "{server_endpoint}"
 $AGENT_SECRET = "{AGENT_DEFAULT_TOKEN}"
 
+function Test-IsAdminOrServiceAccount {{
+    param([string]$AccountName)
+    if ([string]::IsNullOrWhiteSpace($AccountName)) {{ return $true }}
+    $clean = ($AccountName -split '\\')[-1].Trim().ToLower()
+    $blackList = @('system', 'local service', 'network service', 'administrator', 'administrador', 'root', 'defaultuser0', 'guest', 'convidado')
+    if ($blackList -contains $clean) {{ return $true }}
+    if ($clean -like 'adm_*' -or $clean -like 'adm-*' -or $clean -like 'suporte*' -or $clean -like 'admin*') {{ return $true }}
+    return $false
+}}
+
 function Get-LoggedUser {{
+    $detectedUser = $null
+
     try {{
-        $logged = (Get-CimInstance Win32_ComputerSystem).UserName
-        if ($logged) {{ return $logged }}
-        $quser = query user 2>$null | Select-Object -Skip 1
-        if ($quser) {{
-            $user = ($quser[0] -split '\\s+')[1]
-            return $user.Replace('>', '')
+        $explorers = Get-CimInstance Win32_Process -Filter "Name = 'explorer.exe'" -ErrorAction SilentlyContinue
+        foreach ($proc in $explorers) {{
+            $owner = Invoke-CimMethod -InputObject $proc -MethodName GetOwner -ErrorAction SilentlyContinue
+            if ($owner -and $owner.User) {{
+                $candidate = if ($owner.Domain) {{ @($owner.Domain, $owner.User) -join '\\' }} else {{ $owner.User }}
+                if (-not (Test-IsAdminOrServiceAccount $candidate)) {{
+                    return $candidate
+                }}
+                if (-not $detectedUser) {{ $detectedUser = $candidate }}
+            }}
         }}
     }} catch {{}}
+
+    try {{
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+        if ($cs.UserName) {{
+            if (-not (Test-IsAdminOrServiceAccount $cs.UserName)) {{
+                return $cs.UserName
+            }}
+            if (-not $detectedUser) {{ $detectedUser = $cs.UserName }}
+        }}
+    }} catch {{}}
+
+    try {{
+        $quser = query user 2>$null | Select-Object -Skip 1
+        foreach ($line in $quser) {{
+            $parts = $line.Trim() -split '\\s+'
+            if ($parts.Count -ge 2) {{
+                $u = $parts[0].Replace('>', '').Trim()
+                if (-not (Test-IsAdminOrServiceAccount $u)) {{
+                    return $u
+                }}
+            }}
+        }}
+    }} catch {{}}
+
+    try {{
+        $lastLogon = (Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\LogonUI" -ErrorAction SilentlyContinue).LastLoggedOnUser
+        if ($lastLogon -and (-not (Test-IsAdminOrServiceAccount $lastLogon))) {{
+            return $lastLogon
+        }}
+        $defUser = (Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" -ErrorAction SilentlyContinue).DefaultUserName
+        if ($defUser -and (-not (Test-IsAdminOrServiceAccount $defUser))) {{
+            return $defUser
+        }}
+    }} catch {{}}
+
+    if ($detectedUser) {{ return $detectedUser }}
     return $env:USERNAME
 }}
 
 function Get-SystemMetrics {{
-    $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
-    $os = Get-CimInstance Win32_OperatingSystem
+    $cpu = 0
+    $cpuModel = ""
+    try {{
+        $proc = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($proc) {{
+            $cpuModel = $proc.Name.Trim()
+            $cpuAvg = (Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Measure-Object -Property LoadPercentage -Average).Average
+            $cpu = [int]$cpuAvg
+        }}
+    }} catch {{}}
+
+    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
     $ramTotalMB = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
     $ramFreeMB = [math]::Round($os.FreePhysicalMemory / 1024, 0)
     $ramUsedMB = $ramTotalMB - $ramFreeMB
     $ramPct = [math]::Round(($ramUsedMB / $ramTotalMB) * 100, 1)
 
-    $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {{
+    $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue | ForEach-Object {{
         @{{
             drive = $_.DeviceID
             total_gb = [math]::Round($_.Size / 1GB, 1)
@@ -317,23 +480,70 @@ function Get-SystemMetrics {{
         }}
     }})
 
-    $ipInfo = Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Ethernet*","Wi-Fi*" -ErrorAction SilentlyContinue |
-              Where-Object {{ $_.IPAddress -notlike "169.254*" -and $_.IPAddress -ne "127.0.0.1" }} |
-              Select-Object -First 1
+    $ipAddress = "unknown"
+    $macAddress = $null
+    try {{
+        $ipInfo = Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Ethernet*","Wi-Fi*" -ErrorAction SilentlyContinue |
+                  Where-Object {{ $_.IPAddress -notlike "169.254*" -and $_.IPAddress -ne "127.0.0.1" }} |
+                  Select-Object -First 1
+        if ($ipInfo) {{ $ipAddress = $ipInfo.IPAddress }}
+        $netAdapter = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($netAdapter.MACAddress) {{ $macAddress = $netAdapter.MACAddress.Trim() }}
+    }} catch {{}}
+
+    $brand = "Desconhecido"
+    $model = "Desconhecido"
+    $serialNumber = "Desconhecido"
+    $deviceType = "Desktop"
+
+    try {{
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+        if ($cs.Manufacturer) {{ $brand = $cs.Manufacturer.Trim() }}
+        if ($cs.Model) {{ $model = $cs.Model.Trim() }}
+    }} catch {{}}
+
+    try {{
+        $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
+        if ($bios.SerialNumber) {{ $serialNumber = $bios.SerialNumber.Trim() }}
+    }} catch {{}}
+
+    try {{
+        $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
+        if ($null -ne $battery) {{
+            $deviceType = "Notebook"
+        }} else {{
+            $enclosure = Get-CimInstance Win32_SystemEnclosure -ErrorAction SilentlyContinue
+            if ($enclosure.ChassisTypes) {{
+                $portableTypes = @(8, 9, 10, 11, 12, 14, 18, 21, 31, 32)
+                foreach ($ct in $enclosure.ChassisTypes) {{
+                    if ($portableTypes -contains [int]$ct) {{
+                        $deviceType = "Notebook"
+                        break
+                    }}
+                }}
+            }}
+        }}
+    }} catch {{}}
 
     $uptimeHours = [math]::Round((((Get-Date) - $os.LastBootUpTime).TotalHours), 1)
 
     return @{{
         hostname       = $env:COMPUTERNAME
         logged_user    = Get-LoggedUser
-        ip_address     = if ($ipInfo) {{ $ipInfo.IPAddress }} else {{ "unknown" }}
-        cpu_usage_pct  = [int]$cpu
+        ip_address     = $ipAddress
+        cpu_usage_pct  = $cpu
+        cpu_model      = $cpuModel
         ram_used_mb    = [int]$ramUsedMB
         ram_total_mb   = [int]$ramTotalMB
         ram_usage_pct  = [double]$ramPct
         disks          = [object[]]@($disks)
         uptime_hours   = $uptimeHours
         os_name        = $os.Caption
+        brand          = $brand
+        model          = $model
+        serial_number  = $serialNumber
+        mac_address    = $macAddress
+        device_type    = $deviceType
     }}
 }}
 

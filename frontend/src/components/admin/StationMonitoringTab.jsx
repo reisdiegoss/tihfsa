@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Monitor, RefreshCw, Search, CheckCircle2, AlertTriangle,
   Clock, HardDrive, Cpu, Terminal, Copy, Check, Trash2,
-  ExternalLink, User, Shield, Info, X, Zap, Download
+  ExternalLink, User, Shield, Info, X, Zap, Download, Laptop, Tag
 } from "lucide-react";
 import api from "../../api/client";
 
@@ -62,7 +62,11 @@ export default function StationMonitoringTab() {
       const matchSearch =
         (m.hostname || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.logged_user || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.assigned_user_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.ip_address || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.brand || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.model || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.serial_number || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.os_name || "").toLowerCase().includes(searchTerm.toLowerCase());
 
       if (!matchSearch) return false;
@@ -283,24 +287,31 @@ export default function StationMonitoringTab() {
                     : "border-slate-200 opacity-75 bg-slate-50/50"
                 }`}
               >
-                {/* Linha Topo: Hostname + Status Badge */}
+                {/* Linha Topo: Hostname + Tipo + Status Badge */}
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                       m.status === "warning"
                         ? "bg-amber-100 text-amber-700"
                         : m.is_online
                         ? "bg-blue-100 text-blue-700"
                         : "bg-slate-200 text-slate-500"
                     }`}>
-                      <Monitor size={18} />
+                      {m.device_type === "Notebook" ? <Laptop size={20} /> : <Monitor size={20} />}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-sm font-black text-slate-900 truncate" title={m.hostname}>
-                        {m.hostname}
-                      </h4>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-sm font-black text-slate-900 truncate" title={m.hostname}>
+                          {m.hostname}
+                        </h4>
+                        {m.device_type && (
+                          <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                            {m.device_type}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] font-semibold text-slate-400 truncate">
-                        {m.ip_address} {m.os_name ? `• ${m.os_name}` : ""}
+                        {m.ip_address} {m.brand && m.brand !== "Desconhecido" ? `• ${m.brand}` : ""} {m.model && m.model !== "Desconhecido" ? `${m.model}` : ""}
                       </p>
                     </div>
                   </div>
@@ -329,22 +340,46 @@ export default function StationMonitoringTab() {
                   </div>
                 </div>
 
-                {/* Usuário Logado no Windows (Destaque Principal) */}
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <User size={15} className="text-indigo-600 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase text-slate-400">Usuário do Windows</p>
-                      <p className="text-xs font-black text-indigo-900 truncate" title={m.logged_user || "Sem usuário logado"}>
-                        {m.logged_user || "Nenhum usuário interativo"}
-                      </p>
+                {/* Usuário do Computador & Vínculo com Ativo no CMDB */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <User size={15} className="text-indigo-600 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase text-slate-400">Usuário do Computador</p>
+                        <p className="text-xs font-black text-indigo-900 truncate" title={m.logged_user || "Sem usuário logado"}>
+                          {m.logged_user || "Nenhum usuário interativo"}
+                        </p>
+                      </div>
                     </div>
+                    {m.assigned_user_name ? (
+                      <span className="text-[10px] font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md truncate shrink-0 max-w-[140px]" title={`Vinculado a: ${m.assigned_user_name}`}>
+                        👤 {m.assigned_user_name}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold bg-slate-200/60 text-slate-500 px-1.5 py-0.5 rounded text-center shrink-0">
+                        Não atribuído
+                      </span>
+                    )}
                   </div>
-                  {m.asset_name && (
-                    <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md truncate shrink-0 max-w-[120px]" title={m.asset_name}>
-                      CMDB: {m.asset_name}
+
+                  {/* Informações de Hardware & CMDB */}
+                  <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                    <span className="truncate" title={m.serial_number ? `S/N: ${m.serial_number}` : ""}>
+                      {m.serial_number && m.serial_number !== "Desconhecido" ? `S/N: ${m.serial_number}` : (m.os_name || "Windows")}
                     </span>
-                  )}
+                    {m.asset_id && (
+                      <a
+                        href={`/admin/assets?search=${m.hostname}`}
+                        className="inline-flex items-center gap-1 font-bold text-blue-600 hover:text-blue-800 hover:underline shrink-0"
+                        title="Ver ativo no CMDB"
+                      >
+                        <CheckCircle2 size={11} className="text-emerald-500" />
+                        <span>CMDB #{m.asset_id}</span>
+                        <ExternalLink size={10} />
+                      </a>
+                    )}
+                  </div>
                 </div>
 
                 {/* Telemetria de Hardware: CPU & RAM */}
