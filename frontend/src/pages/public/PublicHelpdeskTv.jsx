@@ -51,7 +51,7 @@ const ensureAudioReady = async () => {
   return ctx.state === "running" ? ctx : null;
 };
 
-// Som 1: Chime de Novo Chamado (Acorde harmônico encorpado de alto volume: C5 -> E5 -> G5 -> C6)
+// Som 1: Chime de Novo Chamado (Harmonizado e suave, calibrado no padrão do NOC)
 const playNewTicketChime = async () => {
   try {
     const ctx = await ensureAudioReady();
@@ -60,32 +60,32 @@ const playNewTicketChime = async () => {
       return false;
     }
 
-    const playHarmonicBurst = (delay) => {
-      const now = ctx.currentTime + delay;
-      const notes = [
-        { freq: 523.25, time: 0, dur: 0.4, gain: 0.75 },     // C5
-        { freq: 659.25, time: 0.12, dur: 0.45, gain: 0.8 },   // E5
-        { freq: 783.99, time: 0.24, dur: 0.7, gain: 0.85 },   // G5
-        { freq: 1046.50, time: 0.36, dur: 0.9, gain: 0.85 }   // C6
-      ];
+    const now = ctx.currentTime + 0.05;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.18, now);
+    masterGain.connect(ctx.destination);
 
-      notes.forEach((n) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(n.freq, now + n.time);
-        gain.gain.setValueAtTime(n.gain, now + n.time);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + n.time + n.dur);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now + n.time);
-        osc.stop(now + n.time + n.dur);
-      });
-    };
+    // Acorde harmônico ascendente suave C5 -> E5 -> G5 (suave, nível NOC)
+    const notes = [
+      { freq: 523.25, time: 0, dur: 0.35, gain: 0.20 },     // C5
+      { freq: 659.25, time: 0.10, dur: 0.40, gain: 0.22 },   // E5
+      { freq: 783.99, time: 0.20, dur: 0.55, gain: 0.25 }    // G5
+    ];
 
-    // Toca duas vezes sequencialmente para que o setor escute com nitidez
-    playHarmonicBurst(0.05);
-    playHarmonicBurst(0.75);
+    notes.forEach((n) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(n.freq, now + n.time);
+      gain.gain.setValueAtTime(0.01, now + n.time);
+      gain.gain.exponentialRampToValueAtTime(n.gain, now + n.time + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + n.time + n.dur);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now + n.time);
+      osc.stop(now + n.time + n.dur + 0.02);
+    });
+
     return true;
   } catch (err) {
     console.warn("Web Audio API Chime erro:", err);
@@ -93,30 +93,43 @@ const playNewTicketChime = async () => {
   }
 };
 
-// Som 2: Chime de Resposta do Solicitante / Interatividade Externa (Ding-Dong duplo)
+// Som 2: Chime de Resposta do Solicitante / Interatividade (Ding-Dong idêntico ao NOC)
 const playRequesterReplyChime = async () => {
   try {
     const ctx = await ensureAudioReady();
     if (!ctx) return false;
 
     const now = ctx.currentTime + 0.05;
-    const tones = [
-      { freq: 880, time: 0, dur: 0.35, gain: 0.8 },        // A5
-      { freq: 1174.66, time: 0.18, dur: 0.65, gain: 0.85 }  // D6
-    ];
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.18, now);
+    masterGain.connect(ctx.destination);
 
-    tones.forEach((t) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(t.freq, now + t.time);
-      gain.gain.setValueAtTime(t.gain, now + t.time);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + t.time + t.dur);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + t.time);
-      osc.stop(now + t.time + t.dur);
-    });
+    // Tom 1: 587.33 Hz (D5)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(587.33, now);
+    gain1.gain.setValueAtTime(0.01, now);
+    gain1.gain.exponentialRampToValueAtTime(0.18, now + 0.03);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc1.connect(gain1);
+    gain1.connect(masterGain);
+    osc1.start(now);
+    osc1.stop(now + 0.13);
+
+    // Tom 2: 880 Hz (A5)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(880, now + 0.08);
+    gain2.gain.setValueAtTime(0.01, now + 0.08);
+    gain2.gain.exponentialRampToValueAtTime(0.22, now + 0.11);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    osc2.connect(gain2);
+    gain2.connect(masterGain);
+    osc2.start(now + 0.08);
+    osc2.stop(now + 0.36);
+
     return true;
   } catch (err) {
     console.warn("Web Audio API Requester Chime erro:", err);
@@ -124,28 +137,33 @@ const playRequesterReplyChime = async () => {
   }
 };
 
-// Som 3: Alerta Urgente (Chamado Crítico ou SLA Estourado)
+// Som 3: Alerta Urgente (Chamado Crítico ou SLA Estourado - moderado)
 const playUrgentAlertSiren = async () => {
   try {
     const ctx = await ensureAudioReady();
     if (!ctx) return false;
 
     const now = ctx.currentTime + 0.05;
-    for (let i = 0; i < 3; i++) {
-      const offset = i * 0.35;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.20, now);
+    masterGain.connect(ctx.destination);
+
+    for (let i = 0; i < 2; i++) {
+      const offset = i * 0.30;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(950, now + offset);
-      osc.frequency.exponentialRampToValueAtTime(450, now + offset + 0.3);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(750, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(440, now + offset + 0.22);
 
-      gain.gain.setValueAtTime(0.8, now + offset);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + offset + 0.3);
+      gain.gain.setValueAtTime(0.01, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.25);
 
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(masterGain);
       osc.start(now + offset);
-      osc.stop(now + offset + 0.3);
+      osc.stop(now + offset + 0.26);
     }
     return true;
   } catch (err) {
@@ -299,9 +317,9 @@ export default function PublicHelpdeskTv() {
           type: "test",
           badge: "TESTE DE SOM: SUCESSO 🔔",
           badgeClass: "bg-emerald-600 text-white font-black",
-          title: "Sinal Sonoro Disparado na Potência Plena",
-          subtitle: "O navegador emitiu o som com sucesso (Web Audio API ativo).",
-          details: "Se não ouvir na TV: 1) Ajuste o volume no controle da TV; 2) No Windows, confirme a TV como Saída de Som Padrão; 3) Verifique se a aba não está com 'Desativar som do site'.",
+          title: "Sinal Sonoro Disparado (Padrão NOC)",
+          subtitle: "Volume harmonizado suavemente com o alerta do NOC.",
+          details: "O chime harmônico soará para novos chamados e respostas de solicitantes.",
           timestamp: new Date()
         });
         return;
