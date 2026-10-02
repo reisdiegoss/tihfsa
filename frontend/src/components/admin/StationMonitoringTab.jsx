@@ -79,10 +79,17 @@ export default function StationMonitoringTab() {
     });
   }, [data.machines, searchTerm, statusFilter]);
 
+  const [selectedOs, setSelectedOs] = useState("windows"); // 'windows' | 'linux'
+
   const apiBase = (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.startsWith("http"))
     ? import.meta.env.VITE_API_URL
     : `${window.location.origin}/api/v1`;
-  const oneLineCommand = `(curl.exe -k -s "${apiBase}/monitoring/agent/script" | Out-String) | iex`;
+
+  const winOneLine = `(curl.exe -k -s "${apiBase}/monitoring/agent/script" | Out-String) | iex`;
+  const linuxOneLine = `curl -k -s "${apiBase}/monitoring/agent/linux-script" | bash`;
+  const linuxInstallOneLine = `curl -k -s "${apiBase}/monitoring/agent/linux-install" | sudo bash`;
+
+  const activeOneLine = selectedOs === "windows" ? winOneLine : linuxOneLine;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -97,41 +104,80 @@ export default function StationMonitoringTab() {
               {window.location.origin}
             </span>
           </div>
-          <h3 className="text-base font-black text-white">
-            TIHFSA Sentinel Agent — Telemetria de Estações
-          </h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-base font-black text-white">
+              TIHFSA Sentinel Agent — Telemetria de Estações & Servidores
+            </h3>
+            {/* Seletor de SO no Banner */}
+            <div className="inline-flex p-1 bg-slate-800/80 rounded-xl border border-slate-700 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setSelectedOs("windows")}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  selectedOs === "windows" ? "bg-blue-600 text-white shadow-xs" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                🪟 Windows
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedOs("linux")}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  selectedOs === "linux" ? "bg-amber-600 text-white shadow-xs" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                🐧 Linux (Ubuntu / Debian)
+              </button>
+            </div>
+          </div>
           <p className="text-xs text-slate-400 max-w-xl">
-            Identifique em tempo real o <strong>usuário logado no Windows</strong>, consumo de CPU, memória RAM e saúde dos discos em qualquer máquina da rede.
+            {selectedOs === "windows"
+              ? "Telemetria nativa para Windows 10, 11 e Windows Server (CPU, RAM, discos físicos/lógicos e usuário logado)."
+              : "Telemetria nativa e leve para Ubuntu, Debian e derivadas (sem dependências externas, compatível com Servidores e Desktops)."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          {/* Botão de Download Direto do Script .ps1 */}
-          <a
-            href={`${apiBase}/monitoring/agent/script?download=true`}
-            download="tihfsa-agent.ps1"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
-            title="Baixar arquivo tihfsa-agent.ps1 já configurado com o IP deste servidor"
-          >
-            <Download size={15} className="text-emerald-400" />
-            <span>Baixar Script (.ps1)</span>
-          </a>
+          {/* Botão de Download Direto do Script (.ps1 ou .sh) */}
+          {selectedOs === "windows" ? (
+            <a
+              href={`${apiBase}/monitoring/agent/script?download=true`}
+              download="tihfsa-agent.ps1"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
+              title="Baixar arquivo tihfsa-agent.ps1 já configurado com a URL deste servidor"
+            >
+              <Download size={15} className="text-emerald-400" />
+              <span>Baixar Script (.ps1)</span>
+            </a>
+          ) : (
+            <a
+              href={`${apiBase}/monitoring/agent/linux-script?download=true`}
+              download="tihfsa-agent.sh"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
+              title="Baixar arquivo tihfsa-agent.sh já configurado com a URL deste servidor"
+            >
+              <Download size={15} className="text-amber-400" />
+              <span>Baixar Script (.sh)</span>
+            </a>
+          )}
 
           {/* Botão Copiar Comando Rápido */}
           <button
-            onClick={() => copyToClipboard(oneLineCommand)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition-all shadow-md cursor-pointer"
-            title="Copiar comando PowerShell pronto com a URL e IP deste servidor"
+            onClick={() => copyToClipboard(activeOneLine)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-extrabold text-xs transition-all shadow-md cursor-pointer ${
+              selectedOs === "windows" ? "bg-blue-600 hover:bg-blue-700" : "bg-amber-600 hover:bg-amber-700"
+            }`}
+            title={`Copiar comando ${selectedOs === "windows" ? "PowerShell" : "Bash"} pronto para teste`}
           >
             {copiedCmd ? <Check size={15} className="text-emerald-300" /> : <Copy size={15} />}
-            <span>{copiedCmd ? "Comando Copiado!" : "Copiar Comando (1-Clique)"}</span>
+            <span>{copiedCmd ? "Comando Copiado!" : `Copiar Comando (${selectedOs === "windows" ? "PowerShell" : "Bash"})`}</span>
           </button>
 
           {/* Botão Abrir Guia Completo */}
           <button
             onClick={() => setShowInstallModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer border border-white/10"
-            title="Ver instruções para Tarefa Agendada e GPO"
+            title="Ver instruções detalhadas de instalação contínua"
           >
             <Terminal size={15} />
             <span className="hidden sm:inline">Guia Completo</span>
@@ -478,56 +524,149 @@ export default function StationMonitoringTab() {
               </button>
             </div>
 
-            {/* Opção 1: Teste Rápido (1 Linha) */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Zap size={14} className="text-amber-500" /> 1. Teste Imediato (Executar 1 vez)
-                </h4>
-                <span className="text-[10px] text-slate-400">Abra o PowerShell como Admin</span>
-              </div>
-              <div className="p-3 bg-slate-900 rounded-xl text-emerald-400 font-mono text-xs flex items-center justify-between gap-2 overflow-x-auto">
-                <code className="truncate">{oneLineCommand}</code>
-                <button
-                  onClick={() => copyToClipboard(oneLineCommand)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] shrink-0 flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedCmd ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                  <span>{copiedCmd ? "Copiado!" : "Copiar"}</span>
-                </button>
-              </div>
+            {/* Abas de SO no Modal */}
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+              <button
+                type="button"
+                onClick={() => setSelectedOs("windows")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedOs === "windows"
+                    ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-xs"
+                    : "text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                <span>🪟 Windows (PowerShell)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedOs("linux")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedOs === "linux"
+                    ? "bg-amber-50 text-amber-800 border border-amber-200 shadow-xs"
+                    : "text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                <span>🐧 Linux (Ubuntu / Debian)</span>
+              </button>
             </div>
 
-            {/* Opção 2: Instalação Permanente como Tarefa Agendada */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Shield size={14} className="text-blue-500" /> 2. Instalação Permanente (Roda a cada 1 minuto)
-              </h4>
-              <p className="text-xs text-slate-600">
-                Copie e cole este bloco no PowerShell (Administrador). Ele cria a pasta <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">C:\TIHFSA</code> e agenda a tarefa invisível:
-              </p>
-              <div className="p-3 bg-slate-900 rounded-xl text-slate-300 font-mono text-[11px] leading-relaxed relative group">
-                <pre className="overflow-x-auto whitespace-pre-wrap">{`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null
+            {selectedOs === "windows" ? (
+              <>
+                {/* Opção 1: Teste Rápido Windows (1 Linha) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Zap size={14} className="text-amber-500" /> 1. Teste Imediato (Executar 1 vez)
+                    </h4>
+                    <span className="text-[10px] text-slate-400">PowerShell como Administrador</span>
+                  </div>
+                  <div className="p-3 bg-slate-900 rounded-xl text-emerald-400 font-mono text-xs flex items-center justify-between gap-2 overflow-x-auto">
+                    <code className="truncate">{winOneLine}</code>
+                    <button
+                      onClick={() => copyToClipboard(winOneLine)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] shrink-0 flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedCmd ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      <span>{copiedCmd ? "Copiado!" : "Copiar"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Opção 2: Instalação Permanente Windows */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Shield size={14} className="text-blue-500" /> 2. Instalação Permanente (Roda a cada 1 minuto)
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    Copie e cole este bloco no PowerShell (Administrador). Ele cria a pasta <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">C:\TIHFSA</code> e agenda a tarefa invisível:
+                  </p>
+                  <div className="p-3 bg-slate-900 rounded-xl text-slate-300 font-mono text-[11px] leading-relaxed relative group">
+                    <pre className="overflow-x-auto whitespace-pre-wrap">{`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null
 curl.exe -k -s "${apiBase}/monitoring/agent/script" -o "C:\\TIHFSA\\tihfsa-agent.ps1"
 $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NonInteractive -NoProfile -ExecutionPolicy Bypass -File C:\\TIHFSA\\tihfsa-agent.ps1"
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName "TIHFSASentinelAgent" -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest -Force
 Start-ScheduledTask -TaskName "TIHFSASentinelAgent"`}</pre>
-                <button
-                  onClick={() => copyToClipboard(`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null\ncurl.exe -k -s "${apiBase}/monitoring/agent/script" -o "C:\\TIHFSA\\tihfsa-agent.ps1"\n$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NonInteractive -NoProfile -ExecutionPolicy Bypass -File C:\\TIHFSA\\tihfsa-agent.ps1"\n$Trigger = New-ScheduledTaskTrigger -AtStartup\n$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\nRegister-ScheduledTask -TaskName "TIHFSASentinelAgent" -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest -Force\nStart-ScheduledTask -TaskName "TIHFSASentinelAgent"`)}
-                  className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                >
-                  <Copy size={12} />
-                  <span>Copiar Tudo</span>
-                </button>
-              </div>
-            </div>
+                    <button
+                      onClick={() => copyToClipboard(`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null\ncurl.exe -k -s "${apiBase}/monitoring/agent/script" -o "C:\\TIHFSA\\tihfsa-agent.ps1"\n$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NonInteractive -NoProfile -ExecutionPolicy Bypass -File C:\\TIHFSA\\tihfsa-agent.ps1"\n$Trigger = New-ScheduledTaskTrigger -AtStartup\n$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\nRegister-ScheduledTask -TaskName "TIHFSASentinelAgent" -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest -Force\nStart-ScheduledTask -TaskName "TIHFSASentinelAgent"`)}
+                      className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy size={12} />
+                      <span>Copiar Tudo</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Opção 1: Teste Rápido Linux */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Zap size={14} className="text-amber-500" /> 1. Teste Imediato (Executar 1 vez)
+                    </h4>
+                    <span className="text-[10px] text-slate-400">Terminal Bash (Ubuntu / Debian)</span>
+                  </div>
+                  <div className="p-3 bg-slate-900 rounded-xl text-amber-400 font-mono text-xs flex items-center justify-between gap-2 overflow-x-auto">
+                    <code className="truncate">{linuxOneLine}</code>
+                    <button
+                      onClick={() => copyToClipboard(linuxOneLine)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] shrink-0 flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedCmd ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      <span>{copiedCmd ? "Copiado!" : "Copiar"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Opção 2: Instalação Permanente Linux */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Shield size={14} className="text-emerald-500" /> 2. Instalação Permanente Automática (1-Clique via Root/Sudo)
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    Instala em <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">/usr/local/bin/tihfsa-agent.sh</code> e agenda a execução no cron a cada 1 minuto (<code className="bg-slate-100 px-1 py-0.5 rounded font-mono">/etc/cron.d/tihfsa-agent</code>):
+                  </p>
+                  <div className="p-3 bg-slate-900 rounded-xl text-emerald-400 font-mono text-xs flex items-center justify-between gap-2 overflow-x-auto">
+                    <code className="truncate">{linuxInstallOneLine}</code>
+                    <button
+                      onClick={() => copyToClipboard(linuxInstallOneLine)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] shrink-0 flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedCmd ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      <span>{copiedCmd ? "Copiado!" : "Copiar"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Opção 3: Passo a Passo Manual no Linux */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Terminal size={14} className="text-slate-500" /> 3. Passo a Passo Manual (Opcional)
+                  </h4>
+                  <div className="p-3 bg-slate-900 rounded-xl text-slate-300 font-mono text-[11px] leading-relaxed relative group">
+                    <pre className="overflow-x-auto whitespace-pre-wrap">{`sudo mkdir -p /usr/local/bin /etc/tihfsa
+sudo curl -k -s "${apiBase}/monitoring/agent/linux-script" -o /usr/local/bin/tihfsa-agent.sh
+sudo chmod +x /usr/local/bin/tihfsa-agent.sh
+echo "* * * * * root /usr/local/bin/tihfsa-agent.sh >/dev/null 2>&1" | sudo tee /etc/cron.d/tihfsa-agent
+sudo /usr/local/bin/tihfsa-agent.sh`}</pre>
+                    <button
+                      onClick={() => copyToClipboard(`sudo mkdir -p /usr/local/bin /etc/tihfsa\nsudo curl -k -s "${apiBase}/monitoring/agent/linux-script" -o /usr/local/bin/tihfsa-agent.sh\nsudo chmod +x /usr/local/bin/tihfsa-agent.sh\necho "* * * * * root /usr/local/bin/tihfsa-agent.sh >/dev/null 2>&1" | sudo tee /etc/cron.d/tihfsa-agent\nsudo /usr/local/bin/tihfsa-agent.sh`)}
+                      className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy size={12} />
+                      <span>Copiar Tudo</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-2.5 text-xs text-blue-800">
               <Info size={16} className="shrink-0 mt-0.5 text-blue-600" />
               <span>
-                <strong>Sem necessidade de reiniciar o computador.</strong> Assim que o comando for executado, o computador aparecerá no painel em até 10 segundos!
+                <strong>Sem necessidade de reiniciar.</strong> Assim que o comando for executado, o host aparecerá no painel em até 10 segundos!
               </span>
             </div>
 

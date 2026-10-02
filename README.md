@@ -103,11 +103,11 @@ O **TIHFSA** foi concebido para transformar a operação diária de TI da hotela
 - **Idempotência Rigorosa**:
   - Impede a abertura repetida de chamados a cada minuto para o mesmo incidente no mesmo dia.
   - Reabertura automática caso o evento reincida após resolução.
-- **TIHFSA Sentinel Agent (Substituição Nativa Zabbix - Fase 1)**:
-  - Telemetria de estações de trabalho em tempo real sem depender de servidores intermediários.
-  - Agente nativo PowerShell (`scripts/tihfsa-agent.ps1`) executado silenciosamente a cada 1 minuto via Agendador de Tarefas do Windows.
-  - Coleta contínua do **Usuário Logado no Windows**, uso de CPU (%), consumo de RAM (MB e %), integridade das partições de Disco (espaço livre e %), IP ativo e Uptime.
-  - Dashboard de Estações & Telemetria integrado diretamente ao Hub de Monitoramento (`/admin/monitoring?tab=stations`), com comando de instalação 1-clique para rápida implantação nos computadores da equipe.
+- **TIHFSA Sentinel Agent (Substituição Nativa Zabbix - Multiplataforma)**:
+  - Telemetria de estações de trabalho e servidores em tempo real sem depender de servidores intermediários.
+  - **Windows (PowerShell)**: Agente nativo (`scripts/tihfsa-agent.ps1`) executado silenciosamente a cada 1 minuto via Agendador de Tarefas. Identifica sessões interativas do explorer.exe, hardware DMI e unidades de disco.
+  - **Linux (Ubuntu, Debian e derivadas)**: Agente nativo e ultra-leve em Bash puro (`scripts/tihfsa-agent.sh`) sem dependências pesadas (`jq`/`python`). Executado periodicamente via `/etc/cron.d/tihfsa-agent` ou systemd. Coleta uso exato de CPU (`/proc/stat`), RAM (`/proc/meminfo`), partições montadas (`df`), discos físicos SSD/HDD (`lsblk`), DMI/Virtualização e usuário interativo.
+  - Dashboard de Estações & Servidores integrado diretamente ao Hub de Monitoramento (`/admin/monitoring?tab=stations`), com alternador de SO (Windows/Linux) e comandos 1-clique para teste e instalação permanente.
 
 ### 5. Notificações Multicanal (WhatsApp & E-mail Dual)
 - **WhatsApp via Evolution API v2**:
