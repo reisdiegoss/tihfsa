@@ -643,3 +643,8 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Componente de autocomplete inteligente com busca em tempo real por Nome, Login do Active Directory (`sAMAccountName`), E-mail e Setor.
         - Abas de navegação rápida entre Colaboradores do AD e Apartamentos/UHs.
         - Exibição de card resumido do usuário selecionado com avatar, setor e login de rede.
+      - **Mapeamento Hierárquico de OUs & Importação Seletiva de Colaboradores (`/ad/ous`)**:
+        - Detecção automática de árvore e profundidade de OUs no Active Directory (`level`, `is_sub_ou`, `parent_ou_name`, `suggested_group`).
+        - Permite mapear sub-OUs ou departamentos inteiros para setores personalizados antes de executar a importação.
+        - Visualização prévia expansível de todos os colaboradores contidos em cada OU (`/ad/ous/users`), indicando status de importação e botão de importação individual (`/ad/import-user`).
+        - Opções distintas de "Importar Apenas Setores" (criando a estrutura de departamentos sem importar contas de usuário) e "Sincronizar Setores e Colaboradores".

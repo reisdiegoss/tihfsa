@@ -23,9 +23,59 @@ def _get_ldap_connection():
     return conn
 
 
+def _parse_ou_info(dn: str) -> dict:
+    """
+    Analisa o DN de uma OU para extrair nome, OU pai, se é sub-OU e grupo sugerido.
+    """
+    parts = [p.strip() for p in dn.split(",") if p.strip()]
+    ou_parts = [p.split("=", 1)[1].strip() for p in parts if p.upper().startswith("OU=")]
+    name = ou_parts[0] if ou_parts else dn
+    
+    parent_name = None
+    parent_dn = None
+    if len(ou_parts) > 1:
+        parent_name = ou_parts[1]
+        first_comma = dn.find(",")
+        if first_comma != -1:
+            parent_dn = dn[first_comma + 1:].strip()
+            
+    # Contêineres de infraestrutura do AD que não são setores operacionais do hotel
+    structural_containers = {
+        "usuarios por departamento", "grupos", "hotel fasano - salvador",
+        "sitesempresa", "builtin", "computers", "domain controllers", "system", "users"
+    }
+    
+    is_sub_ou = bool(
+        len(ou_parts) >= 2 
+        and parent_name 
+        and parent_name.lower() not in structural_containers
+    )
+    
+    # Grupo sugerido: se for sub-OU, sugere a OU Pai departamental (ex: A&B); se for principal, sugere a própria OU
+    suggested_group = parent_name if is_sub_ou else name
+    
+    # Monta caminho legível
+    path_components = []
+    for p in reversed(ou_parts):
+        if p.lower() not in structural_containers:
+            path_components.append(p)
+    path = " > ".join(path_components) if path_components else name
+
+    return {
+        "name": name,
+        "dn": dn,
+        "parent_dn": parent_dn,
+        "parent_name": parent_name if is_sub_ou else None,
+        "is_sub_ou": is_sub_ou,
+        "suggested_group": suggested_group,
+        "path": path,
+    }
+
+
 def list_ad_ous() -> list[dict]:
     """
-    Conecta ao AD e retorna uma lista de OUs sob a Base DN.
+    Conecta ao AD e retorna uma lista de OUs sob a Base DN com informações
+    hierárquicas (OU pai, sub-OU e grupo/setor sugerido).
     """
     try:
         conn = _get_ldap_connection()
@@ -43,12 +93,14 @@ def list_ad_ous() -> list[dict]:
 
     ous = []
     for entry in conn.entries:
-        ous.append({
-            "name": str(entry.ou) if entry.ou else str(entry.distinguishedName),
-            "dn": str(entry.distinguishedName)
-        })
+        dn = str(entry.distinguishedName)
+        info = _parse_ou_info(dn)
+        ous.append(info)
 
     conn.unbind()
+    
+    # Ordenar: OUs principais primeiro e sub-OUs ordenadas pelo caminho hierárquico
+    ous.sort(key=lambda o: (o["path"].lower(), o["name"].lower()))
     return ous
 
 
@@ -64,7 +116,7 @@ def list_ad_users_in_ou(db: Session, ou_dn: str) -> list[dict]:
     search_filter = "(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
     attributes = [
         "sAMAccountName", "displayName", "mail", "department",
-        "title", "telephoneNumber",
+        "title", "telephoneNumber", "distinguishedName"
     ]
 
     try:
@@ -79,6 +131,9 @@ def list_ad_users_in_ou(db: Session, ou_dn: str) -> list[dict]:
             r[0] for r in db.query(User.ad_username).filter(User.ad_username.isnot(None)).all()
         )
 
+        ou_info = _parse_ou_info(ou_dn)
+        suggested_dept = ou_info["suggested_group"] or ou_info["name"]
+
         users = []
         for entry in conn.entries:
             username = str(entry.sAMAccountName) if entry.sAMAccountName else None
@@ -88,7 +143,7 @@ def list_ad_users_in_ou(db: Session, ou_dn: str) -> list[dict]:
                 "username": username,
                 "display_name": str(entry.displayName) if entry.displayName else username,
                 "email": str(entry.mail) if entry.mail else None,
-                "department": str(entry.department) if entry.department else "Geral",
+                "department": suggested_dept,
                 "title": str(entry.title) if entry.title else None,
                 "phone": str(entry.telephoneNumber) if entry.telephoneNumber else None,
                 "ou_dn": ou_dn,
@@ -101,14 +156,19 @@ def list_ad_users_in_ou(db: Session, ou_dn: str) -> list[dict]:
         raise ValueError(f"Erro ao buscar usuários da OU {ou_dn}: {e}")
 
 
-def import_single_user_from_ad(db: Session, username: str, ou_dn: str = None) -> User:
+def import_single_user_from_ad(
+    db: Session,
+    username: str,
+    ou_dn: str = None,
+    target_dept_name: str = None,
+) -> User:
     """
     Importa ou atualiza um único usuário do Active Directory para o banco local.
-    Se ou_dn não for informado, pesquisa em toda a base do LDAP e detecta a OU do usuário.
+    Se target_dept_name não for informado, usa a hierarquia da OU para definir o setor correto.
     """
     conn = _get_ldap_connection()
     search_filter = f"(&(objectClass=user)(objectCategory=person)(sAMAccountName={username}))"
-    attributes = ["sAMAccountName", "displayName", "mail", "department", "telephoneNumber"]
+    attributes = ["sAMAccountName", "displayName", "mail", "department", "telephoneNumber", "distinguishedName"]
     
     search_base = ou_dn if ou_dn else settings.ldap_base_dn
     conn.search(search_base=search_base, search_filter=search_filter, search_scope=SUBTREE, attributes=attributes)
@@ -117,23 +177,22 @@ def import_single_user_from_ad(db: Session, username: str, ou_dn: str = None) ->
         raise ValueError(f"Usuário {username} não encontrado no AD.")
         
     entry = conn.entries[0]
-    
-    # 1. Determinar o nome do departamento com precisão
     entry_dn_str = str(entry.entry_dn) if hasattr(entry, "entry_dn") else ""
-    ou_name = ""
-    for p in (entry_dn_str or search_base).split(","):
-        if p.strip().upper().startswith("OU="):
-            ou_name = p.split("=", 1)[1].strip()
-            break
-            
-    raw_dept = str(entry.department).strip() if entry.department and str(entry.department).strip() else ""
-    dept_name = raw_dept or ou_name or "Geral"
+    if not entry_dn_str and hasattr(entry, "distinguishedName"):
+        entry_dn_str = str(entry.distinguishedName)
+    
+    # 1. Determinar o nome do departamento com precisão hierárquica
+    if target_dept_name and target_dept_name.strip():
+        dept_name = target_dept_name.strip()
+    else:
+        ou_for_parse = ou_dn or (entry_dn_str.split(",", 1)[1] if "," in entry_dn_str else search_base)
+        parsed = _parse_ou_info(ou_for_parse)
+        dept_name = parsed["suggested_group"] or parsed["name"] or "Geral"
+
     target_ou_dn = ou_dn or (entry_dn_str.split(",", 1)[1] if "," in entry_dn_str else search_base)
     
     # 2. Garantir departamento correto
-    dept = db.query(Department).filter(Department.ad_ou_dn == target_ou_dn).first()
-    if not dept and dept_name:
-        dept = db.query(Department).filter(func.lower(Department.name) == dept_name.lower()).first()
+    dept = db.query(Department).filter(func.lower(Department.name) == dept_name.lower()).first()
     if not dept:
         dept = Department(name=dept_name, ad_ou_dn=target_ou_dn, is_active=True)
         db.add(dept)
@@ -172,40 +231,58 @@ def import_single_user_from_ad(db: Session, username: str, ou_dn: str = None) ->
     return user
 
 
-def import_ad_departments(db: Session, target_ous: list[str]) -> dict:
+def import_ad_departments(
+    db: Session,
+    target_ous: list[str],
+    ou_mappings: dict[str, str] = None,
+) -> dict:
     """
     Importa/cadastra apenas os Setores (Departamentos) baseados nas OUs do Active Directory.
+    Suporta mapeamento de sub-OUs para OUs principais ou grupos personalizados.
     Garante ausência de duplicatas buscando por ad_ou_dn primeiro e por nome em seguida.
     """
     report = {"created": 0, "updated": 0, "errors": []}
+    ou_mappings = ou_mappings or {}
+    processed_dept_names = set()
+
     for ou_dn in target_ous:
         try:
-            ou_name = ""
-            for p in ou_dn.split(","):
-                if p.strip().upper().startswith("OU="):
-                    ou_name = p.split("=", 1)[1].strip()
-                    break
-            if not ou_name:
-                ou_name = ou_dn.split(",")[0].replace("OU=", "").replace("ou=", "").strip()
-            if not ou_name:
+            info = _parse_ou_info(ou_dn)
+            
+            # 1. Determina o nome do departamento de destino
+            if ou_dn in ou_mappings and ou_mappings[ou_dn]:
+                target_dept_name = str(ou_mappings[ou_dn]).strip()
+            elif info["is_sub_ou"] and info["suggested_group"]:
+                target_dept_name = info["suggested_group"].strip()
+            else:
+                target_dept_name = info["name"].strip()
+
+            if not target_dept_name or target_dept_name.lower() in processed_dept_names:
                 continue
 
-            # 1. Buscar por ad_ou_dn
-            dept = db.query(Department).filter(Department.ad_ou_dn == ou_dn).first()
+            processed_dept_names.add(target_dept_name.lower())
 
-            # 2. Se não achou por DN, buscar por nome (insensível a maiúsculas/minúsculas)
-            if not dept:
-                dept = db.query(Department).filter(
-                    func.lower(Department.name) == ou_name.lower()
-                ).first()
+            # 2. Buscar por nome (insensível a maiúsculas/minúsculas)
+            dept = db.query(Department).filter(
+                func.lower(Department.name) == target_dept_name.lower()
+            ).first()
+
+            # Se não achou por nome e é uma OU principal, buscar por ad_ou_dn
+            if not dept and not info["is_sub_ou"]:
+                dept = db.query(Department).filter(Department.ad_ou_dn == ou_dn).first()
 
             if not dept:
-                dept = Department(name=ou_name, ad_ou_dn=ou_dn, is_active=True)
+                dept = Department(
+                    name=target_dept_name,
+                    ad_ou_dn=ou_dn if not info["is_sub_ou"] else None,
+                    is_active=True
+                )
                 db.add(dept)
                 db.commit()
                 report["created"] += 1
             else:
-                dept.ad_ou_dn = ou_dn
+                if not info["is_sub_ou"] and not dept.ad_ou_dn:
+                    dept.ad_ou_dn = ou_dn
                 dept.is_active = True
                 db.commit()
                 report["updated"] += 1
@@ -216,12 +293,19 @@ def import_ad_departments(db: Session, target_ous: list[str]) -> dict:
     return report
 
 
-def sync_active_directory(db: Session, target_ous: list[str] = None) -> dict:
+def sync_active_directory(
+    db: Session,
+    target_ous: list[str] = None,
+    ou_mappings: dict[str, str] = None,
+) -> dict:
     """
     Sincroniza usuários e setores do AD com o banco local.
-    Associa cada usuário ao departamento da SUA respectiva OU, evitando contaminação entre grupos.
+    Permite importar uma OU para outra OU/Grupo de destino.
+    Quando uma OU principal é importada, todos os colaboradores contidos em suas
+    sub-OUs são vinculados ao setor da OU principal (a menos que haja mapeamento específico).
     """
     report = {"created": 0, "updated": 0, "deactivated": 0, "errors": []}
+    ou_mappings = ou_mappings or {}
 
     try:
         conn = _get_ldap_connection()
@@ -232,7 +316,7 @@ def sync_active_directory(db: Session, target_ous: list[str] = None) -> dict:
     search_filter = "(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
     attributes = [
         "sAMAccountName", "displayName", "mail", "department",
-        "manager", "title", "telephoneNumber",
+        "manager", "title", "telephoneNumber", "distinguishedName"
     ]
 
     bases_to_search = target_ous if target_ous else [settings.ldap_base_dn]
@@ -241,29 +325,45 @@ def sync_active_directory(db: Session, target_ous: list[str] = None) -> dict:
     ad_users_data = []
 
     # 1. Pré-cadastrar e mapear os departamentos específicos de cada OU pesquisada
+    # ou_dept_map: { base_dn: (dept_id, dept_name) }
     ou_dept_map = {}
     for base_dn in bases_to_search:
-        ou_name = ""
-        for p in base_dn.split(","):
-            if p.strip().upper().startswith("OU="):
-                ou_name = p.split("=", 1)[1].strip()
-                break
-        if not ou_name:
-            ou_name = base_dn.split(",")[0].replace("OU=", "").replace("ou=", "").strip()
+        info = _parse_ou_info(base_dn)
+        
+        # Determina o nome do departamento alvo para esta OU
+        if base_dn in ou_mappings and ou_mappings[base_dn]:
+            target_dept_name = str(ou_mappings[base_dn]).strip()
+        elif info["is_sub_ou"] and info["suggested_group"]:
+            target_dept_name = info["suggested_group"].strip()
+        else:
+            target_dept_name = info["name"].strip()
 
-        dept = db.query(Department).filter(Department.ad_ou_dn == base_dn).first()
-        if not dept and ou_name:
-            dept = db.query(Department).filter(func.lower(Department.name) == ou_name.lower()).first()
+        if not target_dept_name:
+            target_dept_name = "Geral"
+
+        # Localiza ou cria o departamento com este nome
+        dept = db.query(Department).filter(
+            func.lower(Department.name) == target_dept_name.lower()
+        ).first()
+
         if not dept:
-            dept = Department(name=ou_name or "Geral", ad_ou_dn=base_dn, is_active=True)
+            dept = Department(
+                name=target_dept_name,
+                ad_ou_dn=base_dn if not info["is_sub_ou"] else None,
+                is_active=True
+            )
             db.add(dept)
             db.commit()
         else:
-            dept.ad_ou_dn = base_dn
+            if not info["is_sub_ou"] and not dept.ad_ou_dn:
+                dept.ad_ou_dn = base_dn
             dept.is_active = True
             db.commit()
         
-        ou_dept_map[base_dn] = (dept.id, ou_name)
+        ou_dept_map[base_dn] = (dept.id, target_dept_name)
+
+    # Ordenar as OUs por tamanho decrescente do DN para que sub-OUs tenham precedência
+    sorted_ou_keys = sorted(ou_dept_map.keys(), key=len, reverse=True)
 
     # 2. Varrer as OUs no LDAP
     for base_dn in bases_to_search:
@@ -275,7 +375,7 @@ def sync_active_directory(db: Session, target_ous: list[str] = None) -> dict:
                 attributes=attributes,
             )
             
-            dept_id, default_ou_name = ou_dept_map.get(base_dn, (None, "Geral"))
+            default_dept_id, default_dept_name = ou_dept_map.get(base_dn, (None, "Geral"))
 
             for entry in conn.entries:
                 try:
@@ -285,16 +385,18 @@ def sync_active_directory(db: Session, target_ous: list[str] = None) -> dict:
 
                     ad_usernames.add(username)
                     
-                    # Se o usuário possui um atributo department explícito no AD diferente do nome da OU
-                    user_dept_id = dept_id
-                    raw_dept = str(entry.department).strip() if entry.department and str(entry.department).strip() else ""
-                    if raw_dept and raw_dept.lower() != default_ou_name.lower():
-                        c_dept = db.query(Department).filter(func.lower(Department.name) == raw_dept.lower()).first()
-                        if not c_dept:
-                            c_dept = Department(name=raw_dept, is_active=True)
-                            db.add(c_dept)
-                            db.commit()
-                        user_dept_id = c_dept.id
+                    # Obter DN completo do usuário
+                    user_entry_dn = str(entry.entry_dn) if hasattr(entry, "entry_dn") else ""
+                    if not user_entry_dn and hasattr(entry, "distinguishedName"):
+                        user_entry_dn = str(entry.distinguishedName)
+
+                    # Resolver departamento pelo DN mais específico do usuário
+                    user_dept_id = default_dept_id
+                    if user_entry_dn:
+                        for ou_key in sorted_ou_keys:
+                            if ou_key.lower() in user_entry_dn.lower():
+                                user_dept_id = ou_dept_map[ou_key][0]
+                                break
 
                     ad_users_data.append({
                         "username": username,

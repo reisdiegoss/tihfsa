@@ -15,16 +15,19 @@ router = APIRouter(prefix="/api/v1/ad", tags=["AD Import"])
 
 class OUSyncRequest(BaseModel):
     ous: list[str]
+    ou_mappings: dict[str, str] | None = None
+    mappings: dict[str, str] | None = None
 
 
 class SingleUserImportRequest(BaseModel):
     username: str
     ou_dn: str
+    target_dept_name: str | None = None
 
 
 @router.get("/ous")
 def get_ous(_: User = Depends(require_technician)):
-    """Lista as OUs disponíveis no AD."""
+    """Lista as OUs disponíveis no AD com hierarquia e grupo sugerido."""
     return list_ad_ous()
 
 
@@ -45,9 +48,14 @@ def import_single_user(
     db: Session = Depends(get_db),
     _: User = Depends(require_technician),
 ):
-    """Importa ou atualiza um único usuário do Active Directory."""
+    """Importa ou atualiza um único usuário do Active Directory com suporte a setor personalizado/pai."""
     from app.services.ad_sync import import_single_user_from_ad
-    user = import_single_user_from_ad(db, username=data.username, ou_dn=data.ou_dn)
+    user = import_single_user_from_ad(
+        db,
+        username=data.username,
+        ou_dn=data.ou_dn,
+        target_dept_name=data.target_dept_name,
+    )
     return {
         "message": f"Usuário {user.display_name} importado com sucesso!",
         "user": {
@@ -65,9 +73,10 @@ def import_departments_only(
     db: Session = Depends(get_db),
     _: User = Depends(require_technician),
 ):
-    """Importa/cadastra apenas os Setores/OUs selecionados."""
+    """Importa/cadastra apenas os Setores/OUs selecionados com mapeamento para grupo/setor."""
     from app.services.ad_sync import import_ad_departments
-    report = import_ad_departments(db, target_ous=data.ous)
+    mappings = data.ou_mappings or data.mappings
+    report = import_ad_departments(db, target_ous=data.ous, ou_mappings=mappings)
     return {
         "message": "Setores importados com sucesso",
         "report": report,
@@ -80,8 +89,9 @@ def import_from_ous(
     db: Session = Depends(get_db),
     _: User = Depends(require_technician),
 ):
-    """Sincroniza setores e usuários das OUs enviadas pelo frontend."""
-    report = sync_active_directory(db, target_ous=data.ous)
+    """Sincroniza setores e usuários das OUs enviadas pelo frontend com suporte a mapeamento de grupos."""
+    mappings = data.ou_mappings or data.mappings
+    report = sync_active_directory(db, target_ous=data.ous, ou_mappings=mappings)
     return {
         "message": "Importação concluída",
         "report": report,
