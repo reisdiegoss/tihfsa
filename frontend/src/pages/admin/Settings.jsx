@@ -452,10 +452,26 @@ export default function Settings() {
   const [categoriesWithProblems, setCategoriesWithProblems] = useState([]);
   const [loadingCategoriesWithProblems, setLoadingCategoriesWithProblems] = useState(false);
   const [problemCategorySearch, setProblemCategorySearch] = useState("");
+  const [categorySearch, setCategorySearch] = useState("");
   const [newProblemInputs, setNewProblemInputs] = useState({});
   const [newCategoryModalOpen, setNewCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [savingCategory, setSavingCategory] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editCategoryModalOpen, setEditCategoryModalOpen] = useState(false);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [editCategoryDesc, setEditCategoryDesc] = useState("");
+  const [savingEditCategory, setSavingEditCategory] = useState(false);
+
+  // Departments Management States
+  const [deptSearch, setDeptSearch] = useState("");
+  const [deptModalOpen, setDeptModalOpen] = useState(false);
+  const [editingDept, setEditingDept] = useState(null);
+  const [deptNameInput, setDeptNameInput] = useState("");
+  const [savingDept, setSavingDept] = useState(false);
+
+  // User Department Selection State (for editing single user)
+  const [selectedUserDept, setSelectedUserDept] = useState("");
 
   const fetchCategoriesWithProblems = async () => {
     setLoadingCategoriesWithProblems(true);
@@ -470,11 +486,11 @@ export default function Settings() {
   };
 
   useEffect(() => {
-    if (activeTab === "users") {
+    if (activeTab === "users" || activeTab === "departments") {
       fetchSystemUsers();
     } else if (activeTab === "locations") {
       fetchLocations();
-    } else if (activeTab === "problems") {
+    } else if (activeTab === "problems" || activeTab === "categories") {
       fetchCategoriesWithProblems();
     } else if (activeTab === "asset_types") {
       fetchAssetTypes();
@@ -643,6 +659,96 @@ export default function Settings() {
     }
   };
 
+  const handleOpenEditCategory = (cat) => {
+    setEditingCategory(cat);
+    setEditCategoryName(cat.name);
+    setEditCategoryDesc(cat.description || "");
+    setEditCategoryModalOpen(true);
+  };
+
+  const handleSaveEditCategory = async (e) => {
+    e.preventDefault();
+    if (!editCategoryName.trim() || !editingCategory) return;
+    setSavingEditCategory(true);
+    try {
+      await api.put(`/categories/${editingCategory.id}?name=${encodeURIComponent(editCategoryName.trim())}&description=${encodeURIComponent(editCategoryDesc.trim())}`);
+      setEditCategoryModalOpen(false);
+      fetchCategoriesWithProblems();
+      alert("Categoria atualizada com sucesso!");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao atualizar categoria.");
+    } finally {
+      setSavingEditCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (cat) => {
+    if (!window.confirm(`Deseja realmente desativar a categoria '${cat.name}' e seus tipos de problema vinculados?`)) {
+      return;
+    }
+    try {
+      await api.delete(`/categories/${cat.id}`);
+      fetchCategoriesWithProblems();
+      alert("Categoria desativada com sucesso!");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao desativar categoria.");
+    }
+  };
+
+  const handleOpenCreateDept = () => {
+    setEditingDept(null);
+    setDeptNameInput("");
+    setDeptModalOpen(true);
+  };
+
+  const handleOpenEditDept = (dept) => {
+    setEditingDept(dept);
+    setDeptNameInput(dept.name);
+    setDeptModalOpen(true);
+  };
+
+  const handleSaveDept = async (e) => {
+    e.preventDefault();
+    if (!deptNameInput.trim()) return;
+    setSavingDept(true);
+    try {
+      if (editingDept) {
+        await api.put(`/departments/${editingDept.id}`, { name: deptNameInput.trim() });
+        alert(`Setor '${deptNameInput.trim()}' atualizado com sucesso!`);
+      } else {
+        await api.post("/departments/", { name: deptNameInput.trim() });
+        alert(`Setor '${deptNameInput.trim()}' criado com sucesso!`);
+      }
+      setDeptModalOpen(false);
+      setDeptNameInput("");
+      setEditingDept(null);
+      fetchSystemUsers();
+    } catch (err) {
+      console.error(err);
+      const msg = err.response?.data?.detail || "Erro ao salvar setor.";
+      alert(msg);
+    } finally {
+      setSavingDept(false);
+    }
+  };
+
+  const handleDeleteDept = async (dept) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o setor '${dept.name}'? Os colaboradores vinculados ficarão como 'Geral / Não atribuído'.`)) {
+      return;
+    }
+    try {
+      await api.delete(`/departments/${dept.id}`);
+      alert(`Setor '${dept.name}' excluído com sucesso!`);
+      fetchSystemUsers();
+    } catch (err) {
+      console.error(err);
+      const msg = err.response?.data?.detail || "Erro ao excluir setor.";
+      alert(msg);
+    }
+  };
+
   const fetchOus = async () => {
     setLoadingOus(true);
     setReport(null);
@@ -751,6 +857,7 @@ export default function Settings() {
     setEditingUser(u);
     const rList = u.roles && u.roles.length > 0 ? u.roles : [u.role || "user"];
     setSelectedRoles(rList);
+    setSelectedUserDept(u.department_id ? String(u.department_id) : "");
     setSelectedManagedDepts(u.managed_department_ids || []);
   };
 
@@ -779,14 +886,15 @@ export default function Settings() {
     try {
       const { data } = await api.patch(`/users/${editingUser.id}`, {
         roles: selectedRoles,
+        department_id: selectedUserDept ? Number(selectedUserDept) : null,
         managed_department_ids: selectedRoles.includes("manager") ? selectedManagedDepts : []
       });
-      alert(`Permissões de ${data.display_name} atualizadas com sucesso!`);
+      alert(`Dados e permissões de ${data.display_name} atualizados com sucesso!`);
       setEditingUser(null);
       fetchSystemUsers();
     } catch (err) {
       console.error(err);
-      alert("Erro ao salvar permissões do usuário.");
+      alert("Erro ao salvar dados e permissões do usuário.");
     } finally {
       setSavingUserPermissions(false);
     }
@@ -860,6 +968,17 @@ export default function Settings() {
           }`}
         >
           <UserCheck size={16} /> Usuários & Permissões
+        </button>
+
+        <button
+          onClick={() => setActiveTab("departments")}
+          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
+            activeTab === "departments"
+              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
+          }`}
+        >
+          <Briefcase size={16} /> Setores & Grupos
         </button>
 
         <button
@@ -1332,6 +1451,130 @@ export default function Settings() {
         </div>
       )}
 
+      {/* TAB CONTENT: Setores & Departamentos */}
+      {activeTab === "departments" && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Header Bar */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Briefcase className="text-blue-600" size={20} /> Cadastro de Setores & Departamentos
+              </h2>
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                Gerencie os departamentos da organização para roteamento de chamados, relatórios e vínculo de colaboradores e ativos.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={() => handleOpenDeptModal()}
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-2xl text-sm font-bold shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all cursor-pointer"
+              >
+                <Plus size={18} /> Novo Setor
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Counter Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70 p-3 rounded-2xl border border-slate-200">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                type="text"
+                placeholder="Pesquisar setor por nome..."
+                value={deptSearch}
+                onChange={(e) => setDeptSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-all"
+              />
+            </div>
+            <div className="text-xs font-bold text-slate-500 px-2">
+              Total: <span className="text-slate-900 font-extrabold">{departmentsList.length}</span> setores cadastrados
+            </div>
+          </div>
+
+          {/* Departments Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
+            {departmentsList.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 font-semibold space-y-3">
+                <Briefcase size={36} className="mx-auto text-slate-300" />
+                <p className="text-sm font-bold text-slate-600">Nenhum setor cadastrado.</p>
+                <p className="text-xs text-slate-400">Clique em "Novo Setor" ou importe a estrutura organizacional do AD.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                      <th className="py-4 px-6">Nome do Setor</th>
+                      <th className="py-4 px-4 text-center">Colaboradores Vinculados</th>
+                      <th className="py-4 px-4">Status</th>
+                      <th className="py-4 px-6 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                    {departmentsList
+                      .filter((d) => !deptSearch || d.name.toLowerCase().includes(deptSearch.toLowerCase()))
+                      .map((dept) => {
+                        const userCount = systemUsers.filter((u) => u.department_id === dept.id).length;
+                        return (
+                          <tr key={dept.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-4 px-6 font-extrabold text-slate-900">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0">
+                                  <Briefcase size={16} />
+                                </div>
+                                <div>
+                                  <span className="font-extrabold text-slate-900 text-sm">{dept.name}</span>
+                                  {dept.created_at && (
+                                    <p className="text-[10px] font-semibold text-slate-400">
+                                      Cadastrado em {new Date(dept.created_at).toLocaleDateString("pt-BR")}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 text-center">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                <Users size={12} className="text-slate-400" />
+                                {userCount} colaborador(es)
+                              </span>
+                            </td>
+                            <td className="py-4 px-4">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                Ativo
+                              </span>
+                            </td>
+                            <td className="py-4 px-6 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenDeptModal(dept)}
+                                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                                  title="Editar nome do setor"
+                                >
+                                  <Edit3 size={15} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDept(dept.id, dept.name)}
+                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                                  title="Excluir setor"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* TAB CONTENT: Zabbix */}
       {activeTab === "zabbix" && (
         <div className="space-y-6 animate-fade-in">
@@ -1519,6 +1762,28 @@ export default function Settings() {
 
             <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
               
+              {/* Setor Principal */}
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Setor / Departamento Principal
+                </label>
+                <select
+                  value={selectedUserDept}
+                  onChange={(e) => setSelectedUserDept(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="">Nenhum / Geral</option>
+                  {departmentsList.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                  Define o departamento oficial do colaborador exibido nos chamados e no cadastro de ativos.
+                </p>
+              </div>
+
               {/* Role Selection (Multi-Role Checkboxes) */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -1871,18 +2136,18 @@ export default function Settings() {
         </div>
       )}
 
-      {/* TAB CONTENT: Tipos de Problema por Categoria */}
-      {activeTab === "problems" && (
+      {/* TAB CONTENT: Categorias e Tipos de Problema */}
+      {(activeTab === "problems" || activeTab === "categories") && (
         <div className="space-y-6 animate-fade-in">
           
           {/* Header Bar */}
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <AlertCircle className="text-blue-600" size={20} /> Cadastro de Tipos de Problema por Categoria
+                <Tag className="text-blue-600" size={20} /> Categorias & Tipos de Problema de Chamados
               </h2>
               <p className="text-xs font-semibold text-slate-500 mt-1">
-                Cadastre os problemas predefinidos que aparecem para seleção ao abrir um chamado técnico.
+                Configure as categorias do Helpdesk e os problemas predefinidos que aparecem para seleção ao abrir um chamado técnico.
               </p>
             </div>
 
@@ -1934,23 +2199,41 @@ export default function Settings() {
                     <div>
                       {/* Header da Categoria */}
                       <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0">
                             <Tag size={16} />
                           </div>
-                          <div>
-                            <h3 className="font-extrabold text-slate-900 text-sm">{cat.name}</h3>
+                          <div className="min-w-0">
+                            <h3 className="font-extrabold text-slate-900 text-sm truncate">{cat.name}</h3>
                             <p className="text-[10px] font-semibold text-slate-400">
                               {cat.problem_types?.length || 0} problema(s) cadastrado(s)
                             </p>
                           </div>
                         </div>
 
-                        {cat.zabbix_group_name && (
-                          <span className="text-[10px] font-extrabold bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full border border-purple-100 shrink-0">
-                            Zabbix: {cat.zabbix_group_name}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {cat.zabbix_group_name && (
+                            <span className="text-[10px] font-extrabold bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full border border-purple-100">
+                              Zabbix: {cat.zabbix_group_name}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditCategory(cat)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                            title="Editar categoria"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                            title="Excluir categoria"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Lista de Tipos de Problema como Chips */}
@@ -3032,6 +3315,141 @@ export default function Settings() {
                 >
                   {savingCategory ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
                   Criar Categoria
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Editar Categoria */}
+      {editCategoryModalOpen && editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Tag className="text-blue-600" size={18} />
+                <h3 className="font-extrabold text-slate-900 text-sm">Editar Categoria</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setEditCategoryModalOpen(false);
+                  setEditingCategory(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditCategory} className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                  Nome da Categoria <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Hardware, Telefonia, Rede..."
+                  value={editingCategoryName}
+                  onChange={(e) => setEditingCategoryName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                  Grupo Zabbix Vinculado (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Printers, Network Devices..."
+                  value={editingCategoryZabbix}
+                  onChange={(e) => setEditingCategoryZabbix(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditCategoryModalOpen(false);
+                    setEditingCategory(null);
+                  }}
+                  className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCategory || !editingCategoryName.trim()}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {savingCategory ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Criar / Editar Setor (Department) */}
+      {deptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Briefcase className="text-blue-600" size={18} />
+                <h3 className="font-extrabold text-slate-900 text-sm">
+                  {editingDept ? "Editar Setor" : "Cadastrar Novo Setor"}
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setDeptModalOpen(false);
+                  setEditingDept(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDept} className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                  Nome do Setor / Departamento <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: TI, Recepção, Governança, Financeiro..."
+                  value={deptName}
+                  onChange={(e) => setDeptName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeptModalOpen(false);
+                    setEditingDept(null);
+                  }}
+                  className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingDept || !deptName.trim()}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {savingDept ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  {editingDept ? "Salvar Alterações" : "Cadastrar Setor"}
                 </button>
               </div>
             </form>

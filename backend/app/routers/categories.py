@@ -161,6 +161,49 @@ def create_problem_type_cat(
     return pt
 
 
+@router.put("/{category_id}", response_model=CategoryResponse)
+def update_category(
+    category_id: int,
+    name: str,
+    description: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Atualiza o nome e descrição de uma categoria."""
+    cat = db.query(Category).filter(Category.id == category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+
+    name_clean = name.strip()
+    if not name_clean:
+        raise HTTPException(status_code=400, detail="O nome da categoria não pode ser vazio")
+
+    cat.name = name_clean
+    if description is not None:
+        cat.description = description
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@router.delete("/{category_id}")
+def delete_category(
+    category_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Desativa uma categoria e seus tipos de problema vinculados."""
+    cat = db.query(Category).filter(Category.id == category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+
+    cat.is_active = False
+    # Desativa também problemas predefinidos vinculados
+    db.query(ProblemType).filter(ProblemType.category_id == category_id).update({ProblemType.is_active: False})
+    db.commit()
+    return {"status": "deleted", "message": f"Categoria '{cat.name}' desativada com sucesso."}
+
+
 @router.delete("/problems/{problem_id}")
 def delete_problem_type(
     problem_id: int,

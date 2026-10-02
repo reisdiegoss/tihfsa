@@ -632,3 +632,14 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Mesmo que usuários do AD sejam resetados ou deletados, assim que forem reimportados, o CMDB restaura automaticamente o vínculo de cada ativo com seu colaborador com base no histórico de `logged_user`.
         - Durante o check-in do Sentinel Agent, se o usuário logado não existir no banco local, o sistema efetua busca sob demanda no AD via LDAP para cadastrá-lo imediatamente e vinculá-lo ao equipamento.
         - Reativação automática no CMDB (`is_active = True`) para qualquer ativo que envie telemetria via agente (resolvendo casos de ativos inativados no passado como servidores e estações).
+    - **Gestão Centralizada de Categorias & Setores no Painel de Configurações**:
+      - **Categorias do Helpdesk (`/api/v1/categories/`)**:
+        - Criação, edição e exclusão de categorias com controle de integridade referencial (bloqueio seguro caso existam chamados associados).
+        - Vinculação com grupos do Zabbix e suporte à aba unificada "Categorias & Tipos de Problema" em Configurações.
+      - **Gerenciamento de Setores / Departamentos (`/api/v1/departments/`)**:
+        - Listagem, cadastro, edição e exclusão de setores com feedback em tempo real.
+        - Apresentação de contadores de colaboradores e chamados associados a cada setor.
+      - **Seleção Dinâmica de Colaboradores no CMDB (`UserSelectCombobox`)**:
+        - Componente de autocomplete inteligente com busca em tempo real por Nome, Login do Active Directory (`sAMAccountName`), E-mail e Setor.
+        - Abas de navegação rápida entre Colaboradores do AD e Apartamentos/UHs.
+        - Exibição de card resumido do usuário selecionado com avatar, setor e login de rede.
