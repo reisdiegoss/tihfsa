@@ -44,6 +44,9 @@ class AgentCheckinPayload(BaseModel):
     mac_address: Optional[str] = None
     device_type: Optional[str] = None
     vcpu_count: Optional[int] = None
+    installed_apps: Optional[list[dict]] = None
+    windows_product_key: Optional[str] = None
+    office_version: Optional[str] = None
 
 
 class AgentMachineResponse(BaseModel):
@@ -178,19 +181,37 @@ def agent_checkin(
     if not asset and ip_clean not in ("unknown", "127.0.0.1", ""):
         asset = db.query(Asset).filter(Asset.ip_address == ip_clean).first()
 
-    # Cálculo da Memória RAM (ex: "16 GB", "8 GB", "32 GB")
+    # Cálculo da Memória RAM (arredondamento comercial para compensar reserva de hardware/kernel)
     ram_formatted = None
+    ram_gb = None
     if data.ram_total_mb and data.ram_total_mb > 0:
-        ram_gb = round(data.ram_total_mb / 1024)
+        mb = data.ram_total_mb
+        if 30000 <= mb <= 33500:
+            ram_gb = 32
+        elif 14500 <= mb <= 17000:
+            ram_gb = 16
+        elif 7000 <= mb <= 8500:
+            ram_gb = 8
+        elif 3500 <= mb <= 4300:
+            ram_gb = 4
+        elif 60000 <= mb <= 66000:
+            ram_gb = 64
+        elif 120000 <= mb <= 132000:
+            ram_gb = 128
+        else:
+            ram_gb = round(mb / 1024)
         ram_formatted = f"{ram_gb} GB"
 
-    # Cálculo do Armazenamento (suporte inteligente a múltiplas unidades e SSD)
+    # Cálculo do Armazenamento (suporte inteligente a múltiplas unidades reais e SSD)
     storage_units = []
     if disks_normalized:
         for d in disks_normalized:
             if isinstance(d, dict):
                 drive = d.get("drive", "").strip()
                 total_gb = d.get("total_gb", 0)
+                # Ignora partições efêmeras e virtuais de sistema como efivars, efi, boot, tmpfs
+                if any(drive.startswith(p) for p in ("/sys", "/dev", "/run", "/boot")):
+                    continue
                 if total_gb:
                     if total_gb >= 950:
                         sz_str = f"{round(total_gb / 1024, 1)} TB".replace(".0 TB", " TB")
@@ -225,6 +246,20 @@ def agent_checkin(
         if p_parts:
             storage_formatted = ", ".join(p_parts)
 
+    # Normalização de Fabricante / Modelo (Hyper-V, VMware, KVM/QEMU)
+    brand_clean = data.brand.strip() if data.brand and data.brand.strip().lower() != "desconhecido" else None
+    model_clean = data.model.strip() if data.model and data.model.strip().lower() != "desconhecido" else None
+
+    if brand_clean == "Microsoft Corporation" and (not model_clean or "virtual machine" in model_clean.lower()):
+        brand_clean = "Microsoft Hyper-V"
+        model_clean = "Máquina Virtual"
+    elif brand_clean and "vmware" in brand_clean.lower():
+        brand_clean = "VMware"
+        model_clean = "Máquina Virtual"
+    elif brand_clean and ("qemu" in brand_clean.lower() or "kvm" in brand_clean.lower()):
+        brand_clean = "QEMU / KVM"
+        model_clean = "Máquina Virtual"
+
     specs_payload = {
         "cpu": data.cpu_model,
         "ram": ram_formatted,
@@ -240,12 +275,16 @@ def agent_checkin(
         "physical_disks": physical_disks_normalized,
         "uptime_hours": data.uptime_hours,
         "mac_address": data.mac_address,
+        "windows_product_key": data.windows_product_key,
+        "office_version": data.office_version,
+        "installed_apps": data.installed_apps or [],
     }
 
     # Inferência inteligente do tipo de ativo (Servidor, Notebook ou Desktop)
     is_server_detected = bool(
         (data.os_name and "server" in data.os_name.lower())
         or (data.device_type and "servidor" in data.device_type.lower())
+        or (model_clean and "máquina virtual" in model_clean.lower())
     )
 
     if not asset:
@@ -260,8 +299,8 @@ def agent_checkin(
         asset = Asset(
             name=hostname_clean,
             type=asset_type,
-            brand=data.brand.strip() if data.brand and data.brand.strip().lower() != "desconhecido" else None,
-            model=data.model.strip() if data.model and data.model.strip().lower() != "desconhecido" else None,
+            brand=brand_clean,
+            model=model_clean,
             serial_number=data.serial_number.strip() if valid_serial else None,
             mac_address=data.mac_address,
             ip_address=ip_clean if ip_clean != "unknown" else None,
@@ -274,10 +313,10 @@ def agent_checkin(
         db.flush()
     else:
         # Atualização contínua do Ativo existente
-        if data.brand and data.brand.strip().lower() != "desconhecido":
-            asset.brand = data.brand.strip()
-        if data.model and data.model.strip().lower() != "desconhecido":
-            asset.model = data.model.strip()
+        if brand_clean:
+            asset.brand = brand_clean
+        if model_clean:
+            asset.model = model_clean
         if valid_serial:
             asset.serial_number = data.serial_number.strip()
         if data.mac_address:
@@ -693,31 +732,81 @@ function Get-SystemMetrics {{
         }}
     }} catch {{}}
 
+    # Chave de Ativacao do Windows (BIOS OA3 / MSDM)
+    $winKey = ""
+    try {{
+        $oa3 = (Get-CimInstance SoftwareLicensingService -ErrorAction SilentlyContinue).OA3xOriginalProductKey
+        if ($oa3) {{ $winKey = $oa3.Trim() }}
+    }} catch {{}}
+
+    # Versao do Microsoft Office / Microsoft 365 instalada
+    $officeVer = ""
+    try {{
+        $officeKeys = @(
+            "HKLM:\\SOFTWARE\\Microsoft\\Office\\ClickToRun\\Configuration",
+            "HKLM:\\SOFTWARE\\Microsoft\\Office\\16.0\\Common\\ProductVersion",
+            "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Office\\16.0\\Common\\ProductVersion"
+        )
+        foreach ($k in $officeKeys) {{
+            if (Test-Path $k) {{
+                $prop = Get-ItemProperty $k -ErrorAction SilentlyContinue
+                if ($prop.ProductReleaseIds) {{
+                    $officeVer = "$($prop.ProductReleaseIds) $($prop.VersionToReport)".Trim()
+                    break
+                }}
+            }}
+        }}
+    }} catch {{}}
+
+    # Inventario Completo de Softwares / Programas Instalados (Painel de Controle / Registro)
+    $installedApps = @()
+    try {{
+        $uninstallPaths = @(
+            "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*",
+            "HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*"
+        )
+        $rawApps = Get-ItemProperty $uninstallPaths -ErrorAction SilentlyContinue | Where-Object {{
+            $_.DisplayName -and ($_.SystemComponent -ne 1) -and ($_.ParentKeyName -eq $null) -and ($_.DisplayName -notmatch '^KB[0-9]+')
+        }} | Select-Object -Property DisplayName, DisplayVersion, Publisher, InstallDate | Sort-Object DisplayName -Unique
+        
+        foreach ($app in $rawApps) {{
+            $installedApps += @{{
+                name         = $app.DisplayName.Trim()
+                version      = if ($app.DisplayVersion) {{ "$($app.DisplayVersion)".Trim() }} else {{ "" }}
+                publisher    = if ($app.Publisher) {{ "$($app.Publisher)".Trim() }} else {{ "" }}
+                install_date = if ($app.InstallDate) {{ "$($app.InstallDate)".Trim() }} else {{ "" }}
+            }}
+        }}
+    }} catch {{}}
+
     return @{{
-        hostname       = $env:COMPUTERNAME
-        logged_user    = Get-LoggedUser
-        ip_address     = $ipAddress
-        cpu_usage_pct  = $cpu
-        cpu_model      = $cpuModel
-        vcpu_count     = [int]$vcpuCount
-        ram_used_mb    = [int]$ramUsedMB
-        ram_total_mb   = [int]$ramTotalMB
-        ram_usage_pct  = [double]$ramPct
-        disks          = [object[]]@($disks)
-        physical_disks = [object[]]@($physicalDisks)
-        uptime_hours   = $uptimeHours
-        os_name        = if ($os -and $os.Caption) {{ $os.Caption }} else {{ "Windows" }}
-        brand          = $brand
-        model          = $model
-        serial_number  = $serialNumber
-        mac_address    = $macAddress
-        device_type    = $deviceType
+        hostname            = $env:COMPUTERNAME
+        logged_user         = Get-LoggedUser
+        ip_address          = $ipAddress
+        cpu_usage_pct       = $cpu
+        cpu_model           = $cpuModel
+        vcpu_count          = [int]$vcpuCount
+        ram_used_mb         = [int]$ramUsedMB
+        ram_total_mb        = [int]$ramTotalMB
+        ram_usage_pct       = [double]$ramPct
+        disks               = [object[]]@($disks)
+        physical_disks      = [object[]]@($physicalDisks)
+        uptime_hours        = $uptimeHours
+        os_name             = if ($os -and $os.Caption) {{ $os.Caption }} else {{ "Windows" }}
+        brand               = $brand
+        model               = $model
+        serial_number       = $serialNumber
+        mac_address         = $macAddress
+        device_type         = $deviceType
+        windows_product_key = $winKey
+        office_version      = $officeVer
+        installed_apps      = [object[]]@($installedApps)
     }}
 }}
 
 try {{
     $metrics = Get-SystemMetrics
-    $payload = $metrics | ConvertTo-Json -Depth 4
+    $payload = $metrics | ConvertTo-Json -Depth 5
     $headers = @{{
         "Content-Type"  = "application/json"
         "X-Agent-Token" = $AGENT_SECRET
@@ -877,11 +966,14 @@ if [ -f /proc/meminfo ]; then
     fi
 fi
 
-# 7. Discos Lógicos (Partições montadas reais)
+# 7. Discos Lógicos (Partições montadas reais de dados)
 DISKS_JSON="["
 FIRST_DISK=1
 while read -r mountpoint total_mb avail_mb pct; do
     [ -z "$mountpoint" ] && continue
+    case "$mountpoint" in
+        /sys*|/dev*|/run*|/boot*|/var/lib/docker*) continue ;;
+    esac
     total_gb=$(awk -v m="$total_mb" 'BEGIN {{ printf "%.1f", m/1024 }}')
     free_gb=$(awk -v m="$avail_mb" 'BEGIN {{ printf "%.1f", m/1024 }}')
     clean_pct=$(echo "$pct" | tr -d '%')
@@ -891,41 +983,41 @@ while read -r mountpoint total_mb avail_mb pct; do
     fi
     DISKS_JSON="$DISKS_JSON{{\\"drive\\":\\"$mountpoint\\",\\"total_gb\\":$total_gb,\\"free_gb\\":$free_gb,\\"used_pct\\":${{clean_pct:-0}}}}"
     FIRST_DISK=0
-done < <(df -m -P -x tmpfs -x devtmpfs -x squashfs -x overlay -x iso9660 2>/dev/null | awk 'NR>1 {{print $6, $2, $4, $5}}')
+done < <(df -m -P -x tmpfs -x devtmpfs -x squashfs -x overlay -x iso9660 -x efivarfs 2>/dev/null | awk 'NR>1 {{print $6, $2, $4, $5}}')
 DISKS_JSON="$DISKS_JSON]"
 
-# 8. Discos Físicos (Hardware SSD vs HDD)
+# 8. Discos Físicos (Hardware SSD vs HDD lido via kernel /sys/block)
 PHYSICAL_DISKS_JSON="["
 FIRST_PDISK=1
-if command -v lsblk >/dev/null 2>&1; then
-    while read -r name model size rota type; do
-        [ -z "$name" ] && continue
-        media_type="SSD"
-        if [ "$rota" = "1" ]; then
-            media_type="HDD"
-        fi
-        
-        sz_clean=$(echo "$size" | sed 's/[^0-9.]//g')
-        unit=$(echo "$size" | sed 's/[0-9.]//g' | tr '[:lower:]' '[:upper:]')
-        sz_gb=0
-        if [[ "$unit" == *"T"* ]]; then
-            sz_gb=$(awk -v s="$sz_clean" 'BEGIN {{ printf "%d", s * 1024 }}')
-        elif [[ "$unit" == *"M"* ]]; then
-            sz_gb=$(awk -v s="$sz_clean" 'BEGIN {{ printf "%d", s / 1024 }}')
-        else
-            sz_gb=$(awk -v s="$sz_clean" 'BEGIN {{ printf "%d", s }}')
-        fi
-        
-        clean_model="${{model:-Disk}}"
-        [ "$clean_model" = "-" ] && clean_model="Disk $name"
-        
-        if [ "$FIRST_PDISK" -eq 0 ]; then
-            PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON,"
-        fi
-        PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON{{\\"model\\":\\"$clean_model\\",\\"media_type\\":\\"$media_type\\",\\"size_gb\\":${{sz_gb:-0}}}}"
-        FIRST_PDISK=0
-    done < <(lsblk -d -n -o NAME,MODEL,SIZE,ROTA,TYPE 2>/dev/null | grep -E '(disk|nvme)' || true)
-fi
+for blk in /sys/block/sd* /sys/block/nvme* /sys/block/vd*; do
+    [ -d "$blk" ] || continue
+    name=$(basename "$blk")
+    [ -f "$blk/partition" ] && continue
+    
+    sz_gb=0
+    if [ -f "$blk/size" ]; then
+        sz_sectors=$(cat "$blk/size" 2>/dev/null || echo 0)
+        sz_gb=$(awk -v s="$sz_sectors" 'BEGIN {{ printf "%d", (s * 512) / (1024*1024*1024) }}')
+    fi
+    
+    media_type="SSD"
+    if [ -f "$blk/queue/rotational" ]; then
+        rot=$(cat "$blk/queue/rotational" 2>/dev/null || echo 0)
+        [ "$rot" = "1" ] && media_type="HDD"
+    fi
+    
+    model="Disk $name"
+    if [ -f "$blk/device/model" ]; then
+        d_model=$(cat "$blk/device/model" 2>/dev/null | tr -d '"\\r\\n' | sed 's/^[ \\t]*//;s/[ \\t]*$//')
+        [ -n "$d_model" ] && model="$d_model"
+    fi
+    
+    if [ "$FIRST_PDISK" -eq 0 ]; then
+        PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON,"
+    fi
+    PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON{{\\"model\\":\\"$model\\",\\"media_type\\":\\"$media_type\\",\\"size_gb\\":${{sz_gb:-0}}}}"
+    FIRST_PDISK=0
+done
 PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON]"
 
 # 9. Sistema Operacional
@@ -951,6 +1043,12 @@ SERIAL=""
 [ -f /sys/class/dmi/id/product_name ] && MODEL=$(cat /sys/class/dmi/id/product_name 2>/dev/null | tr -d '"\\r\\n' || true)
 [ -f /sys/class/dmi/id/product_serial ] && SERIAL=$(cat /sys/class/dmi/id/product_serial 2>/dev/null | tr -d '"\\r\\n' || true)
 
+# Detecção e normalização de VMs Hyper-V, VMware e KVM
+if [ "$BRAND" = "Microsoft Corporation" ] && {{ [ -z "$MODEL" ] || [ "$MODEL" = "Virtual Machine" ]; }}; then
+    BRAND="Microsoft Hyper-V"
+    MODEL="Máquina Virtual"
+fi
+
 VIRT=""
 if command -v systemd-detect-virt >/dev/null 2>&1; then
     VIRT=$(systemd-detect-virt 2>/dev/null || true)
@@ -973,6 +1071,19 @@ elif [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
     DEVICE_TYPE="Desktop"
 fi
 
+# 13. Softwares e Aplicações Instaladas no Linux (Pacotes principais via dpkg)
+APPS_JSON="["
+FIRST_APP=1
+if command -v dpkg-query >/dev/null 2>&1; then
+    while IFS=$$'\\t' read -r pkg ver; do
+        [ -z "$pkg" ] && continue
+        if [ "$FIRST_APP" -eq 0 ]; then APPS_JSON="$APPS_JSON,"; fi
+        APPS_JSON="$APPS_JSON{{\\"name\\":\\"$pkg\\",\\"version\\":\\"$ver\\",\\"publisher\\":\\"Ubuntu/Debian\\",\\"install_date\\":\\"\\"}}"
+        FIRST_APP=0
+    done < <(dpkg-query -W -f='${{Package}}\\t${{Version}}\\n' 2>/dev/null | grep -E -i '^(docker|containerd|nginx|mysql|mariadb|postgres|apache2|zabbix|openssh|php|node|python3|fail2ban|ufw|samba|cron|rsyslog|redis|git|curl|vim|nano)' | head -n 40 || true)
+fi
+APPS_JSON="$APPS_JSON]"
+
 # Payload JSON
 PAYLOAD=$(cat <<EOF
 {{
@@ -993,7 +1104,8 @@ PAYLOAD=$(cat <<EOF
   "model": "$MODEL",
   "serial_number": "$SERIAL",
   "mac_address": "$MAC_ADDRESS",
-  "device_type": "$DEVICE_TYPE"
+  "device_type": "$DEVICE_TYPE",
+  "installed_apps": $APPS_JSON
 }}
 EOF
 )

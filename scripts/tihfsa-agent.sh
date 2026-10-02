@@ -123,11 +123,14 @@ if [ -f /proc/meminfo ]; then
     fi
 fi
 
-# 7. Discos Lógicos (Partições montadas reais)
+# 7. Discos Lógicos (Partições montadas reais de dados)
 DISKS_JSON="["
 FIRST_DISK=1
 while read -r mountpoint total_mb avail_mb pct; do
     [ -z "$mountpoint" ] && continue
+    case "$mountpoint" in
+        /sys*|/dev*|/run*|/boot*|/var/lib/docker*) continue ;;
+    esac
     total_gb=$(awk -v m="$total_mb" 'BEGIN { printf "%.1f", m/1024 }')
     free_gb=$(awk -v m="$avail_mb" 'BEGIN { printf "%.1f", m/1024 }')
     clean_pct=$(echo "$pct" | tr -d '%')
@@ -137,43 +140,41 @@ while read -r mountpoint total_mb avail_mb pct; do
     fi
     DISKS_JSON="$DISKS_JSON{\"drive\":\"$mountpoint\",\"total_gb\":$total_gb,\"free_gb\":$free_gb,\"used_pct\":${clean_pct:-0}}"
     FIRST_DISK=0
-done < <(df -m -P -x tmpfs -x devtmpfs -x squashfs -x overlay -x iso9660 2>/dev/null | awk 'NR>1 {print $6, $2, $4, $5}')
+done < <(df -m -P -x tmpfs -x devtmpfs -x squashfs -x overlay -x iso9660 -x efivarfs 2>/dev/null | awk 'NR>1 {print $6, $2, $4, $5}')
 DISKS_JSON="$DISKS_JSON]"
 
-# 8. Discos Físicos (Hardware SSD vs HDD)
+# 8. Discos Físicos (Hardware SSD vs HDD lido via kernel /sys/block)
 PHYSICAL_DISKS_JSON="["
 FIRST_PDISK=1
-if command -v lsblk >/dev/null 2>&1; then
-    while read -r name model size rota type; do
-        [ -z "$name" ] && continue
-        # Determina SSD ou HDD via ROTA (0=SSD/NVMe, 1=HDD)
-        media_type="SSD"
-        if [ "$rota" = "1" ]; then
-            media_type="HDD"
-        fi
-        
-        # Converte tamanho para GB numérico
-        sz_clean=$(echo "$size" | sed 's/[^0-9.]//g')
-        unit=$(echo "$size" | sed 's/[0-9.]//g' | tr '[:lower:]' '[:upper:]')
-        sz_gb=0
-        if [[ "$unit" == *"T"* ]]; then
-            sz_gb=$(awk -v s="$sz_clean" 'BEGIN { printf "%d", s * 1024 }')
-        elif [[ "$unit" == *"M"* ]]; then
-            sz_gb=$(awk -v s="$sz_clean" 'BEGIN { printf "%d", s / 1024 }')
-        else
-            sz_gb=$(awk -v s="$sz_clean" 'BEGIN { printf "%d", s }')
-        fi
-        
-        clean_model="${model:-Disk}"
-        [ "$clean_model" = "-" ] && clean_model="Disk $name"
-        
-        if [ "$FIRST_PDISK" -eq 0 ]; then
-            PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON,"
-        fi
-        PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON{\"model\":\"$clean_model\",\"media_type\":\"$media_type\",\"size_gb\":${sz_gb:-0}}"
-        FIRST_PDISK=0
-    done < <(lsblk -d -n -o NAME,MODEL,SIZE,ROTA,TYPE 2>/dev/null | grep -E '(disk|nvme)' || true)
-fi
+for blk in /sys/block/sd* /sys/block/nvme* /sys/block/vd*; do
+    [ -d "$blk" ] || continue
+    name=$(basename "$blk")
+    [ -f "$blk/partition" ] && continue
+    
+    sz_gb=0
+    if [ -f "$blk/size" ]; then
+        sz_sectors=$(cat "$blk/size" 2>/dev/null || echo 0)
+        sz_gb=$(awk -v s="$sz_sectors" 'BEGIN { printf "%d", (s * 512) / (1024*1024*1024) }')
+    fi
+    
+    media_type="SSD"
+    if [ -f "$blk/queue/rotational" ]; then
+        rot=$(cat "$blk/queue/rotational" 2>/dev/null || echo 0)
+        [ "$rot" = "1" ] && media_type="HDD"
+    fi
+    
+    model="Disk $name"
+    if [ -f "$blk/device/model" ]; then
+        d_model=$(cat "$blk/device/model" 2>/dev/null | tr -d '"\r\n' | sed 's/^[ \t]*//;s/[ \t]*$//')
+        [ -n "$d_model" ] && model="$d_model"
+    fi
+    
+    if [ "$FIRST_PDISK" -eq 0 ]; then
+        PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON,"
+    fi
+    PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON{\"model\":\"$model\",\"media_type\":\"$media_type\",\"size_gb\":${sz_gb:-0}}"
+    FIRST_PDISK=0
+done
 PHYSICAL_DISKS_JSON="$PHYSICAL_DISKS_JSON]"
 
 # 9. Sistema Operacional
@@ -200,7 +201,12 @@ SERIAL=""
 [ -f /sys/class/dmi/id/product_name ] && MODEL=$(cat /sys/class/dmi/id/product_name 2>/dev/null | tr -d '"\r\n' || true)
 [ -f /sys/class/dmi/id/product_serial ] && SERIAL=$(cat /sys/class/dmi/id/product_serial 2>/dev/null | tr -d '"\r\n' || true)
 
-# Tratamento para máquinas virtuais e containers
+# Detecção e normalização de VMs Hyper-V, VMware e KVM
+if [ "$BRAND" = "Microsoft Corporation" ] && { [ -z "$MODEL" ] || [ "$MODEL" = "Virtual Machine" ]; }; then
+    BRAND="Microsoft Hyper-V"
+    MODEL="Máquina Virtual"
+fi
+
 VIRT=""
 if command -v systemd-detect-virt >/dev/null 2>&1; then
     VIRT=$(systemd-detect-virt 2>/dev/null || true)
@@ -223,6 +229,19 @@ elif [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
     DEVICE_TYPE="Desktop"
 fi
 
+# 13. Softwares e Aplicações Instaladas no Linux (Pacotes principais via dpkg)
+APPS_JSON="["
+FIRST_APP=1
+if command -v dpkg-query >/dev/null 2>&1; then
+    while IFS=$'\t' read -r pkg ver; do
+        [ -z "$pkg" ] && continue
+        if [ "$FIRST_APP" -eq 0 ]; then APPS_JSON="$APPS_JSON,"; fi
+        APPS_JSON="$APPS_JSON{\"name\":\"$pkg\",\"version\":\"$ver\",\"publisher\":\"Ubuntu/Debian\",\"install_date\":\"\"}"
+        FIRST_APP=0
+    done < <(dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | grep -E -i '^(docker|containerd|nginx|mysql|mariadb|postgres|apache2|zabbix|openssh|php|node|python3|fail2ban|ufw|samba|cron|rsyslog|redis|git|curl|vim|nano)' | head -n 40 || true)
+fi
+APPS_JSON="$APPS_JSON]"
+
 # Monta Payload JSON sem dependência de jq
 PAYLOAD=$(cat <<EOF
 {
@@ -243,7 +262,8 @@ PAYLOAD=$(cat <<EOF
   "model": "$MODEL",
   "serial_number": "$SERIAL",
   "mac_address": "$MAC_ADDRESS",
-  "device_type": "$DEVICE_TYPE"
+  "device_type": "$DEVICE_TYPE",
+  "installed_apps": $APPS_JSON
 }
 EOF
 )

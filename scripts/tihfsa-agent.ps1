@@ -275,31 +275,81 @@ function Get-SystemMetrics {
         }
     } catch {}
 
+    # Chave de Ativação do Windows (BIOS OA3 / MSDM)
+    $winKey = ""
+    try {
+        $oa3 = (Get-CimInstance SoftwareLicensingService -ErrorAction SilentlyContinue).OA3xOriginalProductKey
+        if ($oa3) { $winKey = $oa3.Trim() }
+    } catch {}
+
+    # Versão do Microsoft Office / Microsoft 365 instalada
+    $officeVer = ""
+    try {
+        $officeKeys = @(
+            "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration",
+            "HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\ProductVersion",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\ProductVersion"
+        )
+        foreach ($k in $officeKeys) {
+            if (Test-Path $k) {
+                $prop = Get-ItemProperty $k -ErrorAction SilentlyContinue
+                if ($prop.ProductReleaseIds) {
+                    $officeVer = "$($prop.ProductReleaseIds) $($prop.VersionToReport)".Trim()
+                    break
+                }
+            }
+        }
+    } catch {}
+
+    # Inventário Completo de Softwares / Programas Instalados (Painel de Controle / Registro)
+    $installedApps = @()
+    try {
+        $uninstallPaths = @(
+            "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
+        $rawApps = Get-ItemProperty $uninstallPaths -ErrorAction SilentlyContinue | Where-Object {
+            $_.DisplayName -and ($_.SystemComponent -ne 1) -and ($_.ParentKeyName -eq $null) -and ($_.DisplayName -notmatch '^KB[0-9]+')
+        } | Select-Object -Property DisplayName, DisplayVersion, Publisher, InstallDate | Sort-Object DisplayName -Unique
+        
+        foreach ($app in $rawApps) {
+            $installedApps += @{
+                name         = $app.DisplayName.Trim()
+                version      = if ($app.DisplayVersion) { "$($app.DisplayVersion)".Trim() } else { "" }
+                publisher    = if ($app.Publisher) { "$($app.Publisher)".Trim() } else { "" }
+                install_date = if ($app.InstallDate) { "$($app.InstallDate)".Trim() } else { "" }
+            }
+        }
+    } catch {}
+
     return @{
-        hostname       = $env:COMPUTERNAME
-        logged_user    = Get-LoggedUser
-        ip_address     = $ipAddress
-        cpu_usage_pct  = $cpu
-        cpu_model      = $cpuModel
-        vcpu_count     = [int]$vcpuCount
-        ram_used_mb    = $ramUsedMB
-        ram_total_mb   = $ramTotalMB
-        ram_usage_pct  = $ramPct
-        disks          = [object[]]@($disks)
-        physical_disks = [object[]]@($physicalDisks)
-        uptime_hours   = $uptimeHours
-        os_name        = if ($os -and $os.Caption) { $os.Caption } else { "Windows" }
-        brand          = $brand
-        model          = $model
-        serial_number  = $serialNumber
-        mac_address    = $macAddress
-        device_type    = $deviceType
+        hostname            = $env:COMPUTERNAME
+        logged_user         = Get-LoggedUser
+        ip_address          = $ipAddress
+        cpu_usage_pct       = $cpu
+        cpu_model           = $cpuModel
+        vcpu_count          = [int]$vcpuCount
+        ram_used_mb         = $ramUsedMB
+        ram_total_mb        = $ramTotalMB
+        ram_usage_pct       = $ramPct
+        disks               = [object[]]@($disks)
+        physical_disks      = [object[]]@($physicalDisks)
+        uptime_hours        = $uptimeHours
+        os_name             = if ($os -and $os.Caption) { $os.Caption } else { "Windows" }
+        brand               = $brand
+        model               = $model
+        serial_number       = $serialNumber
+        mac_address         = $macAddress
+        device_type         = $deviceType
+        windows_product_key = $winKey
+        office_version      = $officeVer
+        installed_apps      = [object[]]@($installedApps)
     }
 }
 
 # Execução do Check-in
 $payloadObj = Get-SystemMetrics
-$payloadJson = $payloadObj | ConvertTo-Json -Depth 4
+$payloadJson = $payloadObj | ConvertTo-Json -Depth 5
 $headers = @{
     "Content-Type"  = "application/json"
     "X-Agent-Token" = $AgentSecret

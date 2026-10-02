@@ -3,7 +3,7 @@ import {
   Search, Monitor, HardDrive, Wifi, Phone, Plus, Server, 
   CheckCircle, AlertTriangle, AlertCircle, RefreshCw, CloudDownload, 
   X, Edit3, Trash2, Tag, Cpu, MapPin, Hash, ShieldAlert, Layers, Activity, Bell, Volume2,
-  User, Building, ChevronDown, Check
+  User, Building, ChevronDown, Check, Key, Package
 } from "lucide-react";
 import api from "../../api/client";
 import ZabbixItemsConfigModal from "../../components/ZabbixItemsConfigModal";
@@ -1298,6 +1298,255 @@ function ZabbixSyncModal({ isOpen, onClose, onImported }) {
   );
 }
 
+// Modal de Inventário Completo estilo GLPI (Softwares, Licenças, Hardware)
+function AssetInventoryModal({ asset, onClose }) {
+  const [activeTab, setActiveTab] = useState("hardware"); // 'hardware' | 'apps'
+  const [appSearch, setAppSearch] = useState("");
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  if (!asset) return null;
+
+  const specs = asset.specs || {};
+  const os = specs.os || "Não identificado";
+  const isWindows = os.toLowerCase().includes("win");
+  const isLinux = os.toLowerCase().includes("linux") || os.toLowerCase().includes("ubuntu") || os.toLowerCase().includes("debian");
+  const winKey = specs.windows_product_key || "";
+  const officeVer = specs.office_version || "";
+  const apps = specs.installed_apps || [];
+
+  const filteredApps = apps.filter((app) => {
+    const q = appSearch.toLowerCase();
+    return (
+      (app.name || "").toLowerCase().includes(q) ||
+      (app.publisher || "").toLowerCase().includes(q) ||
+      (app.version || "").toLowerCase().includes(q)
+    );
+  });
+
+  const copyKey = () => {
+    if (!winKey) return;
+    navigator.clipboard.writeText(winKey);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2500);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl max-w-4xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center shrink-0 shadow-xs">
+              <Layers size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-black text-slate-900">{asset.name}</h3>
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                  isWindows ? "bg-blue-50 text-blue-700 border-blue-200" : isLinux ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-slate-100 text-slate-600"
+                }`}>
+                  {isWindows ? "🪟 Windows" : isLinux ? "🐧 Linux" : "Dispositivo"}
+                </span>
+                <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                  {asset.ip_address || "Sem IP"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {asset.brand || "Genérico"} {asset.model || ""} • {asset.type} • Tag: {asset.asset_tag || "S/N"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Abas */}
+        <div className="flex items-center gap-2 border-b border-slate-100 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab("hardware")}
+            className={`px-4 py-2.5 text-xs font-black transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+              activeTab === "hardware" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <Cpu size={15} />
+            <span>Hardware & Sistema</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("apps")}
+            className={`px-4 py-2.5 text-xs font-black transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+              activeTab === "apps" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <Package size={15} />
+            <span>Programas Instalados ({apps.length})</span>
+          </button>
+        </div>
+
+        {/* Conteúdo com Scroll */}
+        <div className="overflow-y-auto flex-1 pr-1 space-y-4">
+          {activeTab === "hardware" && (
+            <div className="space-y-4">
+              {/* Cards de Resumo */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Sistema Operacional</span>
+                  <p className="text-xs font-black text-slate-800 mt-1 truncate" title={os}>{os}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Uptime: {specs.uptime_hours ? `${Math.round(specs.uptime_hours)}h` : "—"}</p>
+                </div>
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Processador (CPU)</span>
+                  <p className="text-xs font-black text-slate-800 mt-1 truncate" title={specs.cpu}>{specs.cpu || "—"}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{specs.vcpu ? `${specs.vcpu} vCPUs` : "1 CPU"}</p>
+                </div>
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Memória RAM</span>
+                  <p className="text-xs font-black text-slate-800 mt-1">{specs.ram || "—"}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{specs.ram_usage_pct ? `${specs.ram_usage_pct}% em uso` : ""}</p>
+                </div>
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Armazenamento</span>
+                  <p className="text-xs font-black text-slate-800 mt-1 truncate" title={specs.storage}>{specs.storage || "—"}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Partições Ativas</p>
+                </div>
+              </div>
+
+              {/* Seção Licenciamento & Seriais */}
+              <div className="p-4 bg-gradient-to-r from-blue-50/70 to-indigo-50/70 rounded-2xl border border-blue-200/80 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Key size={16} className="text-blue-700" />
+                  <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider">Licenciamento & Ativação</h4>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="bg-white p-3 rounded-xl border border-blue-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Chave de Ativação do Windows</span>
+                      <span className="font-mono font-black text-slate-800 text-xs">
+                        {winKey || (isWindows ? "Não detectada / Ativação Digital" : "Não aplicável (Linux)")}
+                      </span>
+                    </div>
+                    {winKey && (
+                      <button
+                        onClick={copyKey}
+                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-xs"
+                      >
+                        {copiedKey ? "Copiada!" : "Copiar"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-blue-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Pacote Office / Microsoft 365</span>
+                    <span className="font-bold text-slate-800 text-xs truncate block" title={officeVer}>
+                      {officeVer || (isWindows ? "Não detectado" : "Não aplicável (Linux)")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Detalhes de Discos / Partições */}
+              {specs.disks && specs.disks.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <HardDrive size={15} className="text-slate-500" /> Partições de Disco ({specs.disks.length})
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {specs.disks.map((d, idx) => (
+                      <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between font-bold">
+                          <span className="font-mono text-slate-800">{d.drive || "Unidade"}</span>
+                          <span className="text-slate-600">{d.total_gb} GB ({d.free_gb} GB livres)</span>
+                        </div>
+                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              (d.used_pct || 0) > 85 ? "bg-red-500" : (d.used_pct || 0) > 70 ? "bg-amber-500" : "bg-blue-500"
+                            }`}
+                            style={{ width: `${Math.min(100, Math.max(0, d.used_pct || 0))}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-slate-400">
+                          <span>Uso: {d.used_pct}%</span>
+                          <span>Tipo: {specs.storage?.includes("SSD") ? "SSD" : "HDD/Virtual"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "apps" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nome do software ou fornecedor..."
+                    value={appSearch}
+                    onChange={(e) => setAppSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                  />
+                </div>
+                <span className="text-xs font-bold text-slate-500 shrink-0">
+                  {filteredApps.length} de {apps.length}
+                </span>
+              </div>
+
+              {apps.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs space-y-2">
+                  <Package size={28} className="mx-auto text-slate-300" />
+                  <p className="font-bold text-slate-600">Nenhum software inventariado ainda.</p>
+                  <p className="text-[11px]">Execute o Sentinel Agent na estação para coletar a lista completa de programas instalados.</p>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-2xl overflow-hidden max-h-[420px] overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-2.5">Nome do Software</th>
+                        <th className="px-3 py-2.5">Versão</th>
+                        <th className="px-3 py-2.5">Fornecedor</th>
+                        <th className="px-3 py-2.5">Data Instalação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                      {filteredApps.map((app, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-4 py-2.5 font-bold text-slate-900">{app.name}</td>
+                          <td className="px-3 py-2.5 font-mono text-[11px] text-slate-500">{app.version || "—"}</td>
+                          <td className="px-3 py-2.5 text-slate-500 truncate max-w-[150px]">{app.publisher || "—"}</td>
+                          <td className="px-3 py-2.5 text-[11px] text-slate-400">{app.install_date || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="pt-3 border-t border-slate-100 flex justify-end shrink-0">
+          <button
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            Fechar Inventário
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Assets() {
   const [assets, setAssets] = useState([]);
   const [usersList, setUsersList] = useState([]);
@@ -1316,6 +1565,14 @@ export default function Assets() {
   
   const [isZabbixConfigModalOpen, setIsZabbixConfigModalOpen] = useState(false);
   const [assetForZabbixConfig, setAssetForZabbixConfig] = useState(null);
+
+  const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [inventoryAsset, setInventoryAsset] = useState(null);
+
+  const openInventoryModal = (asset) => {
+    setInventoryAsset(asset);
+    setIsInventoryModalOpen(true);
+  };
 
   const openZabbixConfigModal = (asset) => {
     if (!asset.ip_address) {
@@ -1651,6 +1908,13 @@ export default function Assets() {
 
                     <div className="flex items-center gap-1 shrink-0">
                       <button
+                        onClick={() => openInventoryModal(asset)}
+                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
+                        title="Ver Inventário Completo (GLPI)"
+                      >
+                        <Layers size={15} />
+                      </button>
+                      <button
                         onClick={() => openZabbixConfigModal(asset)}
                         className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors cursor-pointer"
                         title="Configurar Itens Zabbix"
@@ -1744,12 +2008,13 @@ export default function Assets() {
                   <tr className="border-b border-slate-100 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
                     <th className="px-5 py-4 pl-6">Dispositivo</th>
                     <th className="px-4 py-4">Patrimônio</th>
+                    <th className="px-4 py-4">Sistema Operacional</th>
                     <th className="px-4 py-4">IP</th>
                     <th className="px-4 py-4">Localização</th>
                     <th className="px-4 py-4">Responsável</th>
                     <th className="px-4 py-4">Conectividade</th>
                     <th className="px-4 py-4">Alertas NOC</th>
-                    <th className="px-5 py-4 text-right pr-6 w-28 sticky right-0 bg-slate-50/95 backdrop-blur-sm shadow-[-10px_0_15px_-10px_rgba(0,0,0,0.05)] z-10">Ações</th>
+                    <th className="px-5 py-4 text-right pr-6 w-32 sticky right-0 bg-slate-50/95 backdrop-blur-sm shadow-[-10px_0_15px_-10px_rgba(0,0,0,0.05)] z-10">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-semibold">
@@ -1787,6 +2052,20 @@ export default function Assets() {
                         )}
                       </td>
                       <td className="px-4 py-3.5 whitespace-nowrap">
+                        {asset.specs?.os ? (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                            asset.specs.os.toLowerCase().includes("win")
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : "bg-amber-50 text-amber-800 border-amber-200"
+                          }`}>
+                            <span>{asset.specs.os.toLowerCase().includes("win") ? "🪟" : "🐧"}</span>
+                            <span className="truncate max-w-[150px]" title={asset.specs.os}>{asset.specs.os}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-300 italic">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         {asset.ip_address ? (
                           <span className="font-mono text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
                             {asset.ip_address}
@@ -1815,8 +2094,15 @@ export default function Assets() {
                       <td className="px-4 py-3.5">
                         <ZabbixAlertBadge asset={asset} />
                       </td>
-                      <td className="px-5 py-3.5 text-right pr-6 w-32 whitespace-nowrap sticky right-0 bg-white group-hover:bg-slate-50/50 shadow-[-10px_0_15px_-10px_rgba(0,0,0,0.03)] z-10">
+                      <td className="px-5 py-3.5 text-right pr-6 w-36 whitespace-nowrap sticky right-0 bg-white group-hover:bg-slate-50/50 shadow-[-10px_0_15px_-10px_rgba(0,0,0,0.03)] z-10">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openInventoryModal(asset)}
+                            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer"
+                            title="Inventário de Softwares, Licenças e Hardware (GLPI)"
+                          >
+                            <Layers size={16} />
+                          </button>
                           <button
                             onClick={() => openZabbixConfigModal(asset)}
                             className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer"
@@ -1887,6 +2173,17 @@ export default function Assets() {
         onClose={() => setIsZabbixConfigModalOpen(false)}
         asset={assetForZabbixConfig}
       />
+
+      {/* Modal de Inventário Completo GLPI */}
+      {isInventoryModalOpen && inventoryAsset && (
+        <AssetInventoryModal
+          asset={inventoryAsset}
+          onClose={() => {
+            setIsInventoryModalOpen(false);
+            setInventoryAsset(null);
+          }}
+        />
+      )}
 
     </div>
   );
