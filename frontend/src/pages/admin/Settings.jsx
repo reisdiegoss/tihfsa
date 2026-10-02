@@ -48,6 +48,19 @@ import { useAuth } from "../../contexts/AuthContext";
 import ChangePasswordModal from "../../components/common/ChangePasswordModal";
 import SLASettingsSection from "../../components/admin/SLASettingsSection";
 
+function formatApiError(err, fallback = "Ocorreu um erro na requisição.") {
+  const detail = err?.response?.data?.detail;
+  if (!detail) return err?.message || fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(item => item?.msg || JSON.stringify(item)).join("\n");
+  }
+  if (typeof detail === "object") {
+    return detail.msg || JSON.stringify(detail);
+  }
+  return String(detail);
+}
+
 export default function Settings() {
   const { user, canChangePassword } = useAuth();
   const [activeTab, setActiveTab] = useState("ad");
@@ -459,15 +472,15 @@ export default function Settings() {
   const [savingCategory, setSavingCategory] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [editCategoryModalOpen, setEditCategoryModalOpen] = useState(false);
-  const [editCategoryName, setEditCategoryName] = useState("");
-  const [editCategoryDesc, setEditCategoryDesc] = useState("");
+  const [editingCategoryName, setEditingCategoryName] = useState("");
+  const [editingCategoryZabbix, setEditingCategoryZabbix] = useState("");
   const [savingEditCategory, setSavingEditCategory] = useState(false);
 
   // Departments Management States
   const [deptSearch, setDeptSearch] = useState("");
   const [deptModalOpen, setDeptModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState(null);
-  const [deptNameInput, setDeptNameInput] = useState("");
+  const [deptName, setDeptName] = useState("");
   const [savingDept, setSavingDept] = useState(false);
 
   // User Department Selection State (for editing single user)
@@ -661,23 +674,23 @@ export default function Settings() {
 
   const handleOpenEditCategory = (cat) => {
     setEditingCategory(cat);
-    setEditCategoryName(cat.name);
-    setEditCategoryDesc(cat.description || "");
+    setEditingCategoryName(cat.name || "");
+    setEditingCategoryZabbix(cat.zabbix_group_name || "");
     setEditCategoryModalOpen(true);
   };
 
   const handleSaveEditCategory = async (e) => {
     e.preventDefault();
-    if (!editCategoryName.trim() || !editingCategory) return;
+    if (!editingCategoryName.trim() || !editingCategory) return;
     setSavingEditCategory(true);
     try {
-      await api.put(`/categories/${editingCategory.id}?name=${encodeURIComponent(editCategoryName.trim())}&description=${encodeURIComponent(editCategoryDesc.trim())}`);
+      await api.put(`/categories/${editingCategory.id}?name=${encodeURIComponent(editingCategoryName.trim())}&zabbix_group_name=${encodeURIComponent(editingCategoryZabbix.trim())}`);
       setEditCategoryModalOpen(false);
       fetchCategoriesWithProblems();
       alert("Categoria atualizada com sucesso!");
     } catch (err) {
       console.error(err);
-      alert("Erro ao atualizar categoria.");
+      alert(formatApiError(err, "Erro ao atualizar categoria."));
     } finally {
       setSavingEditCategory(false);
     }
@@ -693,59 +706,65 @@ export default function Settings() {
       alert("Categoria desativada com sucesso!");
     } catch (err) {
       console.error(err);
-      alert("Erro ao desativar categoria.");
+      alert(formatApiError(err, "Erro ao desativar categoria."));
     }
   };
 
-  const handleOpenCreateDept = () => {
-    setEditingDept(null);
-    setDeptNameInput("");
+  const handleOpenDeptModal = (dept = null) => {
+    if (dept && typeof dept === "object") {
+      setEditingDept(dept);
+      setDeptName(dept.name || "");
+    } else {
+      setEditingDept(null);
+      setDeptName("");
+    }
     setDeptModalOpen(true);
   };
 
-  const handleOpenEditDept = (dept) => {
-    setEditingDept(dept);
-    setDeptNameInput(dept.name);
-    setDeptModalOpen(true);
-  };
+  const handleOpenCreateDept = () => handleOpenDeptModal(null);
+  const handleOpenEditDept = (dept) => handleOpenDeptModal(dept);
 
   const handleSaveDept = async (e) => {
     e.preventDefault();
-    if (!deptNameInput.trim()) return;
+    if (!deptName.trim()) return;
     setSavingDept(true);
     try {
       if (editingDept) {
-        await api.put(`/departments/${editingDept.id}`, { name: deptNameInput.trim() });
-        alert(`Setor '${deptNameInput.trim()}' atualizado com sucesso!`);
+        await api.put(`/departments/${editingDept.id}`, { name: deptName.trim() });
+        alert(`Setor '${deptName.trim()}' atualizado com sucesso!`);
       } else {
-        await api.post("/departments/", { name: deptNameInput.trim() });
-        alert(`Setor '${deptNameInput.trim()}' criado com sucesso!`);
+        await api.post("/departments/", { name: deptName.trim() });
+        alert(`Setor '${deptName.trim()}' criado com sucesso!`);
       }
       setDeptModalOpen(false);
-      setDeptNameInput("");
+      setDeptName("");
       setEditingDept(null);
       fetchSystemUsers();
     } catch (err) {
       console.error(err);
-      const msg = err.response?.data?.detail || "Erro ao salvar setor.";
-      alert(msg);
+      alert(formatApiError(err, "Erro ao salvar setor."));
     } finally {
       setSavingDept(false);
     }
   };
 
-  const handleDeleteDept = async (dept) => {
-    if (!window.confirm(`Tem certeza que deseja excluir o setor '${dept.name}'? Os colaboradores vinculados ficarão como 'Geral / Não atribuído'.`)) {
+  const handleDeleteDept = async (deptOrId, nameFallback) => {
+    const id = typeof deptOrId === "object" ? deptOrId?.id : deptOrId;
+    const name = (typeof deptOrId === "object" ? deptOrId?.name : nameFallback) || `ID ${id}`;
+    if (!id) {
+      alert("ID do setor inválido ou não informado.");
+      return;
+    }
+    if (!window.confirm(`Tem certeza que deseja excluir o setor '${name}'? Os colaboradores vinculados ficarão como 'Geral / Não atribuído'.`)) {
       return;
     }
     try {
-      await api.delete(`/departments/${dept.id}`);
-      alert(`Setor '${dept.name}' excluído com sucesso!`);
+      await api.delete(`/departments/${id}`);
+      alert(`Setor '${name}' excluído com sucesso!`);
       fetchSystemUsers();
     } catch (err) {
       console.error(err);
-      const msg = err.response?.data?.detail || "Erro ao excluir setor.";
-      alert(msg);
+      alert(formatApiError(err, "Erro ao excluir setor."));
     }
   };
 
