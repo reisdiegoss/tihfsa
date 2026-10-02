@@ -1303,6 +1303,7 @@ function AssetInventoryModal({ asset, onClose }) {
   const [activeTab, setActiveTab] = useState("hardware"); // 'hardware' | 'apps'
   const [appSearch, setAppSearch] = useState("");
   const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedOfficeKey, setCopiedOfficeKey] = useState(false);
 
   if (!asset) return null;
 
@@ -1312,6 +1313,8 @@ function AssetInventoryModal({ asset, onClose }) {
   const isLinux = os.toLowerCase().includes("linux") || os.toLowerCase().includes("ubuntu") || os.toLowerCase().includes("debian");
   const winKey = specs.windows_product_key || "";
   const officeVer = specs.office_version || "";
+  const officeKey = specs.office_product_key || "";
+  const officeStatus = specs.office_status || "";
   const apps = specs.installed_apps || [];
 
   const filteredApps = apps.filter((app) => {
@@ -1328,6 +1331,13 @@ function AssetInventoryModal({ asset, onClose }) {
     navigator.clipboard.writeText(winKey);
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2500);
+  };
+
+  const copyOfficeKey = () => {
+    if (!officeKey) return;
+    navigator.clipboard.writeText(officeKey);
+    setCopiedOfficeKey(true);
+    setTimeout(() => setCopiedOfficeKey(false), 2500);
   };
 
   return (
@@ -1422,12 +1432,13 @@ function AssetInventoryModal({ asset, onClose }) {
                   <Key size={16} className="text-blue-700" />
                   <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider">Licenciamento & Ativação</h4>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  {/* Windows Key */}
                   <div className="bg-white p-3 rounded-xl border border-blue-100 flex items-center justify-between">
                     <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Chave de Ativação do Windows</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Chave do Windows (BIOS/OA3)</span>
                       <span className="font-mono font-black text-slate-800 text-xs">
-                        {winKey || (isWindows ? "Não detectada / Ativação Digital" : "Não aplicável (Linux)")}
+                        {winKey || (isWindows ? "Ativação Digital / OEM" : "Não aplicável (Linux)")}
                       </span>
                     </div>
                     {winKey && (
@@ -1439,11 +1450,36 @@ function AssetInventoryModal({ asset, onClose }) {
                       </button>
                     )}
                   </div>
+
+                  {/* Office Key */}
+                  <div className="bg-white p-3 rounded-xl border border-blue-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Chave do Office (Últimos 5)</span>
+                      <span className="font-mono font-black text-slate-800 text-xs">
+                        {officeKey || (isWindows ? "Não detectada" : "Não aplicável")}
+                      </span>
+                    </div>
+                    {officeKey && (
+                      <button
+                        onClick={copyOfficeKey}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-xs"
+                      >
+                        {copiedOfficeKey ? "Copiada!" : "Copiar"}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Office Version & Status */}
                   <div className="bg-white p-3 rounded-xl border border-blue-100">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Pacote Office / Microsoft 365</span>
-                    <span className="font-bold text-slate-800 text-xs truncate block" title={officeVer}>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Edição do Office & Status</span>
+                    <p className="font-bold text-slate-800 text-xs truncate" title={officeVer}>
                       {officeVer || (isWindows ? "Não detectado" : "Não aplicável (Linux)")}
-                    </span>
+                    </p>
+                    {officeStatus && (
+                      <span className="inline-block mt-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                        {officeStatus}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

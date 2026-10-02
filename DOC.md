@@ -608,7 +608,7 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Botão de acesso rápido em cada ativo (card mobile e tabela desktop).
         - **Aba Hardware & Sistema**:
           - Resumo com Sistema Operacional, Uptime detalhado, Processador, vCPUs, Memória RAM Total e em uso.
-          - Licenciamento & Seriais: Extração da Chave de Ativação do Windows (gravada na BIOS OA3 / MSDM) com botão de cópia rápida e versão do Microsoft Office / Microsoft 365 instalada.
+          - Licenciamento & Seriais: Extração da Chave de Ativação do Windows (gravada na BIOS OA3 / MSDM) e da Chave de Produto do Microsoft Office (últimos 5 caracteres via OSPP `ospp.vbs /dstatus` para conferência de inventário) com botões de cópia rápida em 1 clique, além da identificação da edição exata do Office e status de ativação (`Ativado / LICENSED`).
           - Partições de Disco: Gráficos de barra de uso, espaço livre e capacidade total com identificação de SSD.
         - **Aba Programas Instalados (Inventário de Softwares)**:
           - Tabela completa de softwares instalados coletados pelo Sentinel Agent via Registro do Windows (`Uninstall`) ou pacotes principais via `dpkg-query` no Linux.

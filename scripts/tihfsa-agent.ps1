@@ -282,24 +282,59 @@ function Get-SystemMetrics {
         if ($oa3) { $winKey = $oa3.Trim() }
     } catch {}
 
-    # Versão do Microsoft Office / Microsoft 365 instalada
+    # Licença, Versão e Chave de Ativação do Microsoft Office
     $officeVer = ""
-    try {
-        $officeKeys = @(
-            "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration",
-            "HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\ProductVersion",
-            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\ProductVersion"
-        )
-        foreach ($k in $officeKeys) {
-            if (Test-Path $k) {
-                $prop = Get-ItemProperty $k -ErrorAction SilentlyContinue
+    $officeKey = ""
+    $officeStatus = ""
+
+    $osppPaths = @(
+        "$env:ProgramFiles\Microsoft Office\Office16\ospp.vbs",
+        "${env:ProgramFiles(x86)}\Microsoft Office\Office16\ospp.vbs",
+        "$env:ProgramFiles\Microsoft Office\Office15\ospp.vbs",
+        "${env:ProgramFiles(x86)}\Microsoft Office\Office15\ospp.vbs"
+    )
+
+    foreach ($path in $osppPaths) {
+        if (Test-Path $path) {
+            try {
+                $out = (& cscript //nologo $path /dstatus 2>$null) -join "`n"
+                if ($out -match "LICENSE NAME:\s*([^\r\n]+)") {
+                    $rawName = $matches[1].Trim()
+                    if ($rawName -like "*HomeBusiness*") { $officeVer = "Microsoft Office Home & Business" }
+                    elseif ($rawName -like "*ProPlus*") { $officeVer = "Microsoft Office Professional Plus" }
+                    elseif ($rawName -like "*Standard*") { $officeVer = "Microsoft Office Standard" }
+                    elseif ($rawName -like "*O365*" -or $rawName -like "*M365*") { $officeVer = "Microsoft 365 Apps" }
+                    else { $officeVer = $rawName }
+                    if ($rawName -match "Office\s*(20\d{2}|\d{2})") {
+                        $verNum = $matches[1]
+                        if ($verNum -eq "21" -or $verNum -eq "2021") { $officeVer += " 2021" }
+                        elseif ($verNum -eq "19" -or $verNum -eq "2019") { $officeVer += " 2019" }
+                        elseif ($verNum -eq "16" -or $verNum -eq "2016") { $officeVer += " 2016" }
+                    }
+                }
+                if ($out -match "LICENSE STATUS:\s*([^\r\n]+)") {
+                    $st = $matches[1].Trim()
+                    $officeStatus = if ($st -like "*LICENSED*") { "Ativado (LICENSED)" } else { $st }
+                }
+                if ($out -match "Last 5 characters of installed product key:\s*([A-Z0-9]+)") {
+                    $officeKey = "XXXXX-XXXXX-XXXXX-XXXXX-$($matches[1].Trim())"
+                }
+            } catch {}
+            if ($officeKey -or $officeVer) { break }
+        }
+    }
+
+    if (-not $officeVer) {
+        try {
+            $c2r = "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration"
+            if (Test-Path $c2r) {
+                $prop = Get-ItemProperty $c2r -ErrorAction SilentlyContinue
                 if ($prop.ProductReleaseIds) {
                     $officeVer = "$($prop.ProductReleaseIds) $($prop.VersionToReport)".Trim()
-                    break
                 }
             }
-        }
-    } catch {}
+        } catch {}
+    }
 
     # Inventário Completo de Softwares / Programas Instalados (Painel de Controle / Registro)
     $installedApps = @()
@@ -343,6 +378,8 @@ function Get-SystemMetrics {
         device_type         = $deviceType
         windows_product_key = $winKey
         office_version      = $officeVer
+        office_product_key  = $officeKey
+        office_status       = $officeStatus
         installed_apps      = [object[]]@($installedApps)
     }
 }
