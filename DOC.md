@@ -597,6 +597,19 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - **Botão "Testar Som"**: Disponível tanto no cabeçalho do Wallboard (`/tv/helpdesk`) quanto no Hub de Monitoramento (`/admin/monitoring`), com feedback imediato via toast sobre o disparo e orientações sobre dispositivo de áudio padrão do Windows e desativação de som do site.
         - **Desbloqueio de Autoplay do Navegador**: Banner pulsante intuitivo para autorizar a reprodução de áudio com um único clique em janelas secundárias/estendidas.
       - **Sincronização Contínua**: Polling automático a cada 15 segundos imune a throttling de abas em segundo plano com indicador visual de countdown e botão de tela cheia nativa (`requestFullscreen`).
-
-
-
+    - **Sentinel Agent & Inventário Completo CMDB (Estilo GLPI / Zabbix)**:
+      - **Visualização de Sistema Operacional no Grid de Ativos**:
+        - Coluna dedicada na tabela desktop e badge nos cards de ativos exibindo o Sistema Operacional detectado pelo Sentinel Agent com ícones visuais (🪟 Windows e 🐧 Linux) e tipografia de alto contraste.
+      - **Normalização de Fabricante para Ambientes Virtualizados (Hyper-V, VMware, KVM)**:
+        - Detecção automática de máquinas virtuais corporativas: quando o DMI informa `Microsoft Corporation` e `Virtual Machine`, o sistema padroniza para `Microsoft Hyper-V` e `Máquina Virtual`, distinguindo claramente VMs de hardware físico.
+        - Arredondamento comercial de RAM no backend: ajusta valores de memória com reserva de kernel (ex: 32.094 MB) para capacidades nominais de hardware (32 GB, 16 GB, 8 GB, 64 GB, 128 GB).
+        - Filtragem de partições virtuais e efêmeras de Linux: remove `/sys/firmware/efi/efivars`, `/boot/efi`, `/dev/*`, preservando no inventário apenas partições reais de dados (`/`, `/home`, etc.).
+      - **Modal de Inventário Completo estilo GLPI (`AssetInventoryModal`)**:
+        - Botão de acesso rápido em cada ativo (card mobile e tabela desktop).
+        - **Aba Hardware & Sistema**:
+          - Resumo com Sistema Operacional, Uptime detalhado, Processador, vCPUs, Memória RAM Total e em uso.
+          - Licenciamento & Seriais: Extração da Chave de Ativação do Windows (gravada na BIOS OA3 / MSDM) com botão de cópia rápida e versão do Microsoft Office / Microsoft 365 instalada.
+          - Partições de Disco: Gráficos de barra de uso, espaço livre e capacidade total com identificação de SSD.
+        - **Aba Programas Instalados (Inventário de Softwares)**:
+          - Tabela completa de softwares instalados coletados pelo Sentinel Agent via Registro do Windows (`Uninstall`) ou pacotes principais via `dpkg-query` no Linux.
+          - Campo de busca em tempo real para filtragem instantânea por nome do software ou fornecedor.
