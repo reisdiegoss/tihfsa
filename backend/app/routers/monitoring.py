@@ -172,6 +172,16 @@ def agent_checkin(
             )
             .first()
         )
+        if user and not user.is_active:
+            user.is_active = True
+            db.flush()
+        elif not user:
+            # Se o usuário foi resetado ou deletado do banco, busca sob demanda no AD
+            try:
+                from app.services.ad_sync import import_single_user_from_ad
+                user = import_single_user_from_ad(db, username=clean_user)
+            except Exception:
+                pass
 
     # 2. Localização do Ativo no CMDB (por Serial Number, Hostname ou IP)
     asset = None
@@ -282,6 +292,7 @@ def agent_checkin(
         "office_product_key": data.office_product_key,
         "office_status": data.office_status,
         "installed_apps": data.installed_apps or [],
+        "logged_user": clean_user or data.logged_user,
     }
 
     # Inferência inteligente do tipo de ativo (Servidor, Notebook ou Desktop)
@@ -316,7 +327,8 @@ def agent_checkin(
         db.add(asset)
         db.flush()
     else:
-        # Atualização contínua do Ativo existente
+        # Atualização contínua do Ativo existente (Garante que fique ativo no CMDB)
+        asset.is_active = True
         if brand_clean:
             asset.brand = brand_clean
         if model_clean:
@@ -331,7 +343,7 @@ def agent_checkin(
             asset.type = "Servidor"
         elif data.device_type and asset.type in ("Outro", "Desconhecido"):
             asset.type = data.device_type
-        if user and not asset.assigned_user_id:
+        if user:
             asset.assigned_user_id = user.id
 
         merged_specs = dict(asset.specs or {})

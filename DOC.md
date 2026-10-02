@@ -622,3 +622,13 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - **Zero interferência visual**: Nenhum pop-up, alerta ou erro é exibido na tela do usuário.
         - O erro de conectividade é registrado de forma discreta no arquivo local `C:\ProgramData\TIHFSA-Agent\agent.log` e o processo encerra com código 0 (`exit 0`).
         - A sincronização é retomada automaticamente de forma transparente no próximo ciclo de 15 minutos assim que a máquina reconectar à rede do Fasano ou à VPN.
+      - **Sincronização Fiel de Setores do Active Directory (Por OU)**:
+        - Mapeamento estrito de setores baseado na OU de origem de cada usuário, impedindo que contas sem o atributo `department` preenchido no LDAP caiam erroneamente no departamento de TI.
+        - Se o usuário possuir departamento explícito no AD diferente do nome da OU, o sistema cria e vincula ao departamento correto individualmente.
+      - **Reset Seguro de Dados do AD (`/api/v1/ad/reset`)**:
+        - Botão "Resetar Dados do AD" disponível tanto na tela de Configurações quanto na tela de Sincronização AD (`ADImport.jsx`).
+        - Proteção de integridade referencial: preserva usuários com histórico (chamados, interações em `ticket_interactions`), desvinculando-os dos setores antigos sem disparar `ForeignKeyViolation`, enquanto remove com segurança os demais usuários e setores do AD para reimportação limpa do zero.
+      - **Auto-Reconexão de Ativos & Auto-Recuperação de Colaboradores (`relink_assets_and_checkins_to_users`)**:
+        - Mesmo que usuários do AD sejam resetados ou deletados, assim que forem reimportados, o CMDB restaura automaticamente o vínculo de cada ativo com seu colaborador com base no histórico de `logged_user`.
+        - Durante o check-in do Sentinel Agent, se o usuário logado não existir no banco local, o sistema efetua busca sob demanda no AD via LDAP para cadastrá-lo imediatamente e vinculá-lo ao equipamento.
+        - Reativação automática no CMDB (`is_active = True`) para qualquer ativo que envie telemetria via agente (resolvendo casos de ativos inativados no passado como servidores e estações).

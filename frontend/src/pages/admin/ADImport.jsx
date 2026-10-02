@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Users, Server, RefreshCw, CheckSquare, Square, DownloadCloud, AlertCircle } from "lucide-react";
+import { Users, Server, RefreshCw, CheckSquare, Square, DownloadCloud, AlertCircle, Trash2 } from "lucide-react";
 import api from "../../api/client";
 
 export default function ADImport() {
@@ -20,6 +20,25 @@ export default function ADImport() {
       alert("Erro ao buscar OUs. Verifique a conexão com o LDAP.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetAd = async () => {
+    if (!window.confirm("Atenção: Deseja realmente ZERAR todos os setores e colaboradores importados do AD? Isso permitirá que você reimporte do zero com os setores corretos.")) {
+      return;
+    }
+    setSyncing(true);
+    setReport(null);
+    try {
+      const { data } = await api.post("/ad/reset");
+      alert(data.message || "Dados do AD resetados com sucesso!");
+      fetchOus();
+    } catch (err) {
+      console.error(err);
+      const detail = err.response?.data?.detail || err.message || "Erro de conexão";
+      alert(`Erro ao resetar dados do AD: ${detail}`);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -70,14 +89,25 @@ export default function ADImport() {
           </p>
         </div>
         
-        <button
-          onClick={fetchOus}
-          disabled={loading || syncing}
-          className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold shadow-xs hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          Buscar OUs
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleResetAd}
+            disabled={loading || syncing}
+            className="flex items-center gap-2 bg-red-50 text-red-700 hover:bg-red-100 px-4 py-2.5 rounded-xl border border-red-200 text-sm font-bold transition-colors cursor-pointer disabled:opacity-50"
+            title="Limpar e resetar setores e usuários do AD para reimportar"
+          >
+            <Trash2 size={16} />
+            Resetar Dados do AD
+          </button>
+          <button
+            onClick={fetchOus}
+            disabled={loading || syncing}
+            className="flex items-center gap-2 bg-white text-slate-700 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold shadow-xs hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            Buscar OUs
+          </button>
+        </div>
       </div>
 
       {report && (

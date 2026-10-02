@@ -93,39 +93,62 @@ def reset_ad_data(
     db: Session = Depends(get_db),
     _: User = Depends(require_technician),
 ):
-    """Zera e limpa setores e usuários importados do AD para permitir re-testar do zero."""
+    """
+    Zera e limpa setores e usuários importados do AD protegendo chaves estrangeiras.
+    Permite importar tudo novamente do zero com segurança total.
+    """
     from app.models.department import Department
     from app.models.asset import Asset
     from app.models.ticket import Ticket
     from app.config import settings
+    from sqlalchemy import text
 
     # 1. Obter usuário admin root
     admin = db.query(User).filter(User.ad_username == settings.admin_username).first()
     admin_id = admin.id if admin else 1
 
-    # 2. Desvincular ativos de usuários
-    db.query(Asset).update({Asset.assigned_user_id: None})
-
-    # 3. Reatribuir chamados de requisições para o admin root para não quebrar FKs
-    db.query(Ticket).filter(Ticket.requester_id != admin_id).update({Ticket.requester_id: admin_id})
-    db.query(Ticket).filter(Ticket.technician_id != admin_id).update({Ticket.technician_id: None})
-
-    # 4. Desvincular departamentos e gestores dos usuários
+    # 2. Desvincular gestores e departamentos
+    db.query(Department).update({Department.manager_id: None})
+    try:
+        db.execute(text("DELETE FROM department_managers"))
+    except Exception:
+        pass
     db.query(User).update({User.department_id: None, User.manager_id: None})
-    
-    # 5. Remover usuários importados do AD (mantendo o admin root local e apartamentos)
-    deleted_users = db.query(User).filter(
+
+    # 3. Identificar IDs de usuários protegidos (que possuem chamados ou interações no sistema)
+    protected_user_ids = {admin_id}
+    for row in db.execute(text("SELECT requester_id FROM tickets WHERE requester_id IS NOT NULL")).fetchall():
+        protected_user_ids.add(row[0])
+    for row in db.execute(text("SELECT technician_id FROM tickets WHERE technician_id IS NOT NULL")).fetchall():
+        protected_user_ids.add(row[0])
+    for row in db.execute(text("SELECT user_id FROM ticket_interactions WHERE user_id IS NOT NULL")).fetchall():
+        protected_user_ids.add(row[0])
+
+    # 4. Remover com segurança usuários sem vínculos protegidos
+    q_del = db.query(User).filter(
         User.ad_username.isnot(None),
         User.id != admin_id,
-        User.is_room == False
-    ).delete(synchronize_session=False)
+        User.is_room == False,
+        ~User.id.in_(protected_user_ids)
+    )
+    deleted_users = q_del.delete(synchronize_session=False)
 
-    # 6. Remover todos os setores
-    depts_deleted = db.query(Department).delete(synchronize_session=False)
+    # 5. Para os usuários protegidos do AD (com histórico), resetar departamento para permitir remapeamento
+    db.query(User).filter(
+        User.id.in_(protected_user_ids),
+        User.id != admin_id,
+        User.is_room == False
+    ).update({User.department_id: None, User.manager_id: None}, synchronize_session=False)
+
+    # 6. Remover os setores que foram criados/importados do AD
+    depts_deleted = db.query(Department).filter(
+        Department.ad_ou_dn.isnot(None)
+    ).delete(synchronize_session=False)
     
     db.commit()
     return {
         "message": "Dados do AD resetados com sucesso! Você pode iniciar a importação do zero.", 
         "departments_deleted": depts_deleted,
-        "users_deleted": deleted_users
+        "users_deleted": deleted_users,
+        "users_preserved": len(protected_user_ids) - 1
     }
