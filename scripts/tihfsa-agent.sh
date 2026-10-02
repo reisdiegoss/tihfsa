@@ -78,23 +78,24 @@ fi
 # 5. Uso de CPU (%) em 0.5s via /proc/stat
 CPU_USAGE=0
 if [ -f /proc/stat ]; then
-    read -r _ u1 n1 s1 i1 w1 x1 y1 z1 < /proc/stat || true
+    STAT1=$(awk '/^cpu / {print $2+$3+$4+$5+$6+$7+$8+$9, $5+$6}' /proc/stat 2>/dev/null || true)
     sleep 0.5
-    read -r _ u2 n2 s2 i2 w2 x2 y2 z2 < /proc/stat || true
+    STAT2=$(awk '/^cpu / {print $2+$3+$4+$5+$6+$7+$8+$9, $5+$6}' /proc/stat 2>/dev/null || true)
     
-    previdle=$(( ${i1:-0} + ${w1:-0} ))
-    idle=$(( ${i2:-0} + ${w2:-0} ))
-    prevnonidle=$(( ${u1:-0} + ${n1:-0} + ${s1:-0} + ${x1:-0} + ${y1:-0} + ${z1:-0} ))
-    nonidle=$(( ${u2:-0} + ${n2:-0} + ${s2:-0} + ${x2:-0} + ${y2:-0} + ${z2:-0} ))
-    prevtotal=$(( previdle + prevnonidle ))
-    total=$(( idle + nonidle ))
-    totald=$(( total - prevtotal ))
-    idled=$(( idle - previdle ))
+    T1=$(echo "$STAT1" | awk '{print $1}')
+    I1=$(echo "$STAT1" | awk '{print $2}')
+    T2=$(echo "$STAT2" | awk '{print $1}')
+    I2=$(echo "$STAT2" | awk '{print $2}')
     
-    if [ "$totald" -gt 0 ]; then
-        CPU_USAGE=$(( ( (totald - idled) * 100 ) / totald ))
-        [ "$CPU_USAGE" -lt 0 ] && CPU_USAGE=0
-        [ "$CPU_USAGE" -gt 100 ] && CPU_USAGE=100
+    if [ -n "$T1" ] && [ -n "$T2" ]; then
+        DIFF_TOTAL=$(( T2 - T1 ))
+        DIFF_IDLE=$(( I2 - I1 ))
+        
+        if [ "$DIFF_TOTAL" -gt 0 ]; then
+            CPU_USAGE=$(( ((DIFF_TOTAL - DIFF_IDLE) * 100) / DIFF_TOTAL ))
+            [ "$CPU_USAGE" -lt 0 ] && CPU_USAGE=0
+            [ "$CPU_USAGE" -gt 100 ] && CPU_USAGE=100
+        fi
     fi
 fi
 
