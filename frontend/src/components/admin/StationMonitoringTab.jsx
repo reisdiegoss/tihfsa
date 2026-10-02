@@ -86,10 +86,11 @@ export default function StationMonitoringTab() {
     : `${window.location.origin}/api/v1`;
 
   const winOneLine = `(curl.exe -k -s "${apiBase}/monitoring/agent/script" | Out-String) | iex`;
+  const winInstallOneLine = `(curl.exe -k -s "${apiBase}/monitoring/agent/install" | Out-String) | iex`;
   const linuxOneLine = `curl -k -s "${apiBase}/monitoring/agent/linux-script" | bash`;
   const linuxInstallOneLine = `curl -k -s "${apiBase}/monitoring/agent/linux-install" | sudo bash`;
 
-  const activeOneLine = selectedOs === "windows" ? winOneLine : linuxOneLine;
+  const activeOneLine = selectedOs === "windows" ? winInstallOneLine : linuxInstallOneLine;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -574,27 +575,33 @@ export default function StationMonitoringTab() {
 
                 {/* Opção 2: Instalação Permanente Windows */}
                 <div className="space-y-2">
-                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <Shield size={14} className="text-blue-500" /> 2. Instalação Permanente (Roda a cada 1 minuto)
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Shield size={14} className="text-blue-500" /> 2. Instalação Permanente em 1 Clique (Agendador do Windows)
+                    </h4>
+                    <span className="text-[10px] text-slate-400">PowerShell (Admin)</span>
+                  </div>
                   <p className="text-xs text-slate-600">
-                    Copie e cole este bloco no PowerShell (Administrador). Ele cria a pasta <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">C:\TIHFSA</code> e agenda a tarefa invisível:
+                    Instala em <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">C:\ProgramData\TIHFSA-Agent</code> e cria a Tarefa Agendada no Windows para rodar a cada 15 minutos em segundo plano invisível via SYSTEM.
                   </p>
-                  <div className="p-3 bg-slate-900 rounded-xl text-slate-300 font-mono text-[11px] leading-relaxed relative group">
-                    <pre className="overflow-x-auto whitespace-pre-wrap">{`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null
-curl.exe -k -s "${apiBase}/monitoring/agent/script" -o "C:\\TIHFSA\\tihfsa-agent.ps1"
-$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NonInteractive -NoProfile -ExecutionPolicy Bypass -File C:\\TIHFSA\\tihfsa-agent.ps1"
-$Trigger = New-ScheduledTaskTrigger -AtStartup
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-Register-ScheduledTask -TaskName "TIHFSASentinelAgent" -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest -Force
-Start-ScheduledTask -TaskName "TIHFSASentinelAgent"`}</pre>
+                  <div className="p-3 bg-slate-900 rounded-xl text-blue-400 font-mono text-xs flex items-center justify-between gap-2 overflow-x-auto">
+                    <code className="truncate">{winInstallOneLine}</code>
                     <button
-                      onClick={() => copyToClipboard(`New-Item -ItemType Directory -Path "C:\\TIHFSA" -Force | Out-Null\ncurl.exe -k -s "${apiBase}/monitoring/agent/script" -o "C:\\TIHFSA\\tihfsa-agent.ps1"\n$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NonInteractive -NoProfile -ExecutionPolicy Bypass -File C:\\TIHFSA\\tihfsa-agent.ps1"\n$Trigger = New-ScheduledTaskTrigger -AtStartup\n$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)\nRegister-ScheduledTask -TaskName "TIHFSASentinelAgent" -Action $Action -Trigger $Trigger -Settings $Settings -User "SYSTEM" -RunLevel Highest -Force\nStart-ScheduledTask -TaskName "TIHFSASentinelAgent"`)}
-                      className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                      onClick={() => copyToClipboard(winInstallOneLine)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] shrink-0 flex items-center gap-1 cursor-pointer"
                     >
-                      <Copy size={12} />
-                      <span>Copiar Tudo</span>
+                      {copiedCmd ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      <span>{copiedCmd ? "Copiado!" : "Copiar"}</span>
                     </button>
+                  </div>
+                  <div className="p-2.5 bg-blue-50/80 rounded-xl border border-blue-200/80 text-[11px] text-blue-900 flex items-start gap-2">
+                    <span className="text-base shrink-0">🛡️</span>
+                    <div>
+                      <p className="font-bold">Comportamento Silencioso para Notebooks fora da rede:</p>
+                      <p className="text-blue-800 mt-0.5">
+                        Quando o usuário levar o notebook para casa ou viagens sem conexão direta com o servidor, o agente executa com timeout de 5 segundos e <strong>não exibe nenhum erro, aviso ou janela na tela</strong>. O envio é retomado automaticamente assim que a máquina conectar à rede ou VPN.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </>

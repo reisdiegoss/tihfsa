@@ -613,3 +613,12 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - **Aba Programas Instalados (Inventário de Softwares)**:
           - Tabela completa de softwares instalados coletados pelo Sentinel Agent via Registro do Windows (`Uninstall`) ou pacotes principais via `dpkg-query` no Linux.
           - Campo de busca em tempo real para filtragem instantânea por nome do software ou fornecedor.
+      - **Instalador One-Click & Agendamento no Windows (`/agent/install`)**:
+        - Instalação permanente em 1 linha de comando no PowerShell: `irm "http://.../api/v1/monitoring/agent/install" | iex`.
+        - Salva o agente em `C:\ProgramData\TIHFSA-Agent\tihfsa-agent.ps1` e registra a Tarefa Agendada no Windows com o nome `TIHFSA Sentinel Agent`, executando a cada 15 minutos em background invisível via `powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ... -Silent`.
+        - Suporte a execução como `SYSTEM` (quando executado como Administrador) ou usuário local (sem elevação de privilégios).
+      - **Comportamento Silencioso para Notebooks Fora da Rede**:
+        - Quando um colaborador leva o notebook para casa, viagens ou áreas sem acesso ao servidor TIHFSA, o agente realiza teste de comunicação com timeout curto de 5 segundos.
+        - **Zero interferência visual**: Nenhum pop-up, alerta ou erro é exibido na tela do usuário.
+        - O erro de conectividade é registrado de forma discreta no arquivo local `C:\ProgramData\TIHFSA-Agent\agent.log` e o processo encerra com código 0 (`exit 0`).
+        - A sincronização é retomada automaticamente de forma transparente no próximo ciclo de 15 minutos assim que a máquina reconectar à rede do Fasano ou à VPN.

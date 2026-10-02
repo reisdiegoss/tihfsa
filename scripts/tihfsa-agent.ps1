@@ -18,11 +18,113 @@
 
 param(
     [string]$ServerUrl = "https://192.168.168.29/api/v1/monitoring/agent/checkin",
-    [string]$AgentSecret = "tihfsa-agent-token-fasano-2026"
+    [string]$AgentSecret = "tihfsa-agent-token-fasano-2026",
+    [switch]$Install,
+    [switch]$Uninstall,
+    [switch]$Silent,
+    [int]$IntervalMinutes = 15
 )
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+
+function Log-AgentMessage {
+    param([string]$Message)
+    try {
+        $logDir = "C:\ProgramData\TIHFSA-Agent"
+        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+        $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        Add-Content -Path "$logDir\agent.log" -Value "[$timestamp] $Message" -ErrorAction SilentlyContinue
+    } catch {}
+}
+
+function Install-SentinelTask {
+    param(
+        [string]$TargetUrl,
+        [string]$Secret,
+        [int]$Interval
+    )
+
+    $installDir = "C:\ProgramData\TIHFSA-Agent"
+    if (-not (Test-Path $installDir)) {
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    }
+
+    $targetScript = "$installDir\tihfsa-agent.ps1"
+    if ($PSCommandPath -and (Test-Path $PSCommandPath) -and ($PSCommandPath -ne $targetScript)) {
+        Copy-Item -Path $PSCommandPath -Destination $targetScript -Force
+    } elseif (-not (Test-Path $targetScript)) {
+        $scriptUrl = $TargetUrl.Replace("/checkin", "/script")
+        try {
+            Invoke-RestMethod -Uri $scriptUrl -OutFile $targetScript -TimeoutSec 15
+        } catch {
+            curl.exe -k -s $scriptUrl -o $targetScript
+        }
+    }
+
+    $taskName = "TIHFSA Sentinel Agent"
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    try {
+        schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
+    } catch {}
+
+    $actionArg = "powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$TargetUrl`" -AgentSecret `"$Secret`" -Silent"
+
+    $created = $false
+    if ($isAdmin) {
+        schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\SYSTEM" /RL HIGHEST /SC MINUTE /MO $Interval /TR $actionArg 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $created = $true }
+    }
+
+    if (-not $created) {
+        schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO $Interval /TR $actionArg 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $created = $true }
+    }
+
+    if ($created) {
+        try { schtasks.exe /Run /TN $taskName 2>$null | Out-Null } catch {}
+
+        Write-Host ""
+        Write-Host "==========================================================================" -ForegroundColor Green
+        Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e agendado com sucesso!" -ForegroundColor Green
+        Write-Host "==========================================================================" -ForegroundColor Green
+        Write-Host " * Tarefa Agendada: '$taskName' (Executa a cada $Interval minutos)" -ForegroundColor White
+        Write-Host " * Local do Script:  $targetScript" -ForegroundColor White
+        Write-Host " * Servidor:         $TargetUrl" -ForegroundColor White
+        Write-Host " * Comportamento:    100% invisivel em segundo plano." -ForegroundColor Cyan
+        Write-Host " * Fora da rede:     Silencioso sem janelas ou erros ao usuario." -ForegroundColor Cyan
+        Write-Host "==========================================================================" -ForegroundColor Green
+        Write-Host ""
+    } else {
+        Write-Error "[ERRO] Nao foi possivel registrar a tarefa agendada no Windows. Tente executar o PowerShell como Administrador."
+    }
+}
+
+function Uninstall-SentinelTask {
+    $taskName = "TIHFSA Sentinel Agent"
+    try {
+        schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
+        Write-Host "[OK] Tarefa agendada '$taskName' removida com sucesso." -ForegroundColor Yellow
+    } catch {}
+    try {
+        $installDir = "C:\ProgramData\TIHFSA-Agent"
+        if (Test-Path $installDir) {
+            Remove-Item -Path $installDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "[OK] Pasta '$installDir' removida com sucesso." -ForegroundColor Yellow
+        }
+    } catch {}
+}
+
+if ($Install) {
+    Install-SentinelTask -TargetUrl $ServerUrl -Secret $AgentSecret -Interval $IntervalMinutes
+    exit 0
+}
+
+if ($Uninstall) {
+    Uninstall-SentinelTask
+    exit 0
+}
 
 function Test-IsAdminOrServiceAccount {
     param([string]$AccountName)
@@ -392,19 +494,37 @@ $headers = @{
     "X-Agent-Token" = $AgentSecret
 }
 
+$sent = $false
 try {
-    $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $payloadJson -Headers $headers -TimeoutSec 10
-    Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $ServerUrl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
+    $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $payloadJson -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+    $sent = $true
+    if (-not $Silent) {
+        Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $ServerUrl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
+    } else {
+        Log-AgentMessage "[OK] Telemetria enviada com sucesso ($($payloadObj.hostname) - $($payloadObj.logged_user))"
+    }
 } catch {
     try {
         # Fallback resiliente via curl.exe nativo do Windows
-        $curlOut = $payloadJson | curl.exe -k -s -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AgentSecret" --data-binary "@-" $ServerUrl
+        $curlOut = $payloadJson | curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AgentSecret" --data-binary "@-" $ServerUrl 2>$null
         if ($curlOut -like '*"status":"ok"*') {
-            Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via curl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
-        } else {
-            Write-Warning "[AVISO] Falha ao enviar telemetria: $curlOut"
+            $sent = $true
+            if (-not $Silent) {
+                Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via curl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
+            } else {
+                Log-AgentMessage "[OK] Telemetria enviada com sucesso via curl ($($payloadObj.hostname))"
+            }
         }
-    } catch {
-        Write-Error "[ERRO] Não foi possível conectar ao servidor $ServerUrl : $_"
+    } catch {}
+}
+
+if (-not $sent) {
+    if ($Silent) {
+        # Notebook fora da rede corporativa ou sem comunicacao:
+        # NUNCA exibir erro na tela do usuario. Grava apenas no log local e encerra limpo com exit 0.
+        Log-AgentMessage "[INFO] Servidor inacessivel ou maquina fora da rede. Telemetria sera reenviada no proximo ciclo."
+        exit 0
+    } else {
+        Write-Warning "[AVISO] Nao foi possivel conectar ao servidor TIHFSA ($ServerUrl). Verifique se a maquina esta conectada na rede local ou VPN."
     }
 }
