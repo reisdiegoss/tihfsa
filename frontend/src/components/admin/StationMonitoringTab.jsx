@@ -85,8 +85,10 @@ export default function StationMonitoringTab() {
     ? import.meta.env.VITE_API_URL
     : `${window.location.origin}/api/v1`;
 
-  const winOneLine = `(curl.exe -k -s "${apiBase}/monitoring/agent/script" | Out-String) | iex`;
-  const winInstallOneLine = `(curl.exe -k -s "${apiBase}/monitoring/agent/install" | Out-String) | iex`;
+  const isHttps = apiBase.startsWith("https");
+  const winTlsPrefix = isHttps ? `[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; ` : ``;
+  const winOneLine = `${winTlsPrefix}irm "${apiBase}/monitoring/agent/script" | iex`;
+  const winInstallOneLine = `${winTlsPrefix}irm "${apiBase}/monitoring/agent/install" | iex`;
   const linuxOneLine = `curl -k -s "${apiBase}/monitoring/agent/linux-script" | bash`;
   const linuxInstallOneLine = `curl -k -s "${apiBase}/monitoring/agent/linux-install" | sudo bash`;
 
