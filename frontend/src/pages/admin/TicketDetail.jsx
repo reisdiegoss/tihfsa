@@ -14,6 +14,8 @@ export default function TicketDetail() {
   const [message, setMessage] = useState("");
   const [solution, setSolution] = useState("");
   const [showSolve, setShowSolve] = useState(false);
+  const [closeReason, setCloseReason] = useState("");
+  const [showCloseDirect, setShowCloseDirect] = useState(false);
 
   const fetchTicket = () => {
     api.get(`/tickets/${id}`).then((r) => setTicket(r.data)).catch(console.error);
@@ -34,6 +36,25 @@ export default function TicketDetail() {
     setSolution("");
     setShowSolve(false);
     fetchTicket();
+  };
+
+  const closeDirectly = async () => {
+    if (!closeReason.trim()) {
+      alert("O motivo do fechamento é obrigatório.");
+      return;
+    }
+    try {
+      await api.patch(`/tickets/${id}`, {
+        status: "Fechado",
+        closure_reason: closeReason.trim(),
+      });
+      setCloseReason("");
+      setShowCloseDirect(false);
+      fetchTicket();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao fechar chamado.");
+    }
   };
 
   if (!ticket) return (
@@ -73,6 +94,22 @@ export default function TicketDetail() {
           <p className="text-xs md:text-sm text-slate-300 leading-relaxed bg-white/5 p-4 rounded-xl border border-white/5">
             {ticket.description}
           </p>
+        )}
+
+        {/* Motivo do Fechamento se Fechado */}
+        {ticket.status === "Fechado" && (
+          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
+            <CheckCircle size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <span className="font-bold text-emerald-400">Motivo do Fechamento: </span>
+              <span className="text-slate-200">{ticket.closure_reason || "Resolução concluída."}</span>
+              {ticket.closed_at && (
+                <span className="text-slate-400 block text-[11px] mt-0.5">
+                  Encerrado em: {new Date(ticket.closed_at).toLocaleString("pt-BR")}
+                </span>
+              )}
+            </div>
+          </div>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs pt-2">
@@ -154,20 +191,33 @@ export default function TicketDetail() {
           </button>
         </div>
 
-        {/* Solve Action */}
-        {ticket.status !== "Fechado" && ticket.status !== "Aguardando Validacao" && (
-          <div className="pt-4 border-t border-white/10">
-            {!showSolve ? (
-              <button
-                onClick={() => setShowSolve(true)}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-all cursor-pointer shadow-lg shadow-emerald-600/20"
-              >
-                <CheckCircle size={18} />
-                <span>Concluir e Enviar para Validação</span>
-              </button>
-            ) : (
-              <div className="space-y-3 p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
-                <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Descreva a Solução Aplicada</h3>
+        {/* Solve / Close Actions */}
+        {ticket.status !== "Fechado" && (
+          <div className="pt-4 border-t border-white/10 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {!showSolve && !showCloseDirect && (
+                <>
+                  <button
+                    onClick={() => { setShowSolve(true); setShowCloseDirect(false); }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all cursor-pointer shadow-md"
+                  >
+                    <CheckCircle size={16} />
+                    <span>Concluir e Enviar para Validação</span>
+                  </button>
+                  <button
+                    onClick={() => { setShowCloseDirect(true); setShowSolve(false); }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-all cursor-pointer shadow-md"
+                  >
+                    <CheckCircle size={16} />
+                    <span>Fechar Chamado Diretamente</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {showSolve && (
+              <div className="space-y-3 p-4 rounded-xl bg-blue-950/20 border border-blue-500/30">
+                <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider">Descreva a Solução Aplicada</h3>
                 <textarea
                   value={solution}
                   onChange={(e) => setSolution(e.target.value)}
@@ -178,12 +228,40 @@ export default function TicketDetail() {
                 <div className="flex flex-col sm:flex-row gap-2">
                   <button
                     onClick={solveTicket}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-all cursor-pointer"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all cursor-pointer"
                   >
                     Enviar Solução
                   </button>
                   <button
                     onClick={() => setShowSolve(false)}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs md:text-sm text-slate-400 hover:text-white bg-white/5 border border-white/10 transition-all cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {showCloseDirect && (
+              <div className="space-y-3 p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
+                <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Motivo do Fechamento (Obrigatório)</h3>
+                <textarea
+                  value={closeReason}
+                  onChange={(e) => setCloseReason(e.target.value)}
+                  placeholder="Informe o motivo da resolução técnica deste chamado..."
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl text-xs md:text-sm glass-input resize-none"
+                />
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={closeDirectly}
+                    disabled={!closeReason.trim()}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    Confirmar Fechamento
+                  </button>
+                  <button
+                    onClick={() => setShowCloseDirect(false)}
                     className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs md:text-sm text-slate-400 hover:text-white bg-white/5 border border-white/10 transition-all cursor-pointer"
                   >
                     Cancelar

@@ -458,12 +458,18 @@ export default function TicketList() {
     e.preventDefault();
     if (selectedTicketIds.length === 0) return;
 
+    if (batchTargetStatus === "Fechado" && !batchComment.trim()) {
+      alert("O motivo do fechamento é obrigatório ao encerrar chamados.");
+      return;
+    }
+
     setBatchLoading(true);
     try {
       const payload = {
         ticket_ids: selectedTicketIds,
         status: batchTargetStatus,
         comment: batchComment.trim() || null,
+        closure_reason: batchComment.trim() || null,
         notify_whatsapp: batchNotifyWhatsapp,
       };
 
@@ -1107,14 +1113,24 @@ export default function TicketList() {
 
                       {/* Coluna 6: Status */}
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-block ${
-                          t.status === "Em Andamento" ? "bg-amber-100 text-amber-800" :
-                          t.status === "Fechado" ? "bg-emerald-100 text-emerald-700" :
-                          t.status === "Aguardando Validação" ? "bg-purple-100 text-purple-700" :
-                          "bg-blue-100 text-blue-700"
-                        }`}>
-                          {t.status}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-block w-fit ${
+                            t.status === "Em Andamento" ? "bg-amber-100 text-amber-800" :
+                            t.status === "Fechado" ? "bg-emerald-100 text-emerald-700" :
+                            t.status === "Aguardando Validação" ? "bg-purple-100 text-purple-700" :
+                            "bg-blue-100 text-blue-700"
+                          }`}>
+                            {t.status}
+                          </span>
+                          {t.status === "Fechado" && t.closure_reason && (
+                            <span 
+                              className="text-[10px] text-slate-500 font-medium truncate max-w-[170px]" 
+                              title={`Motivo do Fechamento: ${t.closure_reason}`}
+                            >
+                              Motivo: {t.closure_reason}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Coluna 7: Ação */}
@@ -1317,15 +1333,32 @@ export default function TicketList() {
 
               {/* Reason / Audit Comment Input */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Motivo / Justificativa para Auditoria (Opcional):
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>
+                    {batchTargetStatus === "Fechado" ? "Motivo do Fechamento (Obrigatório em Massa):" : "Motivo / Justificativa para Auditoria (Opcional):"}
+                    {batchTargetStatus === "Fechado" && <span className="text-red-500 ml-1">*</span>}
+                  </span>
+                  {batchTargetStatus === "Fechado" && (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Inserido em massa
+                    </span>
+                  )}
                 </label>
                 <textarea
                   value={batchComment}
                   onChange={(e) => setBatchComment(e.target.value)}
-                  placeholder="Ex: Resolução em lote de alarmes de rede após normalização do link de internet ou manutenção programada..."
+                  placeholder={
+                    batchTargetStatus === "Fechado"
+                      ? "Informe o motivo do encerramento (este motivo será gravado em todos os chamados selecionados)..."
+                      : "Ex: Resolução em lote de alarmes de rede após normalização do link de internet ou manutenção programada..."
+                  }
                   rows={3}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs font-medium rounded-xl p-3 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"
+                  required={batchTargetStatus === "Fechado"}
+                  className={`w-full bg-slate-50 border text-slate-900 text-xs font-medium rounded-xl p-3 outline-none transition-all resize-none ${
+                    batchTargetStatus === "Fechado" && !batchComment.trim()
+                      ? "border-amber-300 focus:border-amber-500 focus:bg-white"
+                      : "border-slate-200 focus:border-blue-500 focus:bg-white"
+                  }`}
                 />
               </div>
 
@@ -1348,6 +1381,7 @@ export default function TicketList() {
                 <ShieldCheck size={18} className="text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
                   <strong className="font-extrabold">Registro de Auditoria:</strong> Cada chamado receberá um registro na Linha do Tempo indicando que o status foi atualizado em lote por <strong>{user?.display_name || "Você"}</strong> na data e hora atuais.
+                  {batchTargetStatus === "Fechado" && " O motivo acima será vinculado como Motivo do Fechamento de todos os itens."}
                 </p>
               </div>
 
@@ -1363,8 +1397,8 @@ export default function TicketList() {
                 </button>
                 <button
                   type="submit"
-                  disabled={batchLoading}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  disabled={batchLoading || (batchTargetStatus === "Fechado" && !batchComment.trim())}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {batchLoading ? (
                     <>

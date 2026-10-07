@@ -22,6 +22,10 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
   const [viewerFile, setViewerFile] = useState(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
 
+  // Estado do Modal de Fechamento com Motivo Obrigatório
+  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+  const [closureReasonInput, setClosureReasonInput] = useState("");
+
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -48,6 +52,10 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
   };
 
   const handleStatusChange = async (newStatus) => {
+    if (newStatus === "Fechado") {
+      setIsCloseModalOpen(true);
+      return;
+    }
     setUpdating(true);
     try {
       await api.patch(`/tickets/${ticketId}`, { status: newStatus });
@@ -56,6 +64,30 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
     } catch (err) {
       console.error(err);
       alert("Erro ao alterar status. Verifique suas permissões.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleConfirmClose = async (e) => {
+    if (e) e.preventDefault();
+    if (!closureReasonInput.trim()) {
+      alert("O motivo do fechamento é obrigatório.");
+      return;
+    }
+    setUpdating(true);
+    try {
+      await api.patch(`/tickets/${ticketId}`, { 
+        status: "Fechado",
+        closure_reason: closureReasonInput.trim(),
+      });
+      setIsCloseModalOpen(false);
+      setClosureReasonInput("");
+      fetchTicket();
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao fechar chamado. Verifique suas permissões.");
     } finally {
       setUpdating(false);
     }
@@ -213,6 +245,26 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                   </div>
                 </div>
               </div>
+
+              {/* Card de Chamado Fechado com Motivo */}
+              {ticket?.status === "Fechado" && (
+                <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/90 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-emerald-800 font-extrabold text-xs">
+                      <CheckCircle size={15} className="text-emerald-600" />
+                      <span>Chamado Encerrado</span>
+                    </div>
+                    {ticket?.closed_at && (
+                      <span className="text-[11px] font-semibold text-emerald-700">
+                        {new Date(ticket.closed_at).toLocaleString("pt-BR")}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-emerald-950 font-medium leading-relaxed">
+                    <strong className="font-bold text-emerald-800">Motivo do Fechamento:</strong> {ticket?.closure_reason || "Resolução concluída"}
+                  </p>
+                </div>
+              )}
 
               {/* Quick Status Action Bar */}
               {ticket?.status !== "Fechado" && (
@@ -515,6 +567,78 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
 
         </div>
       </div>
+
+      {/* Modal de Confirmação e Inserção do Motivo de Fechamento */}
+      {isCloseModalOpen && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden p-6 space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <CheckCircle size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">Encerrar Chamado #{ticketId}</h3>
+                  <p className="text-[11px] text-slate-500">Informe a resolução ou justificativa técnica</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !updating && setIsCloseModalOpen(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmClose} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Motivo do Fechamento: <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] font-semibold text-slate-400">Obrigatório</span>
+                </label>
+                <textarea
+                  value={closureReasonInput}
+                  onChange={(e) => setClosureReasonInput(e.target.value)}
+                  placeholder="Descreva a ação realizada ou motivo para fechamento (ex: cabo de rede substituído, ativo restabelecido, etc.)..."
+                  rows={3}
+                  autoFocus
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs font-medium rounded-xl p-3 outline-none focus:border-emerald-500 focus:bg-white transition-all resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={updating}
+                  onClick={() => setIsCloseModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating || !closureReasonInput.trim()}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {updating ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Encerrando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={14} />
+                      <span>Confirmar Encerramento</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Visualizador Interno Universal Modal */}
       <MediaViewerModal

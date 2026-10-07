@@ -25,6 +25,7 @@ class TicketUpdate(BaseModel):
     category_id: int | None = None
     subcategory_id: int | None = None
     problem_type_id: int | None = None
+    closure_reason: str | None = None
 
 
 class TicketSolve(BaseModel):
@@ -44,6 +45,7 @@ class TicketBatchStatusUpdate(BaseModel):
     ticket_ids: list[int]
     status: str
     comment: str | None = None
+    closure_reason: str | None = None
     notify_whatsapp: bool = False
 
 
@@ -95,6 +97,7 @@ class TicketResponse(BaseModel):
     updated_at: datetime
     solved_at: datetime | None = None
     closed_at: datetime | None = None
+    closure_reason: str | None = None
     # Campos expandidos (populados na listagem)
     requester_name: str | None = None
     technician_name: str | None = None

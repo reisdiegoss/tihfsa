@@ -101,6 +101,7 @@ def apply_migrations():
 
         # Chamados
         ("tickets.problem_type_id", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS problem_type_id INTEGER REFERENCES problem_types(id);"),
+        ("tickets.closure_reason", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS closure_reason TEXT;"),
 
         # Departamentos
         ("departments.ad_ou_dn", "ALTER TABLE departments ADD COLUMN IF NOT EXISTS ad_ou_dn VARCHAR(300);"),

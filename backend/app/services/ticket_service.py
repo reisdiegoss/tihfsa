@@ -106,6 +106,7 @@ class TicketService:
         if action == "approve":
             ticket.status = TicketStatus.CLOSED
             ticket.closed_at = datetime.now(timezone.utc)
+            ticket.closure_reason = "Solução aprovada pelo gestor."
             ticket.validation_token = None  # Invalida o token
 
             interaction = TicketInteraction(

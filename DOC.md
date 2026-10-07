@@ -66,7 +66,7 @@ Sincronização AD: O backend possui um script que importa toda a árvore de usu
 
 Usuários vs. Apartamentos: Para fins de controle de inventário (TV, SKY, Unifi), os apartamentos do hotel são tratados como Entidades/Usuários dentro do sistema.
 
-Fechamento de Ticket: Técnicos não fecham chamados de usuários comuns. O técnico altera para "Resolvido", e o sistema notifica o Gestor do solicitante para dar o crivo final.
+Fechamento de Ticket: Técnicos não fecham chamados de usuários comuns sem aprovação; o técnico altera para "Resolvido" e o gestor valida via magic link. Para encerramentos diretos por técnicos/admins (inclusive alertas NOC e manutenções) ou aprovação do gestor, o sistema exige obrigatoriamente a inclusão do Motivo do Fechamento (`closure_reason`), persistido no banco e na timeline tanto em fechamentos individuais quanto em massa.
 
 Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Diagramas de Topologia Interativos**: Suporte completo a nós de infraestrutura (Switches, Racks, Access Points, Servidores, Firewalls, Roteadores).
@@ -401,16 +401,18 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Contadores em Tempo Real**: As abas de status exibem a quantidade exata de chamados em cada estágio (`Todos`, `Novo`, `Em Andamento`, `Aguardando Validação`, `Fechado`).
     - **Limpeza de Filtros**: Botão de reset rápido que restaura a visualização padrão com um clique.
 
-10. **Atualização de Status em Massa com Rastreabilidade & Auditoria**:
+10. **Atualização de Status em Massa & Fechamento com Motivo Obrigatório (`closure_reason`)**:
     - **Seleção Múltipla**: Disponível exclusivamente para a equipe de TI (Admins e Técnicos), permitindo selecionar um, vários ou todos os chamados da lista filtrada com checkbox mestre.
     - **Barra de Ações Flutuante**: Exibe a contagem de itens selecionados e atalho para o modal de alteração em massa.
+    - **Fechamento em Massa com Motivo Replicado**: Quando o operador escolhe o status `Fechado`, o campo de justificativa técnica torna-se estritamente **obrigatório**. O mesmo motivo inserido é replicado e gravado em massa em todos os chamados selecionados (na coluna `closure_reason` da tabela `tickets` e no histórico de auditoria individual).
+    - **Fechamento Unitário com Modal de Resolução**: Ao encerrar um chamado individualmente pelo Drawer lateral (`TicketDetailDrawer`) ou pela tela de detalhes (`TicketDetail`), um modal intuitivo solicita obrigatoriamente o motivo da resolução técnica, preenchendo `closed_at`, `closure_reason` e criando registro na linha do tempo.
     - **Registro de Auditoria Individual na Timeline**: Toda alteração em lote registra uma interação no histórico (`TicketInteraction`) de cada chamado afetado, gravando:
       - Nome completo e perfil do responsável pela alteração.
       - Data e hora exatas da operação.
       - Status anterior e novo status aplicado.
-      - Motivo / justificativa opcional informada pelo técnico.
-    - **Disparo Opcional no WhatsApp**: Opção de notificar o grupo de TI sobre a alteração em massa consolidada através da Evolution API.
-    - **Segurança e Controle de Permissão**: Endpoint `/api/v1/tickets/batch-status` protegido pela dependência `require_technician`.
+      - Motivo / justificativa informada pelo técnico (com identificação `🔒 [Fechamento em Massa]`).
+    - **Disparo Opcional no WhatsApp**: Opção de notificar o grupo de TI sobre o encerramento ou alteração em massa consolidada através da Evolution API, constando o motivo do fechamento e quantidade de chamados.
+    - **Segurança e Controle de Permissão**: Endpoints `/api/v1/tickets/batch-status` e `PATCH /api/v1/tickets/{id}` protegidos pela dependência `require_technician` (apenas administradores e técnicos autorizados).
 
 11. **Ciclo de Vida de Alertas NOC (UniFi e Zabbix) & Histórico Contínuo no Mesmo Dia**:
     - **Cenário 1 — Queda Inicial**: Ao detectar um equipamento offline na controladora UniFi ou disparo crítico no Zabbix, o sistema abre automaticamente um chamado (`Novo`), registra a interação inicial na linha do tempo e notifica imediatamente a equipe.
@@ -639,10 +641,11 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Gerenciamento de Setores / Departamentos (`/api/v1/departments/`)**:
         - Listagem, cadastro, edição e exclusão de setores com feedback em tempo real.
         - Apresentação de contadores de colaboradores e chamados associados a cada setor.
-      - **Seleção Dinâmica de Colaboradores no CMDB (`UserSelectCombobox`)**:
-        - Componente de autocomplete inteligente com busca em tempo real por Nome, Login do Active Directory (`sAMAccountName`), E-mail e Setor.
-        - Abas de navegação rápida entre Colaboradores do AD e Apartamentos/UHs.
-        - Exibição de card resumido do usuário selecionado com avatar, setor e login de rede.
+      - **Seleção Dinâmica de Colaboradores no CMDB (`UserSelectCombobox`) & Correção de Permissões**:
+        - Componente de autocomplete inteligente no formulário de edição/criação de ativos (`Assets.jsx`), com busca em tempo real por Nome, Login do Active Directory (`sAMAccountName`), E-mail e Setor.
+        - Abas de navegação rápida entre "Todos", "Colaboradores (AD)" e "Apartamentos / UHs", permitindo localizar qualquer colaborador em milissegundos sem rolagem manual em listas extensas.
+        - Card visual com avatar, departamento, login do AD e ações de "Trocar Colaborador" ou "Remover Vínculo".
+        - Correção no endpoint `GET /api/v1/users/` (resolução de `NameError` que impedia o carregamento de usuários e retornava HTTP 500) e suporte ao modelo de múltiplos papéis (`roles`) nas dependências de autorização (`require_admin`, `require_technician`, `require_manager`).
       - **Mapeamento Hierárquico de OUs & Importação Seletiva de Colaboradores (`/ad/ous`)**:
         - Detecção automática de árvore e profundidade de OUs no Active Directory (`level`, `is_sub_ou`, `parent_ou_name`, `suggested_group`).
         - Permite mapear sub-OUs ou departamentos inteiros para setores personalizados antes de executar a importação.

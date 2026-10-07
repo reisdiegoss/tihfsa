@@ -384,6 +384,7 @@ def get_ticket(
         updated_at=ticket.updated_at,
         solved_at=ticket.solved_at,
         closed_at=ticket.closed_at,
+        closure_reason=ticket.closure_reason,
         requester_name=requester.display_name if requester else None,
         technician_name=technician.display_name if technician else None,
         asset_name=asset.name if asset else None,
@@ -400,26 +401,68 @@ def update_ticket(
     data: TicketUpdate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: User = Depends(require_technician),
+    current_user: User = Depends(require_technician),
 ):
-    """Atualiza dados de um chamado (técnico)."""
+    """Atualiza dados de um chamado (técnico ou admin)."""
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Chamado não encontrado")
 
     update_data = data.model_dump(exclude_unset=True)
+    new_status = None
     if "status" in update_data:
-        update_data["status"] = TicketStatus(update_data["status"])
+        for s in TicketStatus:
+            if s.value == update_data["status"] or s.name == update_data["status"]:
+                new_status = s
+                break
+        if not new_status:
+            raise HTTPException(status_code=400, detail=f"Status '{update_data['status']}' inválido")
+        update_data["status"] = new_status
+
     if "priority" in update_data:
-        update_data["priority"] = TicketPriority(update_data["priority"])
+        for p in TicketPriority:
+            if p.value == update_data["priority"] or p.name == update_data["priority"]:
+                update_data["priority"] = p
+                break
+
+    # Se for alteração de status para Fechado
+    if new_status == TicketStatus.CLOSED:
+        closure_reason = (update_data.get("closure_reason") or "").strip()
+        if not closure_reason:
+            raise HTTPException(status_code=400, detail="O motivo do fechamento é obrigatório ao encerrar o chamado.")
+        now = datetime.now(timezone.utc)
+        ticket.closed_at = now
+        ticket.closure_reason = closure_reason
+        update_data["closed_at"] = now
+        update_data["closure_reason"] = closure_reason
+
+        # Registrar interação de fechamento na linha do tempo
+        close_msg = f"🔒 [Chamado Fechado] Chamado encerrado por {current_user.display_name}.\nMotivo: {closure_reason}"
+        db.add(TicketInteraction(
+            ticket_id=ticket.id,
+            user_id=current_user.id,
+            message=close_msg,
+            is_solution=False,
+        ))
+    elif new_status and new_status != TicketStatus.CLOSED and ticket.status == TicketStatus.CLOSED:
+        # Se estava fechado e está sendo reaberto
+        ticket.closed_at = None
+        ticket.closure_reason = None
+        update_data["closed_at"] = None
+        update_data["closure_reason"] = None
+
     for field, value in update_data.items():
         setattr(ticket, field, value)
 
     db.commit()
     db.refresh(ticket)
     
-    if "status" in update_data:
-        msg_text = f"🔄 *[Chamado Atualizado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Novo Status:* {ticket.status.value}"
+    if new_status:
+        if new_status == TicketStatus.CLOSED:
+            reason = ticket.closure_reason or "Não informado"
+            msg_text = f"🔒 *[Chamado Fechado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Responsável:* {current_user.display_name}\n*Motivo do Fechamento:* {reason}"
+        else:
+            msg_text = f"🔄 *[Chamado Atualizado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Novo Status:* {ticket.status.value}"
         background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
         
     return ticket
@@ -436,6 +479,7 @@ def batch_update_status(
     Atualiza o status de múltiplos chamados em lote.
     Garante registro detalhado de auditoria (TicketInteraction) em cada chamado,
     indicando quem fez a alteração, data/hora e justificativa.
+    Se o status for 'Fechado', o motivo do fechamento é obrigatório e inserido em massa em todos os chamados.
     Permissão: Apenas administradores e técnicos (require_technician).
     """
     if not data.ticket_ids:
@@ -448,6 +492,14 @@ def batch_update_status(
             break
     if not target_status:
         raise HTTPException(status_code=400, detail=f"Status '{data.status}' inválido")
+
+    # Validação obrigatória de motivo se for Fechamento em Massa
+    closure_reason = (data.closure_reason or data.comment or "").strip()
+    if target_status == TicketStatus.CLOSED and not closure_reason:
+        raise HTTPException(
+            status_code=400,
+            detail="O motivo do fechamento é obrigatório ao encerrar chamados em massa."
+        )
 
     now = datetime.now(timezone.utc)
     updated_tickets = []
@@ -463,15 +515,22 @@ def batch_update_status(
 
         if target_status == TicketStatus.CLOSED:
             ticket.closed_at = now
+            ticket.closure_reason = closure_reason
+            audit_msg = f"🔒 [Fechamento em Massa] Chamado encerrado por {current_user.display_name}.\nMotivo: {closure_reason}"
         elif target_status == TicketStatus.PENDING_VALIDATION:
             ticket.solved_at = now
             if not ticket.technician_id:
                 ticket.technician_id = current_user.id
-
-        # Registro de Auditoria / Linha do Tempo
-        audit_msg = f"📋 [Atualização em Massa] Status alterado de '{old_status_label}' para '{target_status.value}' por {current_user.display_name}."
-        if data.comment and data.comment.strip():
-            audit_msg += f"\nMotivo/Observação: {data.comment.strip()}"
+            audit_msg = f"📋 [Atualização em Massa] Status alterado de '{old_status_label}' para '{target_status.value}' por {current_user.display_name}."
+            if data.comment and data.comment.strip():
+                audit_msg += f"\nMotivo/Observação: {data.comment.strip()}"
+        else:
+            if old_status_label == TicketStatus.CLOSED.value:
+                ticket.closed_at = None
+                ticket.closure_reason = None
+            audit_msg = f"📋 [Atualização em Massa] Status alterado de '{old_status_label}' para '{target_status.value}' por {current_user.display_name}."
+            if data.comment and data.comment.strip():
+                audit_msg += f"\nMotivo/Observação: {data.comment.strip()}"
 
         interaction = TicketInteraction(
             ticket_id=ticket.id,
@@ -490,15 +549,25 @@ def batch_update_status(
         if len(updated_tickets) > 8:
             ticket_refs += f" e mais {len(updated_tickets) - 8} chamados"
 
-        msg_text = (
-            f"🔄 *[Atualização em Massa de Chamados]*\n\n"
-            f"*Responsável:* {current_user.display_name}\n"
-            f"*Novo Status:* {target_status.value}\n"
-            f"*Quantidade:* {len(updated_tickets)} chamados\n"
-            f"*Tickets:* {ticket_refs}"
-        )
-        if data.comment and data.comment.strip():
-            msg_text += f"\n*Observação:* {data.comment.strip()}"
+        if target_status == TicketStatus.CLOSED:
+            msg_text = (
+                f"🔒 *[Fechamento em Massa de Chamados]*\n\n"
+                f"*Responsável:* {current_user.display_name}\n"
+                f"*Status:* Fechado com Sucesso\n"
+                f"*Quantidade:* {len(updated_tickets)} chamados\n"
+                f"*Motivo do Fechamento:* {closure_reason}\n"
+                f"*Tickets:* {ticket_refs}"
+            )
+        else:
+            msg_text = (
+                f"🔄 *[Atualização em Massa de Chamados]*\n\n"
+                f"*Responsável:* {current_user.display_name}\n"
+                f"*Novo Status:* {target_status.value}\n"
+                f"*Quantidade:* {len(updated_tickets)} chamados\n"
+                f"*Tickets:* {ticket_refs}"
+            )
+            if data.comment and data.comment.strip():
+                msg_text += f"\n*Observação:* {data.comment.strip()}"
 
         background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
 
@@ -507,6 +576,7 @@ def batch_update_status(
         "updated_count": len(updated_tickets),
         "updated_ids": [t.id for t in updated_tickets],
         "new_status": target_status.value,
+        "closure_reason": closure_reason if target_status == TicketStatus.CLOSED else None,
     }
 
 

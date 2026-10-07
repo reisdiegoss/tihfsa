@@ -61,22 +61,50 @@ def get_current_user(
     return user
 
 
+def _get_user_roles(user: User) -> set[str]:
+    roles = set()
+    if user.role:
+        val = user.role.value if hasattr(user.role, "value") else str(user.role)
+        roles.add(val.lower())
+    if user.roles and isinstance(user.roles, list):
+        for r in user.roles:
+            if isinstance(r, str):
+                roles.add(r.lower())
+    # Normalizações para compatibilidade
+    if "tecnico" in roles:
+        roles.add("technician")
+    if "gerente" in roles:
+        roles.add("manager")
+    return roles
+
+
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Permite apenas usuários com role ADMIN."""
-    if current_user.role != UserRole.ADMIN:
+    """Permite usuários com role ADMIN (via role ou roles)."""
+    roles = _get_user_roles(current_user)
+    if "admin" not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a administradores")
     return current_user
 
 
 def require_technician(current_user: User = Depends(get_current_user)) -> User:
-    """Permite ADMIN ou TECHNICIAN."""
-    if current_user.role not in (UserRole.ADMIN, UserRole.TECHNICIAN):
+    """Permite ADMIN ou TECHNICIAN (via role ou roles)."""
+    roles = _get_user_roles(current_user)
+    if not (roles & {"admin", "technician"}):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a técnicos")
     return current_user
 
 
 def require_manager(current_user: User = Depends(get_current_user)) -> User:
-    """Permite ADMIN ou MANAGER."""
-    if current_user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+    """Permite ADMIN ou MANAGER (via role ou roles)."""
+    roles = _get_user_roles(current_user)
+    if not (roles & {"admin", "manager"}):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a gestores")
+    return current_user
+
+
+def require_staff(current_user: User = Depends(get_current_user)) -> User:
+    """Permite ADMIN, TECHNICIAN ou MANAGER (via role ou roles)."""
+    roles = _get_user_roles(current_user)
+    if not (roles & {"admin", "technician", "manager"}):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito à equipe interna")
     return current_user

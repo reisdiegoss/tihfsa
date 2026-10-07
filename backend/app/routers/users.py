@@ -124,7 +124,7 @@ def update_user(
     user_id: int,
     data: UserUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_technician),
 ):
     """Atualiza dados de um usuário e suas atribuições de múltiplos papéis e gerente de setor."""
     user = db.query(User).filter(User.id == user_id).first()

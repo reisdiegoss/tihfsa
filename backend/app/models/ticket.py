@@ -64,6 +64,7 @@ class Ticket(Base):
     )
     solved_at = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
+    closure_reason = Column(Text, nullable=True)
 
     # FK — Quem abriu o chamado (pessoa ou apartamento)
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
