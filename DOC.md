@@ -651,3 +651,19 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Permite mapear sub-OUs ou departamentos inteiros para setores personalizados antes de executar a importação.
         - Visualização prévia expansível de todos os colaboradores contidos em cada OU (`/ad/ous/users`), indicando status de importação e botão de importação individual (`/ad/import-user`).
         - Opções distintas de "Importar Apenas Setores" (criando a estrutura de departamentos sem importar contas de usuário) e "Sincronizar Setores e Colaboradores".
+    - **Central Pública de Abertura de Chamados (`/chamado`, `/abrir-chamado`, `/suporte`)**:
+      - **Acesso Sem Necessidade de Login Prévio**:
+        - Interface otimizada para mobile e desktop, acessível através de URLs amigáveis ou leitura de QR Codes espalhados pelas áreas do hotel.
+        - Não exige login com senha, facilitando a abertura imediata de chamados operacionais em recepção, governança, manutenção, restaurantes e eventos.
+      - **Vínculo Obrigatório de Solicitante & Governança de Visibilidade**:
+        - Todo chamado aberto pelo formulário público exige a seleção obrigatória de um colaborador ativo da base de usuários (`/api/v1/public/lookup-user`).
+        - O sistema busca em tempo real por Login do Active Directory (`ad_username`), Nome Completo ou E-mail, exibindo o setor do colaborador e o **chefe do setor (`manager_name`)**.
+        - **Garantia de Acesso e Acompanhamento**: O chamado é persistido com o `requester_id` do colaborador selecionado. Desta forma, tanto o colaborador através do portal corporativo (`/app`) quanto o gestor do seu setor (via `/app` ou `/admin`, com base no `managed_departments`) possuem visibilidade total e imediata para acompanhar o andamento, atualizações e histórico do chamado.
+      - **Upload de Fotos & Evidências Direto no Formulário**:
+        - Suporte a envio de imagens (JPG, PNG, WEBP) e documentos (PDF) de até 15MB através do endpoint público `POST /api/v1/public/tickets/{ticket_id}/attachments`.
+        - Permite que o colaborador tire fotos diretamente pela câmera do celular ou anexe arquivos do computador, com miniaturas e opção de exclusão antes do envio.
+      - **Auditoria Anti-Fraude & Rastreabilidade**:
+        - O backend extrai automaticamente o endereço IP do cliente (`X-Forwarded-For` / `X-Real-IP`), resolve o Hostname da máquina cliente via DNS reverso com timeout rápido e registra o `User-Agent`.
+        - Essas informações são anexadas de forma estruturada na descrição do chamado para auditoria interna.
+      - **Notificação Automática via WhatsApp**:
+        - Disparo imediato de notificação no grupo da TI via `EvolutionService`, detalhando o solicitante, setor, chefe do setor, local/UH, título, descrição e dados de auditoria anti-fraude.

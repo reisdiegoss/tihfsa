@@ -65,6 +65,8 @@ export default function App() {
           <Route path="/qr/:code" element={<PublicAssetTag />} />
           <Route path="/scan" element={<QRCodeScannerPage />} />
           <Route path="/chamado" element={<PublicTicketForm />} />
+          <Route path="/abrir-chamado" element={<PublicTicketForm />} />
+          <Route path="/suporte" element={<PublicTicketForm />} />
           <Route path="/" element={<RootRedirect />} />
           
           {/* Main Admin UI Route */}
