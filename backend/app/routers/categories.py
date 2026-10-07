@@ -17,10 +17,24 @@ router = APIRouter(prefix="/api/v1/categories", tags=["Categorias"])
 @router.get("/", response_model=list[CategoryWithSubs])
 def list_categories(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """Lista todas as categorias com suas subcategorias e problem_types."""
-    categories = db.query(Category).filter(Category.is_active == True).order_by(Category.name).all()  # noqa: E712
+    """
+    Lista todas as categorias com suas subcategorias e problem_types.
+    Regra de negócio:
+    - Colaboradores comuns visualizam apenas categorias públicas (is_public=True).
+    - Técnicos e Administradores de TI visualizam todas as categorias (públicas e internas).
+    """
+    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role).lower()
+    u_roles = current_user.roles if (current_user.roles and isinstance(current_user.roles, list)) else [role_val]
+    u_roles_lower = [str(r).lower() for r in u_roles]
+    is_admin_or_tech = any(r in ("admin", "technician", "tecnico") for r in u_roles_lower)
+
+    query = db.query(Category).filter(Category.is_active == True)  # noqa: E712
+    if not is_admin_or_tech:
+        query = query.filter(Category.is_public == True)  # noqa: E712
+
+    categories = query.order_by(Category.name).all()
     result = []
     for cat in categories:
         subs = []
@@ -39,6 +53,7 @@ def list_categories(
             zabbix_group_id=cat.zabbix_group_id,
             zabbix_group_name=cat.zabbix_group_name,
             is_global=cat.is_global,
+            is_public=cat.is_public,
             subcategories=subs,
             problem_types=cat_pts,
         ))
@@ -92,11 +107,19 @@ def create_category(
     name: str,
     description: str | None = None,
     is_global: bool = False,
+    is_public: bool = True,
+    zabbix_group_name: str | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Cria uma nova categoria."""
-    cat = Category(name=name, description=description, is_global=is_global)
+    """Cria uma nova categoria com definição de visibilidade pública."""
+    cat = Category(
+        name=name.strip(),
+        description=description,
+        is_global=is_global,
+        is_public=is_public,
+        zabbix_group_name=zabbix_group_name.strip() if zabbix_group_name else None,
+    )
     db.add(cat)
     db.commit()
     db.refresh(cat)
@@ -164,23 +187,54 @@ def create_problem_type_cat(
 @router.put("/{category_id}", response_model=CategoryResponse)
 def update_category(
     category_id: int,
-    name: str,
+    name: str | None = None,
     description: str | None = None,
+    is_global: bool | None = None,
+    is_public: bool | None = None,
+    zabbix_group_name: str | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Atualiza o nome e descrição de uma categoria."""
+    """Atualiza o nome, visibilidade pública e descrição de uma categoria."""
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail="Categoria não encontrada")
 
-    name_clean = name.strip()
-    if not name_clean:
-        raise HTTPException(status_code=400, detail="O nome da categoria não pode ser vazio")
+    if name is not None:
+        name_clean = name.strip()
+        if not name_clean:
+            raise HTTPException(status_code=400, detail="O nome da categoria não pode ser vazio")
+        cat.name = name_clean
 
-    cat.name = name_clean
     if description is not None:
         cat.description = description
+
+    if is_global is not None:
+        cat.is_global = is_global
+
+    if is_public is not None:
+        cat.is_public = is_public
+
+    if zabbix_group_name is not None:
+        cat.zabbix_group_name = zabbix_group_name.strip() if zabbix_group_name else None
+
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@router.patch("/{category_id}/toggle-public", response_model=CategoryResponse)
+def toggle_category_public(
+    category_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Alterna rapidamente o status de visibilidade pública da categoria (1 clique)."""
+    cat = db.query(Category).filter(Category.id == category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+
+    cat.is_public = not cat.is_public
     db.commit()
     db.refresh(cat)
     return cat

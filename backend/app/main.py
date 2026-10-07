@@ -315,6 +315,8 @@ async def lifespan(app: FastAPI):
             """))
             conn.execute(text("ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS encode_mode VARCHAR(20) DEFAULT 'vcard';"))
             conn.execute(text("UPDATE qrcodes SET encode_mode = 'vcard';"))
+            conn.execute(text("ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("UPDATE categories SET is_public = TRUE WHERE is_public IS NULL;"))
             # Tabela de Telemetria do TIHFSA Agent (Substituição Nativa Zabbix)
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS agent_checkins (

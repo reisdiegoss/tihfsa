@@ -12,7 +12,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Search, User, CheckCircle2, Send, ArrowLeft, ArrowRight,
   Monitor, AlertCircle, Building2, MapPin, FileText, ChevronDown,
-  ShieldCheck, UploadCloud, X, Image as ImageIcon, Paperclip, ExternalLink
+  ShieldCheck, UploadCloud, X, Image as ImageIcon, Paperclip, ExternalLink,
+  Hotel
 } from "lucide-react";
 import axios from "axios";
 
@@ -36,6 +37,14 @@ export default function PublicTicketForm() {
 
   // Step 1 — Formulário
   const [categories, setCategories] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [locationType, setLocationType] = useState("LOCAL"); // 'LOCAL' | 'UH'
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const [selectedRoom, setSelectedRoom] = useState("");
+  const [locationComplement, setLocationComplement] = useState("");
+  const [customLocation, setCustomLocation] = useState("");
+
   const [form, setForm] = useState({
     category_id: null,
     subcategory_id: null,
@@ -88,14 +97,89 @@ export default function PublicTicketForm() {
     }, 350);
   }, []);
 
-  // Carrega categorias ao acessar a etapa do formulário
+  // Carrega categorias, locais físicos e UHs ao acessar a etapa do formulário
   useEffect(() => {
-    if (step === 1 && categories.length === 0) {
-      publicApi.get("/public/categories")
-        .then((r) => setCategories(r.data))
-        .catch(() => {});
+    if (step === 1) {
+      if (categories.length === 0) {
+        publicApi.get("/public/categories").then((r) => setCategories(r.data)).catch(() => {});
+      }
+      if (locations.length === 0) {
+        publicApi.get("/public/locations").then((r) => setLocations(r.data)).catch(() => {});
+      }
+      if (rooms.length === 0) {
+        publicApi.get("/public/rooms").then((r) => setRooms(r.data)).catch(() => {});
+      }
     }
-  }, [step, categories.length]);
+  }, [step, categories.length, locations.length, rooms.length]);
+
+  // Contextualiza automaticamente a localização com base no setor do colaborador
+  useEffect(() => {
+    if (selectedUser?.department_name) {
+      const dept = selectedUser.department_name.toLowerCase();
+      if (dept.includes("govern") || dept.includes("camareira") || dept.includes("hospedag")) {
+        setLocationType("UH");
+      } else {
+        setLocationType("LOCAL");
+        if (dept.includes("a&b") || dept.includes("alimento") || dept.includes("bar") || dept.includes("restaurante")) {
+          setSelectedLocation("Gero");
+          setForm((prev) => ({ ...prev, location: "Gero" }));
+        } else if (dept.includes("recep") || dept.includes("front") || dept.includes("portaria")) {
+          setSelectedLocation("Recepção/Lobby");
+          setForm((prev) => ({ ...prev, location: "Recepção/Lobby" }));
+        }
+      }
+    }
+  }, [selectedUser]);
+
+  const handleSwitchLocationType = (type) => {
+    setLocationType(type);
+    if (type === "UH") {
+      if (selectedRoom) {
+        setForm((prev) => ({ ...prev, location: `UH ${selectedRoom}` }));
+      } else {
+        setForm((prev) => ({ ...prev, location: "" }));
+      }
+    } else {
+      if (selectedLocation) {
+        if (selectedLocation === "OUTRO") {
+          setForm((prev) => ({ ...prev, location: customLocation.trim().toUpperCase() }));
+        } else {
+          const finalLoc = locationComplement.trim() ? `${selectedLocation} - ${locationComplement.trim()}` : selectedLocation;
+          setForm((prev) => ({ ...prev, location: finalLoc.toUpperCase() }));
+        }
+      } else {
+        setForm((prev) => ({ ...prev, location: "" }));
+      }
+    }
+  };
+
+  const handleSelectRoom = (roomNum) => {
+    setSelectedRoom(roomNum);
+    setForm((prev) => ({ ...prev, location: `UH ${roomNum}` }));
+  };
+
+  const handleSelectLocation = (locName) => {
+    setSelectedLocation(locName);
+    if (locName === "OUTRO") {
+      setForm((prev) => ({ ...prev, location: customLocation.trim().toUpperCase() }));
+    } else {
+      const finalLoc = locationComplement.trim() ? `${locName} - ${locationComplement.trim()}` : locName;
+      setForm((prev) => ({ ...prev, location: finalLoc.toUpperCase() }));
+    }
+  };
+
+  const handleComplementChange = (comp) => {
+    setLocationComplement(comp);
+    if (selectedLocation && selectedLocation !== "OUTRO") {
+      const finalLoc = comp.trim() ? `${selectedLocation} - ${comp.trim()}` : selectedLocation;
+      setForm((prev) => ({ ...prev, location: finalLoc.toUpperCase() }));
+    }
+  };
+
+  const handleCustomLocationChange = (text) => {
+    setCustomLocation(text);
+    setForm((prev) => ({ ...prev, location: text.toUpperCase() }));
+  };
 
   const selectUser = (user) => {
     setSelectedUser(user);
@@ -471,25 +555,148 @@ export default function PublicTicketForm() {
               )}
             </div>
 
-            {/* Localização / UH */}
-            <div className="p-5 rounded-2xl space-y-3 relative overflow-hidden" style={styles.card}>
+            {/* Localização / UH Inteligente */}
+            <div className="p-5 rounded-2xl space-y-4 relative overflow-hidden" style={styles.card}>
               <div className="absolute top-0 left-0 w-1 h-full" style={{ background: "linear-gradient(180deg, #3b82f6, #8b5cf6)" }} />
-              <div className="flex items-center gap-2">
-                <MapPin size={16} style={{ color: "#3b82f6" }} />
-                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                  Local / UH <span style={{ color: "#ef4444" }}>*</span>
-                </label>
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MapPin size={16} style={{ color: "#3b82f6" }} />
+                  <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
+                    Onde é o problema? <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                </div>
+                {form.location && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md text-blue-400 bg-blue-500/10 border border-blue-500/20">
+                    {form.location}
+                  </span>
+                )}
               </div>
-              <input
-                type="text"
-                value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value.toUpperCase() })}
-                placeholder="Ex: UH 302, Recepção, Restaurante Fasano, Governança..."
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={styles.input}
-                required
-              />
-              <p className="text-[10px]" style={{ color: "#64748b" }}>Local exato onde o técnico deve comparecer.</p>
+
+              {/* Toggle Pills: Local Físico vs UH */}
+              <div className="grid grid-cols-2 p-1 rounded-xl" style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchLocationType("LOCAL")}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    locationType === "LOCAL"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Building2 size={13} />
+                  <span>Local Físico / Setor</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchLocationType("UH")}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    locationType === "UH"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Hotel size={13} />
+                  <span>Apartamento / UH</span>
+                </button>
+              </div>
+
+              {/* MODO 1: Apartamento / UH */}
+              {locationType === "UH" && (
+                <div className="space-y-3 animate-fade-in">
+                  <div className="relative">
+                    <select
+                      value={selectedRoom}
+                      onChange={(e) => handleSelectRoom(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-sm outline-none appearance-none cursor-pointer"
+                      style={styles.input}
+                      required={locationType === "UH"}
+                    >
+                      <option value="">Selecione a UH (Apartamento)...</option>
+                      {/* Agrupamento por Andares */}
+                      <optgroup label="1º Andar">
+                        {rooms.filter(r => r.number.startsWith("1")).map((r) => (
+                          <option key={r.id} value={r.number}>{r.name} (1º Andar)</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="2º Andar">
+                        {rooms.filter(r => r.number.startsWith("2")).map((r) => (
+                          <option key={r.id} value={r.number}>{r.name} (2º Andar)</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="3º Andar">
+                        {rooms.filter(r => r.number.startsWith("3")).map((r) => (
+                          <option key={r.id} value={r.number}>{r.name} (3º Andar)</option>
+                        ))}
+                      </optgroup>
+                      {/* Demais UHs se houver */}
+                      {rooms.filter(r => !["1", "2", "3"].includes(r.number[0])).length > 0 && (
+                        <optgroup label="Outros Andares">
+                          {rooms.filter(r => !["1", "2", "3"].includes(r.number[0])).map((r) => (
+                            <option key={r.id} value={r.number}>{r.name}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "#64748b" }} />
+                  </div>
+                  <p className="text-[10px]" style={{ color: "#64748b" }}>Selecione o quarto onde o hóspede ou equipamento necessita de atendimento.</p>
+                </div>
+              )}
+
+              {/* MODO 2: Local Físico / Setor */}
+              {locationType === "LOCAL" && (
+                <div className="space-y-3 animate-fade-in">
+                  <div className="relative">
+                    <select
+                      value={selectedLocation}
+                      onChange={(e) => handleSelectLocation(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-sm outline-none appearance-none cursor-pointer"
+                      style={styles.input}
+                      required={locationType === "LOCAL"}
+                    >
+                      <option value="">Selecione o Local Físico...</option>
+                      {locations.map((loc) => {
+                        const isMatchDept = selectedUser?.department_name && (
+                          (selectedUser.department_name.toLowerCase().includes("a&b") && ["gero", "bar da piscina"].some(k => loc.name.toLowerCase().includes(k))) ||
+                          (selectedUser.department_name.toLowerCase().includes("recep") && loc.name.toLowerCase().includes("recep"))
+                        );
+                        return (
+                          <option key={loc.id} value={loc.name}>
+                            {loc.name} {loc.floor ? `(${loc.floor})` : ""} {isMatchDept ? "⭐ [Seu Setor]" : ""}
+                          </option>
+                        );
+                      })}
+                      <option value="OUTRO">Outro Local (Digitar Manualmente)...</option>
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "#64748b" }} />
+                  </div>
+
+                  {/* Campo livre se for OUTRO */}
+                  {selectedLocation === "OUTRO" ? (
+                    <input
+                      type="text"
+                      value={customLocation}
+                      onChange={(e) => handleCustomLocationChange(e.target.value)}
+                      placeholder="Digite o local (Ex: Sala de Reunião, Garagem, Almoxarifado)..."
+                      className="w-full px-4 py-2.5 rounded-xl text-xs outline-none animate-fade-in"
+                      style={styles.input}
+                      required
+                      autoFocus
+                    />
+                  ) : selectedLocation && (
+                    <input
+                      type="text"
+                      value={locationComplement}
+                      onChange={(e) => handleComplementChange(e.target.value)}
+                      placeholder="Ponto de referência opcional (Ex: Mesa 4, Próximo ao elevador, Balcão)..."
+                      className="w-full px-4 py-2.5 rounded-xl text-xs outline-none animate-fade-in"
+                      style={styles.input}
+                    />
+                  )}
+                  <p className="text-[10px]" style={{ color: "#64748b" }}>Locais físicos e áreas comuns cadastradas do hotel.</p>
+                </div>
+              )}
             </div>
 
             {/* Categoria / Subcategoria */}

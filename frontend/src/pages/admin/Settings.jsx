@@ -41,7 +41,8 @@ import {
   Mail,
   Send,
   Bell,
-  Filter
+  Filter,
+  Globe
 } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -469,11 +470,13 @@ export default function Settings() {
   const [newProblemInputs, setNewProblemInputs] = useState({});
   const [newCategoryModalOpen, setNewCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIsPublic, setNewCategoryIsPublic] = useState(true);
   const [savingCategory, setSavingCategory] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [editCategoryModalOpen, setEditCategoryModalOpen] = useState(false);
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [editingCategoryZabbix, setEditingCategoryZabbix] = useState("");
+  const [editingCategoryIsPublic, setEditingCategoryIsPublic] = useState(true);
   const [savingEditCategory, setSavingEditCategory] = useState(false);
 
   // Departments Management States
@@ -655,13 +658,24 @@ export default function Settings() {
     }
   };
 
+  const handleToggleCategoryPublic = async (catId) => {
+    try {
+      await api.patch(`/categories/${catId}/toggle-public`);
+      fetchCategoriesWithProblems();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao alterar visibilidade da categoria.");
+    }
+  };
+
   const handleCreateCategory = async (e) => {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
     setSavingCategory(true);
     try {
-      await api.post(`/categories/?name=${encodeURIComponent(newCategoryName.trim())}`);
+      await api.post(`/categories/?name=${encodeURIComponent(newCategoryName.trim())}&is_public=${newCategoryIsPublic}`);
       setNewCategoryName("");
+      setNewCategoryIsPublic(true);
       setNewCategoryModalOpen(false);
       fetchCategoriesWithProblems();
     } catch (err) {
@@ -676,6 +690,7 @@ export default function Settings() {
     setEditingCategory(cat);
     setEditingCategoryName(cat.name || "");
     setEditingCategoryZabbix(cat.zabbix_group_name || "");
+    setEditingCategoryIsPublic(cat.is_public !== undefined ? cat.is_public : true);
     setEditCategoryModalOpen(true);
   };
 
@@ -684,7 +699,7 @@ export default function Settings() {
     if (!editingCategoryName.trim() || !editingCategory) return;
     setSavingEditCategory(true);
     try {
-      await api.put(`/categories/${editingCategory.id}?name=${encodeURIComponent(editingCategoryName.trim())}&zabbix_group_name=${encodeURIComponent(editingCategoryZabbix.trim())}`);
+      await api.put(`/categories/${editingCategory.id}?name=${encodeURIComponent(editingCategoryName.trim())}&zabbix_group_name=${encodeURIComponent(editingCategoryZabbix.trim())}&is_public=${editingCategoryIsPublic}`);
       setEditCategoryModalOpen(false);
       fetchCategoriesWithProblems();
       alert("Categoria atualizada com sucesso!");
@@ -2231,6 +2246,30 @@ export default function Settings() {
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Badge / Toggle de Visibilidade Pública vs Interna */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleCategoryPublic(cat.id)}
+                            className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
+                              cat.is_public
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
+                            }`}
+                            title="Clique para alternar entre visibilidade pública (colaboradores) e interna (TI)"
+                          >
+                            {cat.is_public ? (
+                              <>
+                                <Globe size={11} className="text-emerald-600" />
+                                <span>Pública</span>
+                              </>
+                            ) : (
+                              <>
+                                <Lock size={11} className="text-slate-500" />
+                                <span>Interna TI</span>
+                              </>
+                            )}
+                          </button>
+
                           {cat.zabbix_group_name && (
                             <span className="text-[10px] font-extrabold bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full border border-purple-100">
                               Zabbix: {cat.zabbix_group_name}
@@ -3319,6 +3358,28 @@ export default function Settings() {
                 />
               </div>
 
+              {/* Checkbox de Visibilidade Pública */}
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <Globe size={14} className="text-blue-600" />
+                    <span className="text-xs font-bold text-slate-800">Visível para Abertura Pública</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Se desmarcado, visível apenas para técnicos de TI e atendentes.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newCategoryIsPublic}
+                    onChange={(e) => setNewCategoryIsPublic(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
                 <button
                   type="button"
@@ -3387,6 +3448,28 @@ export default function Settings() {
                   onChange={(e) => setEditingCategoryZabbix(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
                 />
+              </div>
+
+              {/* Checkbox de Visibilidade Pública */}
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <Globe size={14} className="text-blue-600" />
+                    <span className="text-xs font-bold text-slate-800">Visível para Abertura Pública</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Se desmarcado, visível apenas para técnicos de TI e atendentes.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingCategoryIsPublic}
+                    onChange={(e) => setEditingCategoryIsPublic(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
               </div>
 
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">

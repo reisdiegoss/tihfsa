@@ -124,6 +124,7 @@ class CategoryResponse(BaseModel):
     zabbix_group_id: str | None = None
     zabbix_group_name: str | None = None
     is_global: bool = False
+    is_public: bool = True
 
 
 class ProblemTypeResponse(BaseModel):

@@ -68,6 +68,24 @@ Usuários vs. Apartamentos: Para fins de controle de inventário (TV, SKY, Unifi
 
 Fechamento de Ticket: Técnicos não fecham chamados de usuários comuns sem aprovação; o técnico altera para "Resolvido" e o gestor valida via magic link. Para encerramentos diretos por técnicos/admins (inclusive alertas NOC e manutenções) ou aprovação do gestor, o sistema exige obrigatoriamente a inclusão do Motivo do Fechamento (`closure_reason`), persistido no banco e na timeline tanto em fechamentos individuais quanto em massa.
 
+Seletor Inteligente de Localização Física vs. UH:
+- **Disponibilidade**: Disponível tanto no Portal Público de Chamados (`/public/ticket`), no PWA do Colaborador (`/app/new-request`) quanto no Painel da TI (`/admin/tickets/new`).
+- **Alternador Visual**: Permite alternar instantaneamente entre `🏢 Local Físico / Setor` e `🛏️ Apartamento / UH`.
+- **Modo UH (Apartamento)**: Lista dinamicamente as 30 UHs cadastradas no sistema (`User.is_room == True`), organizadas por andares (1º, 2º e 3º Andar).
+- **Modo Local Físico / Setor**: Lista os locais cadastrados na tabela `Location` (`Gero`, `Bar da Piscina / Rooftop`, `Recepção/Lobby`, etc.), com destaque visual automático `⭐ [Seu Setor]` combinando o departamento do solicitante. Permite ainda preenchimento de ponto de referência/complemento ou especificação de "Outro Local".
+- **Identificação no Chamado**: O local selecionado é automaticamente prefixado no título do ticket (ex: `[UH 204] Wi-Fi oscilando` ou `[GERO - MESA 4] Ponto de rede inoperante`), garantindo triagem visual imediata e notificações precisas.
+
+Categorias Públicas vs. Internas (TI / Atendentes):
+- **Campo `is_public` no Banco**: Adicionado campo booleano na tabela `categories` para determinar se a categoria pode ser visualizada por usuários finais e colaboradores comuns.
+- **Governança no Painel de Configurações (`/admin/settings`)**:
+  - Badge/Toggle de 1 clique (`🌐 Pública` / `🔒 Interna TI`) diretamente no cabeçalho do card de cada categoria.
+  - Seleção nos modais de criação e edição de categorias.
+- **Isolamento de Segurança**: Categorias técnicas de infraestrutura (ex: `Docker Server`, `Hypervisors`, `Linux servers`, `Virtual machines`, `Databases`, `Windows Server`) são restritas estritamente para a equipe de TI.
+- **Filtro Automático de APIs**:
+  - `GET /api/v1/public/categories`: Retorna apenas categorias ativas e públicas.
+  - `GET /api/v1/categories`: Retorna categorias públicas para usuários comuns do portal, e o catálogo completo para técnicos e administradores.
+  - No Painel de Criação da TI (`/admin/tickets/new`), categorias internas são sinalizadas com o selo `🔒 [Interna TI]`.
+
 Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Diagramas de Topologia Interativos**: Suporte completo a nós de infraestrutura (Switches, Racks, Access Points, Servidores, Firewalls, Roteadores).
 - **Dimensionamento Personalizado de Cards**: Suporte a ajuste de largura e altura (pixels manuais ou presets: Padrão, Médio, Largo, Extra Largo), além de alça interativa de redimensionamento direto no canvas. Quebra de texto inteligente para manter nomes longos legíveis sem corte.

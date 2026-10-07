@@ -19,6 +19,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.models.asset import Asset
+from app.models.location import Location
 from app.models.category import Category, Subcategory
 from app.models.problem_type import ProblemType
 from app.models.ticket_attachment import TicketAttachment
@@ -66,6 +67,20 @@ class ClientInfoResponse(BaseModel):
     hostname: str | None = None
     asset_id: int | None = None
     user_agent: str | None = None
+
+
+class PublicLocationResponse(BaseModel):
+    id: int
+    name: str
+    building: str | None = None
+    floor: str | None = None
+
+
+class PublicRoomResponse(BaseModel):
+    id: int
+    name: str
+    number: str
+    floor: str | None = None
 
 
 # --- Helpers ---
@@ -243,8 +258,13 @@ def lookup_user_by_username(
 
 @router.get("/categories", response_model=list[CategoryWithSubs])
 def list_public_categories(db: Session = Depends(get_db)):
-    """Lista categorias ativas com subcategorias — endpoint público sem JWT."""
-    categories = db.query(Category).filter(Category.is_active == True).order_by(Category.name).all()  # noqa: E712
+    """Lista categorias públicas ativas com subcategorias — endpoint público sem JWT."""
+    categories = (
+        db.query(Category)
+        .filter(Category.is_active == True, Category.is_public == True)  # noqa: E712
+        .order_by(Category.name)
+        .all()
+    )
     result = []
     for cat in categories:
         subs = []
@@ -263,10 +283,62 @@ def list_public_categories(db: Session = Depends(get_db)):
             zabbix_group_id=cat.zabbix_group_id,
             zabbix_group_name=cat.zabbix_group_name,
             is_global=cat.is_global,
+            is_public=cat.is_public,
             subcategories=subs,
             problem_types=cat_pts,
         ))
     return result
+
+
+@router.get("/locations", response_model=list[PublicLocationResponse])
+def list_public_locations(db: Session = Depends(get_db)):
+    """Lista locais físicos ativos (Lobby, Gero, Bar da Piscina, etc.)."""
+    locs = (
+        db.query(Location)
+        .filter(Location.is_active == True)  # noqa: E712
+        .order_by(Location.name.asc())
+        .all()
+    )
+    return [
+        PublicLocationResponse(
+            id=l.id,
+            name=l.name,
+            building=l.building,
+            floor=l.floor,
+        )
+        for l in locs
+    ]
+
+
+@router.get("/rooms", response_model=list[PublicRoomResponse])
+def list_public_rooms(db: Session = Depends(get_db)):
+    """Lista UHs / Apartamentos ativos do hotel ordenados numericamente."""
+    import re
+    rooms = (
+        db.query(User)
+        .filter(User.is_room == True, User.is_active == True)  # noqa: E712
+        .all()
+    )
+
+    def _sort_key(u: User):
+        nums = re.findall(r"\d+", u.display_name)
+        return int(nums[0]) if nums else 9999
+
+    sorted_rooms = sorted(rooms, key=_sort_key)
+    res = []
+    for r in sorted_rooms:
+        nums = re.findall(r"\d+", r.display_name)
+        num_str = nums[0] if nums else r.display_name
+        floor_label = f"{num_str[0]}º Andar" if len(num_str) == 3 and num_str[0] in "123456789" else None
+        res.append(
+            PublicRoomResponse(
+                id=r.id,
+                name=f"UH {num_str}",
+                number=num_str,
+                floor=floor_label,
+            )
+        )
+    return res
 
 
 @router.get("/client-info", response_model=ClientInfoResponse)

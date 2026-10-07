@@ -17,6 +17,7 @@ class Category(Base):
     description = Column(String(300), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_global = Column(Boolean, default=False, server_default="0", nullable=False)
+    is_public = Column(Boolean, default=True, server_default="1", nullable=False)
     zabbix_group_id = Column(String(50), nullable=True)
     zabbix_group_name = Column(String(150), nullable=True)
 

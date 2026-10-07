@@ -15,6 +15,7 @@ export default function NewTicket() {
   const [categories, setCategories] = useState([]);
   const [assets, setAssets] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [rooms, setRooms] = useState([]);
   const [requesterAssets, setRequesterAssets] = useState([]);
   
   // Selections
@@ -40,6 +41,7 @@ export default function NewTicket() {
     api.get("/departments/").then(r => setDepartments(r.data)).catch(console.error);
     api.get("/categories/").then(r => setCategories(r.data)).catch(console.error);
     api.get("/locations/").then(r => setLocations(r.data)).catch(console.error);
+    api.get("/public/rooms").then(r => setRooms(r.data)).catch(console.error);
   }, []);
 
   // Fetch assets when category or requester changes
@@ -82,16 +84,21 @@ export default function NewTicket() {
     }
   }, [departmentId]);
 
-  // Load requester assets when requester changes
+  // Load requester assets and auto-fill location when requester changes
   useEffect(() => {
     if (requesterId) {
       api.get(`/assets/?assigned_user_id=${requesterId}`).then(r => {
         setRequesterAssets(r.data);
       }).catch(console.error);
+
+      const reqUser = users.find(u => u.id === Number(requesterId));
+      if (reqUser && reqUser.is_room && reqUser.room_number) {
+        setLocation(`UH ${reqUser.room_number}`);
+      }
     } else {
       setRequesterAssets([]);
     }
-  }, [requesterId]);
+  }, [requesterId, users]);
 
   // Categories filtering based on requester assets and globals
   const displayedCategories = categories.filter(c => {
@@ -267,7 +274,9 @@ export default function NewTicket() {
                 >
                   <option value="">Selecione a categoria...</option>
                   {displayedCategories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.is_public ? "" : "🔒 [Interna TI]"}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -344,10 +353,21 @@ export default function NewTicket() {
                 onChange={(e) => setLocation(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
               >
-                <option value="">Selecione o local...</option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
+                <option value="">Selecione o local ou UH...</option>
+                <optgroup label="Locais Físicos / Setores">
+                  {locations.map((loc) => (
+                    <option key={`loc-${loc.id}`} value={loc.name}>
+                      🏢 {loc.name} {loc.floor ? `(${loc.floor})` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Apartamentos / UHs">
+                  {rooms.map((rm) => (
+                    <option key={`rm-${rm.id}`} value={`UH ${rm.number}`}>
+                      🛏️ {rm.name}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
 

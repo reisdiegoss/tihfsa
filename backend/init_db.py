@@ -120,6 +120,7 @@ def apply_migrations():
         # Categorias & Zabbix
         ("categories.zabbix_group_id", "ALTER TABLE categories ADD COLUMN IF NOT EXISTS zabbix_group_id VARCHAR(50);"),
         ("categories.zabbix_group_name", "ALTER TABLE categories ADD COLUMN IF NOT EXISTS zabbix_group_name VARCHAR(150);"),
+        ("categories.is_public", "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"),
 
         # Mapas de Rede / Topologia
         ("network_maps.pan_x", "ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS pan_x INTEGER DEFAULT 0;"),
