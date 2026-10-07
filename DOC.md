@@ -760,3 +760,38 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Captura transparente de IP (`X-Forwarded-For` / `X-Real-IP`) e User-Agent, persistidos na linha do tempo e auditoria do ticket.
       - **Notificação Automática via WhatsApp**:
         - Disparo imediato de notificação no grupo da TI via `EvolutionService`, detalhando o solicitante, setor, chefe do setor, computador detectado (com hostname e ativo), local/UH, título, descrição e dados de auditoria anti-fraude.
+
+    - **Infraestrutura de Rede Corporativa, Certificado SSL & Acesso Sem Alertas**:
+      - **Causa Raiz do Alerta "Não Seguro"**:
+        - Ao acessar `https://fassa29/suporte` via navegadores corporativos (Edge, Chrome), o aviso vermelho de segurança ocorre porque certificados autoassinados não possuem uma Autoridade Certificadora Raiz (Root CA) confiada instalada no repositório de chaves do Windows.
+        - Além disso, a configuração padrão anterior do Nginx forçava redirecionamento 301 de HTTP (80) para HTTPS (443), impedindo que usuários da intranet acessassem por HTTP puro sem cair na tela de bloqueio do navegador.
+      - **Solução Implementada (Modo Híbrido & Root CA Corporativa)**:
+        1. **Modo Híbrido HTTP + HTTPS Simultâneo (`FORCE_HTTPS=false` por padrão)**:
+           - O Nginx foi reconfigurado para atender simultaneamente nas portas 80 (HTTP) e 443 (HTTPS).
+           - **Acesso Imediato sem Nenhum Clique**: Os colaboradores podem acessar diretamente `http://fassa29/suporte` (ou apenas `fassa29/suporte`). A interface SPA e as chamadas de API carregam de forma instantânea e 100% livre de avisos de segurança ou telas de bloqueio.
+        2. **Geração de Autoridade Certificadora Raiz Própria (`TIHFSA Root CA`)**:
+           - O script `start.sh` agora gera uma Root CA corporativa oficial (`tihfsa-ca.crt` e `tihfsa-ca.key`) com validade de 10 anos (3650 dias) e flag `CA:TRUE`.
+           - Emite o certificado do servidor assinado por essa CA com Subject Alternative Names (SAN) abrangentes:
+             - `DNS.1 = fassa29`
+             - `DNS.2 = fassa29.fasanobr.local`
+             - `DNS.3 = fassa29.local`
+             - `DNS.4 = localhost`
+             - `DNS.5 = *.fasanobr.local`
+             - `IP.1 = 192.168.168.29` (IP do servidor)
+             - `IP.2 = 127.0.0.1`
+           - Monta o bundle de cadeia completa (`tihfsa-bundle.crt`) servido no Nginx.
+        3. **Distribuição Automatizada via GPO do Active Directory (Recomendado para 100% da Rede)**:
+           - Para que todas as máquinas do hotel exibam o **Cadeado Verde Seguro** em `https://fassa29/suporte` automaticamente sem que nenhum usuário precise clicar em confiar:
+             1. Baixe o certificado raiz em: `http://fassa29/cert/tihfsa-ca.crt`
+             2. No Windows Server (Controlador de Domínio do Fasano), abra o **Gerenciamento de Política de Grupo** (`gpmc.msc`).
+             3. Edite a diretiva do domínio (ex: *Default Domain Policy* ou crie uma GPO *TIHFSA-Root-CA*).
+             4. Navegue até: `Configuração do Computador` > `Políticas` > `Configurações do Windows` > `Configurações de Segurança` > `Diretivas de Chave Pública` > `Autoridades de Certificação Raiz Confiáveis`.
+             5. Clique com o botão direito > **Importar...** e selecione o arquivo `tihfsa-ca.crt`.
+             6. Após a aplicação da GPO (`gpupdate /force`), todos os navegadores da empresa passarão a confiar na conexão HTTPS do `fassa29` de forma transparente.
+        4. **Instalador de 1 Clique para Windows**:
+           - Disponibilizado via web em `http://fassa29/cert/instalar-certificado.bat` e `http://fassa29/cert/instalar-certificado.ps1`.
+           - Ao executar como Administrador, o script adiciona a CA na loja local com:
+             `certutil -addstore -f "ROOT" tihfsa-ca.crt`
+        5. **Comando de Regeneração de Certificado**:
+           - No servidor Linux: `./start.sh --ssl` (ou `./start.sh --ca`) regenera a Root CA e os certificados SSL com reload imediato do Nginx.
+

@@ -414,94 +414,308 @@ ensure_nginx_installed() {
 }
 
 setup_ssl_certificate() {
+    local force_renew="${1:-false}"
     ensure_nginx_installed
 
     local cert_file="$SSL_DIR/${PROJECT_NAME}.crt"
     local key_file="$SSL_DIR/${PROJECT_NAME}.key"
+    local ca_cert="$SSL_DIR/${PROJECT_NAME}-ca.crt"
+    local ca_key="$SSL_DIR/${PROJECT_NAME}-ca.key"
+    local bundle_file="$SSL_DIR/${PROJECT_NAME}-bundle.crt"
 
-    if [[ -f "$cert_file" && -f "$key_file" ]]; then
-        log_info "Certificado SSL existente detectado em $SSL_DIR."
+    if [[ "$force_renew" != "true" && -f "$cert_file" && -f "$key_file" && -f "$bundle_file" ]]; then
+        log_info "Certificados SSL existentes detectados em $SSL_DIR."
+        sync_cert_to_webroot
         return 0
     fi
 
-    log_info "Gerando certificado SSL autoassinado de 10 anos (3650 dias) para $PROJECT_NAME..."
+    log_info "Configurando Autoridade Certificadora Raiz (Root CA) e Certificado SSL com SAN..."
 
     local server_ip
     server_ip=$(get_server_ip)
     local hostname_val
     hostname_val=$(hostname)
+    local domain_val="fasanobr.local"
 
-    # Configuração temporária OpenSSL para incluir SAN (Subject Alternative Names)
-    local openssl_cnf="/tmp/${PROJECT_NAME}_openssl.cnf"
-    cat > "$openssl_cnf" <<EOF
+    # 1. Gerar Autoridade Certificadora Raiz Própria (Root CA) se não existir
+    if [[ ! -f "$ca_key" || ! -f "$ca_cert" ]]; then
+        log_info "Gerando nova Autoridade Certificadora Raiz: TIHFSA Root CA (10 anos)..."
+        local ca_cnf="/tmp/${PROJECT_NAME}_ca_openssl.cnf"
+        cat > "$ca_cnf" <<EOF
 [req]
 default_bits       = 2048
 prompt             = no
 default_md         = sha256
-x509_extensions    = v3_req
-distinguished_name = dn
+x509_extensions    = v3_ca
+distinguished_name = dn_ca
 
-[dn]
+[dn_ca]
+C  = BR
+ST = Bahia
+L  = Salvador
+O  = Hotel Fasano Salvador
+OU = Tecnologia da Informacao
+CN = TIHFSA Root Certification Authority
+
+[v3_ca]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always,issuer
+basicConstraints       = critical, CA:true, pathlen:0
+keyUsage               = critical, digitalSignature, cRLSign, keyCertSign
+EOF
+
+        sudo openssl req -x509 -new -nodes -days 3650 -newkey rsa:2048 \
+            -keyout "$ca_key" \
+            -out "$ca_cert" \
+            -config "$ca_cnf" > /dev/null 2>&1
+
+        sudo chmod 600 "$ca_key"
+        sudo chmod 644 "$ca_cert"
+        rm -f "$ca_cnf"
+        log_success "Autoridade Certificadora Raiz gerada em $ca_cert"
+    fi
+
+    # 2. Gerar Chave Privada do Servidor e CSR
+    local server_csr="/tmp/${PROJECT_NAME}_server.csr"
+    local server_cnf="/tmp/${PROJECT_NAME}_server_openssl.cnf"
+    cat > "$server_cnf" <<EOF
+[req]
+default_bits       = 2048
+prompt             = no
+default_md         = sha256
+distinguished_name = dn_srv
+
+[dn_srv]
 C  = BR
 ST = Bahia
 L  = Salvador
 O  = Hotel Fasano Salvador
 OU = Tecnologia da Informacao
 CN = $hostname_val
-
-[v3_req]
-subjectAltName = @alt_names
-basicConstraints = CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-
-[alt_names]
-DNS.1 = localhost
-DNS.2 = $hostname_val
-IP.1  = 127.0.0.1
-IP.2  = $server_ip
 EOF
 
-    sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    sudo openssl req -new -nodes -newkey rsa:2048 \
         -keyout "$key_file" \
+        -out "$server_csr" \
+        -config "$server_cnf" > /dev/null 2>&1
+
+    # 3. Gerar Extensões com Subject Alternative Names (SAN)
+    local ext_cnf="/tmp/${PROJECT_NAME}_ext.cnf"
+    cat > "$ext_cnf" <<EOF
+authorityKeyIdentifier = keyid,issuer
+basicConstraints       = CA:FALSE
+keyUsage               = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+extendedKeyUsage       = serverAuth, clientAuth
+subjectAltName         = @alt_names
+
+[alt_names]
+DNS.1 = $hostname_val
+DNS.2 = ${hostname_val}.${domain_val}
+DNS.3 = ${hostname_val}.local
+DNS.4 = localhost
+DNS.5 = *.${domain_val}
+IP.1  = $server_ip
+IP.2  = 127.0.0.1
+EOF
+
+    # 4. Assinar o Certificado do Servidor com a Root CA
+    sudo openssl x509 -req -in "$server_csr" \
+        -CA "$ca_cert" \
+        -CAkey "$ca_key" \
+        -CAcreateserial \
         -out "$cert_file" \
-        -config "$openssl_cnf" > /dev/null 2>&1
+        -days 3650 \
+        -sha256 \
+        -extfile "$ext_cnf" > /dev/null 2>&1
 
     sudo chmod 600 "$key_file"
     sudo chmod 644 "$cert_file"
-    rm -f "$openssl_cnf"
 
-    log_success "Certificado SSL gerado com sucesso em $SSL_DIR (Válido para $server_ip, $hostname_val e localhost)."
+    # 5. Criar Bundle Completo da Cadeia (Servidor + CA)
+    sudo cat "$cert_file" "$ca_cert" | sudo tee "$bundle_file" > /dev/null
+    sudo chmod 644 "$bundle_file"
+
+    rm -f "$server_csr" "$server_cnf" "$ext_cnf"
+    log_success "Certificado SSL emitido com sucesso para $hostname_val, ${hostname_val}.${domain_val} e $server_ip."
+
+    sync_cert_to_webroot
+}
+
+sync_cert_to_webroot() {
+    # Publica a Root CA e os scripts instaladores na pasta pública /cert do Nginx
+    local cert_web_dir="$WEB_ROOT/cert"
+    sudo mkdir -p "$cert_web_dir"
+
+    local ca_cert="$SSL_DIR/${PROJECT_NAME}-ca.crt"
+    if [[ -f "$ca_cert" ]]; then
+        sudo cp "$ca_cert" "$cert_web_dir/tihfsa-ca.crt"
+        sudo cp "$ca_cert" "$cert_web_dir/tihfsa-ca.cer"
+    fi
+
+    if [[ -f "$SCRIPT_DIR/scripts/instalar-certificado.bat" ]]; then
+        sudo cp "$SCRIPT_DIR/scripts/instalar-certificado.bat" "$cert_web_dir/instalar-certificado.bat"
+    fi
+
+    if [[ -f "$SCRIPT_DIR/scripts/instalar-certificado.ps1" ]]; then
+        sudo cp "$SCRIPT_DIR/scripts/instalar-certificado.ps1" "$cert_web_dir/instalar-certificado.ps1"
+    fi
+
+    # Criar LEIAME informativo com instrução de GPO do Active Directory
+    sudo tee "$cert_web_dir/LEIAME.txt" > /dev/null <<EOF
+=====================================================================
+  TIHFSA — Hotel Fasano Salvador
+  Autoridade Certificadora Raiz & Certificados de Rede Interna
+=====================================================================
+
+COMO CONFIAR NO CERTIFICADO PARA QUE O NAVEGADOR NÃO EXIBA ALERTA:
+
+1. DISTRIBUIÇÃO EM TODA A REDE (RECOMENDADO VIA ACTIVE DIRECTORY GPO):
+   - No Controlador de Domínio (Windows Server):
+     Abra gpmc.msc -> Default Domain Policy (ou nova GPO) ->
+     Configuração do Computador -> Diretivas -> Configurações do Windows ->
+     Configurações de Segurança -> Diretivas de Chave Pública ->
+     "Autoridades de Certificação Raiz Confiáveis".
+   - Clique com botão direito -> Importar -> selecione o arquivo: tihfsa-ca.crt
+   - Pronto! Todos os computadores do hotel confiam automaticamente com cadeado verde.
+
+2. INSTALAÇÃO RÁPIDA INDIVIDUAL NO WINDOWS (1 CLIQUE):
+   - Baixe e execute como Administrador:
+     http://fassa29/cert/instalar-certificado.bat
+
+3. ACESSO DIRETO SEM CERTIFICADO NA INTRANET:
+   - Acesse via HTTP puro (porta 80):
+     http://fassa29/suporte
+     http://192.168.168.29/suporte
+EOF
+
+    sudo chown -R www-data:www-data "$cert_web_dir" 2>/dev/null || true
+    sudo chmod -R 755 "$cert_web_dir"
 }
 
 # ══════════════════════════════════════════════════════════════
-#  4. CONFIGURAÇÃO DO NGINX (HTTP -> HTTPS & REVERSE PROXY)
+#  4. CONFIGURAÇÃO DO NGINX (HTTP + HTTPS FLEXÍVEL & REVERSE PROXY)
 # ══════════════════════════════════════════════════════════════
 configure_nginx() {
     ensure_nginx_installed
     log_info "Gerando configuração de produção do Nginx para [$PROJECT_NAME]..."
 
-    sudo tee "$NGINX_CONF_AVAILABLE" > /dev/null <<EOF
+    local force_https="false"
+    if [[ -f "$ENV_FILE" ]]; then
+        force_https=$(grep -E "^FORCE_HTTPS=" "$ENV_FILE" 2>/dev/null | cut -d= -f2 | tr -d ' "' | tr '[:upper:]' '[:lower:]' || echo "false")
+    fi
+
+    local ssl_cert_path="$SSL_DIR/${PROJECT_NAME}-bundle.crt"
+    if [[ ! -f "$ssl_cert_path" ]]; then
+        ssl_cert_path="$SSL_DIR/${PROJECT_NAME}.crt"
+    fi
+
+    if [[ "$force_https" == "true" ]]; then
+        log_info "Modo FORCE_HTTPS ativado: Redirecionando HTTP (80) -> HTTPS (443)."
+        sudo tee "$NGINX_CONF_AVAILABLE" > /dev/null <<EOF
 # ============================================================
-#  $PROJECT_NAME — Configuração Nginx (Porta 80 -> 443 + Reverse Proxy)
+#  $PROJECT_NAME — Configuração Nginx (HTTP -> HTTPS Forçado)
 # ============================================================
 
-# ── Redirecionamento HTTP (80) -> HTTPS (443) ────────────────
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
 
-    return 301 https://\$host\$request_uri;
+    # Permite download de certificados mesmo via HTTP antes do redirect
+    location /cert/ {
+        alias $WEB_ROOT/cert/;
+        autoindex on;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
 }
 
-# ── Servidor Principal HTTPS (443) ───────────────────────────
 server {
     listen 443 ssl default_server;
     listen [::]:443 ssl default_server;
     server_name _;
 
-    # Certificados SSL
-    ssl_certificate $SSL_DIR/${PROJECT_NAME}.crt;
+    ssl_certificate $ssl_cert_path;
+    ssl_certificate_key $SSL_DIR/${PROJECT_NAME}.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    client_max_body_size 50M;
+    root $WEB_ROOT;
+    index index.html;
+
+    location /cert/ {
+        alias $WEB_ROOT/cert/;
+        autoindex on;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+    }
+
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT/uploads/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /docs {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT/docs;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /openapi.json {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT/openapi.json;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+    else
+        log_info "Modo Híbrido Corporativo ativado: Portas 80 (HTTP) e 443 (HTTPS) atendem simultaneamente sem bloqueio de certificado para os usuários."
+        sudo tee "$NGINX_CONF_AVAILABLE" > /dev/null <<EOF
+# ============================================================
+#  $PROJECT_NAME — Configuração Nginx (Modo Híbrido HTTP + HTTPS)
+# ============================================================
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+
+    # Certificados SSL para requisições HTTPS (Porta 443)
+    ssl_certificate $ssl_cert_path;
     ssl_certificate_key $SSL_DIR/${PROJECT_NAME}.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
@@ -513,6 +727,12 @@ server {
     # Diretório dos arquivos compilados do Frontend SPA ($WEB_ROOT)
     root $WEB_ROOT;
     index index.html;
+
+    # Download do Certificado Raiz da TI para GPO / Computadores
+    location /cert/ {
+        alias $WEB_ROOT/cert/;
+        autoindex on;
+    }
 
     # SPA (Single Page Application) Routing
     location / {
@@ -567,6 +787,7 @@ server {
     }
 }
 EOF
+    fi
 
     # Ativar o site e remover o default para evitar colisões
     sudo rm -f /etc/nginx/sites-enabled/default
@@ -712,21 +933,26 @@ start_services() {
     # 7. Exibir informações de acesso
     local server_ip
     server_ip=$(get_server_ip)
+    local hostname_val
+    hostname_val=$(hostname)
 
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║           SISTEMA TIHFSA OPERACIONAL EM PRODUÇÃO!            ║${NC}"
     echo -e "${GREEN}╠══════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${GREEN}║${NC}  Acesso Web (HTTPS):    ${BOLD}${CYAN}https://$server_ip/${NC}"
-    echo -e "${GREEN}║${NC}  Acesso Local:          ${CYAN}https://localhost/${NC}"
-    echo -e "${GREEN}║${NC}  Documentação API:      ${CYAN}https://$server_ip/docs${NC}"
-    echo -e "${GREEN}║${NC}  Portas Usadas:         ${BOLD}80 (HTTP redirect) e 443 (HTTPS)${NC}"
-    echo -e "${GREEN}║${NC}  Backend Interno:       127.0.0.1:$INTERNAL_BACKEND_PORT (PID: $backend_pid)"
-    echo -e "${GREEN}║${NC}  Logs do Sistema:       $LOG_DIR/backend.log"
+    echo -e "${GREEN}║${NC}  Acesso Intranet (Sem avisos): ${BOLD}${CYAN}http://$server_ip/suporte${NC}"
+    echo -e "${GREEN}║${NC}  Acesso por Nome da Máquina:   ${BOLD}${CYAN}http://$hostname_val/suporte${NC}"
+    echo -e "${GREEN}║${NC}  Acesso Seguro (HTTPS):        ${CYAN}https://$hostname_val/suporte${NC}"
+    echo -e "${GREEN}║${NC}  Download Certificado Raiz:    ${YELLOW}http://$hostname_val/cert/tihfsa-ca.crt${NC}"
+    echo -e "${GREEN}║${NC}  Documentação API:             ${CYAN}http://$server_ip/docs${NC}"
+    echo -e "${GREEN}║${NC}  Portas Ativas:                ${BOLD}80 (HTTP) e 443 (HTTPS)${NC}"
+    echo -e "${GREEN}║${NC}  Backend Interno:              127.0.0.1:$INTERNAL_BACKEND_PORT (PID: $backend_pid)"
+    echo -e "${GREEN}║${NC}  Logs do Sistema:              $LOG_DIR/backend.log"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     log_info "Comandos úteis:"
     echo "    ./start.sh --status              # Verifica status dos serviços"
+    echo "    ./start.sh --ssl                 # Regenera Root CA e Certificado SSL"
     echo "    ./start.sh --restart             # Reinicia a aplicação"
     echo "    ./start.sh --logs                # Acompanha logs do backend"
     echo "    ./start.sh --stop                # Encerra o backend"
@@ -777,14 +1003,14 @@ check_status() {
 
     # Nginx HTTP (80)
     if is_port_in_use 80; then
-        echo -e "  Nginx HTTP      (Porta 80):   ${GREEN}● ATIVO${NC} (Redireciona para 443)"
+        echo -e "  Nginx HTTP      (Porta 80):   ${GREEN}● ATIVO${NC} (Atende chamados na intranet)"
     else
         echo -e "  Nginx HTTP      (Porta 80):   ${RED}● INATIVO${NC}"
     fi
 
     # Nginx HTTPS (443)
     if is_port_in_use 443; then
-        echo -e "  Nginx HTTPS     (Porta 443):  ${GREEN}● ATIVO${NC} (SSL Ativo)"
+        echo -e "  Nginx HTTPS     (Porta 443):  ${GREEN}● ATIVO${NC} (SSL Corporativo Ativo)"
     else
         echo -e "  Nginx HTTPS     (Porta 443):  ${RED}● INATIVO${NC}"
     fi
@@ -792,7 +1018,11 @@ check_status() {
     echo "────────────────────────────────────────────────────────────"
     local server_ip
     server_ip=$(get_server_ip)
-    echo -e "  URL do Sistema: ${BOLD}${CYAN}https://$server_ip/${NC}"
+    local hostname_val
+    hostname_val=$(hostname)
+    echo -e "  URL Intranet:  ${BOLD}${CYAN}http://$server_ip/suporte${NC}  (ou http://$hostname_val/suporte)"
+    echo -e "  URL Segura:    ${BOLD}${CYAN}https://$hostname_val/suporte${NC}"
+    echo -e "  Certificado:   ${YELLOW}http://$hostname_val/cert/tihfsa-ca.crt${NC}"
     echo ""
 }
 
@@ -819,6 +1049,13 @@ main() {
             ;;
         --status|-t)
             check_status
+            ;;
+        --ssl|--ca)
+            ensure_nginx_installed
+            setup_ssl_certificate true
+            configure_nginx
+            sudo systemctl reload nginx 2>/dev/null || sudo service nginx reload 2>/dev/null || true
+            log_success "Certificados SSL e Root CA regenerados e publicados com sucesso!"
             ;;
         --install|-i)
             check_env_file
@@ -861,6 +1098,7 @@ main() {
             echo "Opções:"
             echo "  (sem opção)     Instalação / Deploy completo da aplicação"
             echo "  --update, -u    Atualizar via Git, recompilar frontend e reiniciar serviços"
+            echo "  --ssl, --ca     Regenerar Autoridade Certificadora Raiz e Certificado SSL"
             echo "  --setup, -w     Executar o assistente interativo de clone e configuração"
             echo "  --start, -s     Iniciar backend e Nginx (rápido)"
             echo "  --stop, -x      Parar o backend"
