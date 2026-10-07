@@ -23,6 +23,18 @@ echo -e "\033[34m[+] Instalando TIHFSA Sentinel Agent para Linux...\033[0m"
 # Cria diretórios de suporte
 mkdir -p "$INSTALL_DIR" "$CONFIG_DIR"
 
+# Instalação da Autoridade Certificadora Raiz TIHFSA (Linux CA trust)
+CA_URL="${TIHFSA_CA_URL:-"https://192.168.168.29/api/v1/monitoring/agent/ca.crt"}"
+echo -e "\033[34m[+] Verificando Autoridade Certificadora Raiz TIHFSA...\033[0m"
+if command -v update-ca-certificates >/dev/null 2>&1; then
+    mkdir -p /usr/local/share/ca-certificates
+    if curl -k -s -m 5 "$CA_URL" -o /usr/local/share/ca-certificates/tihfsa-ca.crt 2>/dev/null; then
+        update-ca-certificates >/dev/null 2>&1 || true
+        echo -e "\033[32m[OK] Certificado Raiz TIHFSA instalado nas autoridades confiáveis do Linux.\033[0m"
+    fi
+fi
+
+
 # Baixa o script configurado para o servidor
 echo -e "\033[34m[+] Baixando script do agente de $SCRIPT_URL...\033[0m"
 if command -v curl >/dev/null 2>&1; then

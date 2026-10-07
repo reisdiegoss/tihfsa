@@ -141,15 +141,26 @@ export default function StationMonitoringTab() {
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           {/* Botão de Download Direto do Script (.ps1 ou .sh) */}
           {selectedOs === "windows" ? (
-            <a
-              href={`${apiBase}/monitoring/agent/script?download=true`}
-              download="tihfsa-agent.ps1"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
-              title="Baixar arquivo tihfsa-agent.ps1 já configurado com a URL deste servidor"
-            >
-              <Download size={15} className="text-emerald-400" />
-              <span>Baixar Script (.ps1)</span>
-            </a>
+            <>
+              <a
+                href={`${apiBase}/monitoring/agent/script?download=true`}
+                download="tihfsa-agent.ps1"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
+                title="Baixar arquivo tihfsa-agent.ps1 já configurado com a URL deste servidor"
+              >
+                <Download size={15} className="text-emerald-400" />
+                <span>Baixar Script (.ps1)</span>
+              </a>
+              <a
+                href={`${apiBase}/monitoring/agent/ca.crt`}
+                download="tihfsa-ca.crt"
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 font-bold text-xs transition-all cursor-pointer shadow-xs"
+                title="Baixar Certificado da Autoridade Raiz TIHFSA (Trusted Root CA para Windows / GPO)"
+              >
+                <Shield size={15} className="text-blue-400" />
+                <span>Certificado SSL Raiz</span>
+              </a>
+            </>
           ) : (
             <a
               href={`${apiBase}/monitoring/agent/linux-script?download=true`}
@@ -600,6 +611,15 @@ export default function StationMonitoringTab() {
                       <p className="font-bold">Comportamento Silencioso para Notebooks fora da rede:</p>
                       <p className="text-blue-800 mt-0.5">
                         Quando o usuário levar o notebook para casa ou viagens sem conexão direta com o servidor, o agente executa com timeout de 5 segundos e <strong>não exibe nenhum erro, aviso ou janela na tela</strong>. O envio é retomado automaticamente assim que a máquina conectar à rede ou VPN.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-2.5 bg-emerald-50/80 rounded-xl border border-emerald-200/80 text-[11px] text-emerald-950 flex items-start gap-2">
+                    <span className="text-base shrink-0">🔒</span>
+                    <div>
+                      <p className="font-bold">Instalação Automática do Certificado SSL Raiz:</p>
+                      <p className="text-emerald-900 mt-0.5">
+                        O instalador e a execução periódica do agente verificam e instalam automaticamente a <strong>Autoridade Raiz TIHFSA</strong> no repositório de chaves do Windows. Os navegadores <strong>Edge e Chrome passam a confiar na conexão HTTPS</strong> sem aviso de segurança e sem necessidade de configuração manual.
                       </p>
                     </div>
                   </div>

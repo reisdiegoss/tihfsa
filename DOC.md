@@ -794,4 +794,15 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
              `certutil -addstore -f "ROOT" tihfsa-ca.crt`
         5. **Comando de Regeneração de Certificado**:
            - No servidor Linux: `./start.sh --ssl` (ou `./start.sh --ca`) regenera a Root CA e os certificados SSL com reload imediato do Nginx.
+        6. **Instalação Integrada ao Sentinel Agent (`/api/v1/monitoring/agent/install`)**:
+           - Ao executar o instalador do agente em qualquer estação ou servidor de trabalho via PowerShell:
+             `irm 'https://fassa29/api/v1/monitoring/agent/install' | iex`
+             o script já efetua automaticamente o download e instalação da **Autoridade Raiz TIHFSA** na loja `Cert:\LocalMachine\Root` do Windows antes de criar a Tarefa Agendada.
+        7. **Auto-Atualização e Verificação Automática Periódica nas Máquinas Instaladas**:
+           - O script `tihfsa-agent.ps1` agora possui a função `Ensure-TihfsaRootCertificate` e `Update-AgentScriptSelf`:
+             - A cada 15 minutos, quando a tarefa agendada executa em segundo plano com privilégios de `NT AUTHORITY\SYSTEM`, o agente valida se a autoridade raiz está presente. Se ausente, baixa e instala silenciosamente sem pedir confirmação ou exibir janelas ao usuário.
+             - Atualiza a si mesmo para a versão mais recente caso haja novidades no servidor.
+        8. **Script de Atualização em Massa na Rede (`scripts/atualizar-agentes-e-certificado-rede.ps1`)**:
+           - Permite que a equipe de TI atualize todas as 50+ máquinas da rede de uma só vez a partir de um único comando PowerShell, consultando a lista de estações do TIHFSA e aplicando a instalação via WinRM/PowerShell Remoting sem necessidade de ir de máquina em máquina.
+
 

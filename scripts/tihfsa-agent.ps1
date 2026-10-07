@@ -38,12 +38,96 @@ function Log-AgentMessage {
     } catch {}
 }
 
+function Ensure-TihfsaRootCertificate {
+    param([string]$TargetServerUrl)
+    try {
+        # 1. Verifica se já está instalado no repositório confiável da máquina local
+        $installed = Get-ChildItem Cert:\LocalMachine\Root -ErrorAction SilentlyContinue | Where-Object {
+            $_.Subject -like "*TIHFSA Root*" -or $_.Issuer -like "*TIHFSA Root*"
+        }
+        if ($installed) { return $true }
+
+        # 2. Se não estiver instalado, tenta baixar do servidor
+        $serverBase = ($TargetServerUrl -split '/api/')[0]
+        $candidateUrls = @(
+            "$serverBase/api/v1/monitoring/agent/ca.crt",
+            "$serverBase/cert/tihfsa-ca.crt",
+            "http://fassa29/cert/tihfsa-ca.crt",
+            "http://192.168.168.29/cert/tihfsa-ca.crt"
+        )
+
+        $tempCa = "$env:TEMP\tihfsa-ca.crt"
+        $downloaded = $false
+        foreach ($url in $candidateUrls) {
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+                Invoke-WebRequest -Uri $url -OutFile $tempCa -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+                if (Test-Path $tempCa) { $downloaded = $true; break }
+            } catch {
+                try {
+                    curl.exe -k -s -m 5 $url -o $tempCa 2>$null
+                    if (Test-Path $tempCa) { $downloaded = $true; break }
+                } catch {}
+            }
+        }
+
+        if ($downloaded -and (Test-Path $tempCa)) {
+            try {
+                $certObj = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($tempCa)
+                $store = New-Object System.Security.Cryptography.X509Certificates.X509Store([System.Security.Cryptography.X509Certificates.StoreName]::Root, [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine)
+                $store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                $store.Add($certObj)
+                $store.Close()
+            } catch {
+                certutil.exe -addstore -f "ROOT" $tempCa 2>$null | Out-Null
+            }
+            Remove-Item $tempCa -Force -ErrorAction SilentlyContinue
+            Log-AgentMessage "[OK] Certificado Raiz TIHFSA instalado com sucesso na Loja LocalMachine\Root."
+            return $true
+        }
+    } catch {
+        Log-AgentMessage "[AVISO] Nao foi possivel verificar/instalar certificado SSL: $_"
+    }
+    return $false
+}
+
+function Update-AgentScriptSelf {
+    param([string]$TargetServerUrl)
+    try {
+        $installDir = "C:\ProgramData\TIHFSA-Agent"
+        $targetScript = "$installDir\tihfsa-agent.ps1"
+        $scriptUrl = $TargetServerUrl.Replace("/checkin", "/script")
+        $tempScript = "$installDir\tihfsa-agent.new.ps1"
+
+        try {
+            Invoke-RestMethod -Uri $scriptUrl -OutFile $tempScript -TimeoutSec 10 -ErrorAction Stop
+        } catch {
+            curl.exe -k -s -m 10 $scriptUrl -o $tempScript 2>$null
+        }
+
+        if (Test-Path $tempScript) {
+            $newSize = (Get-Item $tempScript).Length
+            if ($newSize -gt 1500) {
+                $content = Get-Content $tempScript -Raw -ErrorAction SilentlyContinue
+                if ($content -like "*TIHFSA Sentinel Agent*") {
+                    Move-Item -Path $tempScript -Destination $targetScript -Force
+                    Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso."
+                }
+            }
+            Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
+        }
+    } catch {}
+}
+
 function Install-SentinelTask {
     param(
         [string]$TargetUrl,
         [string]$Secret,
         [int]$Interval
     )
+
+    # Assegura que o certificado raiz TIHFSA está instalado na máquina
+    Ensure-TihfsaRootCertificate -TargetServerUrl $TargetUrl
 
     $installDir = "C:\ProgramData\TIHFSA-Agent"
     if (-not (Test-Path $installDir)) {
@@ -485,6 +569,12 @@ function Get-SystemMetrics {
         installed_apps      = [object[]]@($installedApps)
     }
 }
+
+# 1. Assegura a instalação da Autoridade Certificadora Raiz TIHFSA na máquina local
+Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl
+
+# 2. Verifica auto-atualização silenciosa do script do agente
+Update-AgentScriptSelf -TargetServerUrl $ServerUrl
 
 # Execução do Check-in
 $payloadObj = Get-SystemMetrics
