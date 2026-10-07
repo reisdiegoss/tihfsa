@@ -66,6 +66,10 @@ class Ticket(Base):
     closed_at = Column(DateTime(timezone=True), nullable=True)
     closure_reason = Column(Text, nullable=True)
 
+    # Garantia de Atendimento & Reabertura
+    reopened_at = Column(DateTime(timezone=True), nullable=True)
+    reopen_count = Column(Integer, default=0, nullable=False)
+
     # FK — Quem abriu o chamado (pessoa ou apartamento)
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
@@ -96,6 +100,12 @@ class Ticket(Base):
         "TicketAttachment",
         back_populates="ticket",
         order_by="TicketAttachment.created_at",
+    )
+    satisfaction_survey = relationship(
+        "TicketSatisfactionSurvey",
+        uselist=False,
+        back_populates="ticket",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self):

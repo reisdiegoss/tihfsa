@@ -812,6 +812,27 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Preservacao da Grade Padrao**: As colunas de *Andar / Nivel*, *Ativos Vinculados*, *Visibilidade*, *Status* e *Acoes* contam com espacamento otimizado e whitespace-nowrap, impedindo que a tabela transborde a viewport ou oculte os botoes de edicao e exclusao.
 
     - **Serviço de E-mail & Notificações SMTP**:
-      - **Configuração**: Conecta via STARTTLS em smtp-mail.outlook.com:587 utilizando a conta suportessa@fasano.com.br.
-      - **Casos de Uso**: Aprovações e validações de chamados por gestores, encerramento de atendimentos e alertas de monitoramento NOC.
-      - **Utilitário de Teste**: Disponível em scripts/test_smtp.py (py scripts/test_smtp.py) para validar conectividade e disparar e-mail de teste com template corporativo HTML.
+      - **Configuração**: Conecta via STARTTLS em `smtp-mail.outlook.com:587` utilizando a conta corporativa (`suportessa@fasano.com.br`).
+      - **Casos de Uso**: Criação de chamados, designação de técnicos, aprovações de gestores, encerramento com pesquisa CSAT e alertas de monitoramento NOC.
+      - **Utilitário de Teste**: Disponível em `scripts/test_smtp.py` (`py scripts/test_smtp.py`) para validar conectividade e disparar e-mail de teste com template corporativo HTML.
+
+    - **Personalização de E-mail, Garantia e Pesquisa de Satisfação CSAT**:
+      - **Personalização Completa de Títulos do E-mail (`/admin/settings` -> Parâmetros Gerais)**:
+        - **Título do Cabeçalho (`email_header_title`)**: Título exibido em destaque branco no banner azul superior do e-mail (padrão: `TIHFSA — Hotel Fasano Salvador`).
+        - **Subtítulo do Cabeçalho (`email_header_subtitle`)**: Texto secundário exibido no topo (padrão: `Central de Serviços & Suporte de TI`).
+        - **Título do Corpo do E-mail (`email_body_title`)**: Título com destaque visual renderizado no topo da mensagem principal (padrão: `Notificação de Atendimento`). Totalmente personalizável pela interface administrativa.
+        - **E-mail de Notificação de Suporte (`support_notification_email`)**: E-mail do grupo da equipe de TI (ex: `ti-hfsa@fasano.com.br`) configurável diretamente pelo painel administrativo, substituindo valores fixos do `.env`.
+        - **Live Preview no Outlook**: Visualizador em tempo real na aba de Parâmetros Gerais mostrando instantaneamente como o layout renderizará no Microsoft Outlook.
+        - **Disparo de Teste Real**: Botão para envio de e-mail de teste imediato para qualquer endereço corporativo diretamente da interface.
+      - **Layout de E-mail Corporativo "Bulletproof MSO"**:
+        - **Compatibilidade Absoluta com Microsoft Outlook**: Estruturado com tabelas aninhadas e condicionais MSO (`<!--[if mso]>`), eliminando quebras visuais causadas pelo motor de renderização Word do Outlook Desktop.
+        - **Suporte a Dark Mode**: Meta tags `color-scheme: light dark` e atributos de cor de fundo sólidos para visualização uniforme em clientes mobile (iOS/Android) e webmail.
+      - **Pesquisa de Satisfação CSAT (1 a 5 Estrelas)**:
+        - **Fluxo sem Senha via Magic Token**: Ao solucionar ou fechar um chamado, o solicitante recebe um e-mail com 5 estrelas clicáveis (Péssimo a Excelente) geradas com token exclusivo (`uuid.uuid4().hex`).
+        - **Página Pública Dedicada (`/avaliacao/:token`)**: Permite votar e opcionalmente deixar um comentário com elogio ou sugestão.
+        - **Dashboard e Relatórios**: Indicadores consolidados disponíveis em `GET /api/v1/reports/csat` para acompanhamento do percentual de satisfação do suporte.
+      - **Garantia de Atendimento & Reabertura de Chamado (X Dias)**:
+        - **Prazo Configurável**: Definido em `ticket_warranty_days` (1 a 90 dias, padrão 7 dias).
+        - **Mecânica de Garantia**: Dentro da janela de garantia após o fechamento, o colaborador pode reabrir o chamado clicando em *"O problema voltou? Reabrir"* informando a justificativa.
+        - **Bloqueio Pós-Prazo**: Após a expiração dos X dias, a reabertura é bloqueada pelo backend com mensagem clara orientando a abertura de um novo chamado.
+        - **Auditoria & Notificações**: Registra a reabertura na timeline (`TicketInteraction`), incrementa `reopen_count`, atualiza `reopened_at` e dispara alerta imediato à equipe de TI por WhatsApp e e-mail.

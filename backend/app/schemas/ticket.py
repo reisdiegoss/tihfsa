@@ -98,6 +98,8 @@ class TicketResponse(BaseModel):
     solved_at: datetime | None = None
     closed_at: datetime | None = None
     closure_reason: str | None = None
+    reopened_at: datetime | None = None
+    reopen_count: int = 0
     # Campos expandidos (populados na listagem)
     requester_name: str | None = None
     technician_name: str | None = None
@@ -111,6 +113,9 @@ class TicketDetail(TicketResponse):
     asset_name: str | None = None
     category_name: str | None = None
     subcategory_name: str | None = None
+    can_reopen: bool = False
+    warranty_expires_at: datetime | None = None
+    satisfaction_rating: int | None = None
     interactions: list[InteractionResponse] = []
     attachments: list[TicketAttachmentResponse] = []
 

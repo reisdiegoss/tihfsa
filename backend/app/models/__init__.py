@@ -14,6 +14,8 @@ from app.models.network_map import NetworkMap
 from app.models.floor import Floor
 from app.models.sla import SLAConfig, SLACategoryRule
 from app.models.monitoring import AgentCheckin
+from app.models.system_setting import SystemSetting
+from app.models.satisfaction_survey import TicketSatisfactionSurvey
 
 __all__ = [
     "User",
@@ -35,5 +37,7 @@ __all__ = [
     "SLAConfig",
     "SLACategoryRule",
     "AgentCheckin",
+    "SystemSetting",
+    "TicketSatisfactionSurvey",
 ]
 

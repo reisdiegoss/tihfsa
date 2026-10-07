@@ -452,6 +452,22 @@ def create_public_ticket(
     )
     background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
 
+    # Notificação por E-mail ao Solicitante
+    try:
+        from app.models.system_setting import SystemSetting
+        from app.services.email_service import send_ticket_created_notification
+        setting = db.query(SystemSetting).first()
+        notify_req = setting.notify_requester_on_create if setting else True
+        if notify_req and user.email:
+            background_tasks.add_task(
+                send_ticket_created_notification,
+                ticket=ticket,
+                requester_name=user.display_name,
+                requester_email=user.email,
+            )
+    except Exception as e:
+        print(f"[WARN] Falha ao agendar e-mail de confirmação público: {e}")
+
     return PublicTicketResponse(
         id=ticket.id,
         title=ticket.title,

@@ -202,6 +202,71 @@ export default function Settings() {
   const [savingZabbixConfig, setSavingZabbixConfig] = useState(false);
   const [newIgnoredPattern, setNewIgnoredPattern] = useState("");
 
+  // General System Settings & Email Branding States
+  const [generalSettings, setGeneralSettings] = useState({
+    support_notification_email: "ti-hfsa@fasano.com.br",
+    email_header_title: "TIHFSA — Hotel Fasano Salvador",
+    email_header_subtitle: "Central de Serviços & Suporte de TI",
+    email_body_title: "Notificação de Atendimento",
+    ticket_warranty_days: 7,
+    csat_enabled: true,
+    notify_requester_on_create: true,
+    notify_requester_on_assign: true,
+    notify_requester_on_solve: true,
+    notify_technician_on_assign: true,
+  });
+  const [loadingGeneralSettings, setLoadingGeneralSettings] = useState(false);
+  const [savingGeneralSettings, setSavingGeneralSettings] = useState(false);
+  const [generalSettingsMsg, setGeneralSettingsMsg] = useState(null);
+  const [testEmailRecipient, setTestEmailRecipient] = useState("");
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailFeedback, setTestEmailFeedback] = useState(null);
+
+  const fetchGeneralSettings = async () => {
+    setLoadingGeneralSettings(true);
+    try {
+      const { data } = await api.get("/settings/general");
+      setGeneralSettings(data);
+    } catch (err) {
+      console.error("Erro ao carregar parâmetros gerais:", err);
+    } finally {
+      setLoadingGeneralSettings(false);
+    }
+  };
+
+  const handleSaveGeneralSettings = async (e) => {
+    e?.preventDefault();
+    setSavingGeneralSettings(true);
+    setGeneralSettingsMsg(null);
+    try {
+      const { data } = await api.put("/settings/general", generalSettings);
+      setGeneralSettings(data);
+      setGeneralSettingsMsg({ type: "success", text: "Configurações e personalização do e-mail salvas com sucesso!" });
+      setTimeout(() => setGeneralSettingsMsg(null), 5000);
+    } catch (err) {
+      console.error(err);
+      setGeneralSettingsMsg({ type: "error", text: formatApiError(err, "Falha ao salvar configurações.") });
+    } finally {
+      setSavingGeneralSettings(false);
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    setSendingTestEmail(true);
+    setTestEmailFeedback(null);
+    try {
+      const target = testEmailRecipient.trim() || user?.email || generalSettings.support_notification_email;
+      const { data } = await api.post("/settings/general/test-email", { recipient_email: target });
+      setTestEmailFeedback({ type: "success", text: data.message || `E-mail de teste enviado com sucesso para ${target}!` });
+      setTimeout(() => setTestEmailFeedback(null), 6000);
+    } catch (err) {
+      console.error(err);
+      setTestEmailFeedback({ type: "error", text: formatApiError(err, "Falha ao enviar e-mail de teste.") });
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
   const fetchEvolutionConfig = async () => {
     setLoadingEvolution(true);
     try {
@@ -798,6 +863,8 @@ export default function Settings() {
       fetchCategoriesWithProblems();
     } else if (activeTab === "asset_types") {
       fetchAssetTypes();
+    } else if (activeTab === "general") {
+      fetchGeneralSettings();
     }
   }, [activeTab]);
 
@@ -1855,34 +1922,378 @@ export default function Settings() {
       {/* TAB CONTENT: General */}
       {activeTab === "general" && (
         <div className="space-y-6 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-xs">
-            <h2 className="text-lg font-bold text-slate-900 mb-2">Parâmetros Gerais do TIHFSA</h2>
-            <p className="text-xs font-semibold text-slate-500 mb-6">Configurações globais do sistema do Fasano Salvador</p>
+          {/* Header da Seção */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white rounded-3xl border border-slate-200 p-6 shadow-xs">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                  <Mail size={18} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 tracking-tight">
+                    Parâmetros Gerais & Personalização de E-mail
+                  </h2>
+                  <p className="text-xs font-semibold text-slate-500">
+                    Defina títulos corporativos, e-mail de suporte, prazo de garantia e pesquisa de satisfação CSAT
+                  </p>
+                </div>
+              </div>
+            </div>
 
-            <div className="space-y-4 max-w-xl">
-              <div>
-                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Nome da Unidade</label>
-                <input
-                  type="text"
-                  disabled
-                  value="Hotel Fasano Salvador"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700"
-                />
+            <button
+              onClick={handleSaveGeneralSettings}
+              disabled={savingGeneralSettings || loadingGeneralSettings}
+              className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/20 transition-all flex items-center gap-2 justify-center disabled:opacity-50 cursor-pointer shrink-0"
+            >
+              {savingGeneralSettings ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+              <span>{savingGeneralSettings ? "Salvando..." : "Salvar Configurações"}</span>
+            </button>
+          </div>
+
+          {/* Feedback de salvamento */}
+          {generalSettingsMsg && (
+            <div
+              className={`p-4 rounded-2xl text-xs font-bold flex items-center gap-2 animate-fade-in ${
+                generalSettingsMsg.type === "success"
+                  ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                  : "bg-red-50 border border-red-200 text-red-800"
+              }`}
+            >
+              {generalSettingsMsg.type === "success" ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+              <span>{generalSettingsMsg.text}</span>
+            </div>
+          )}
+
+          {/* Grid Principal: Formulário + Live Preview */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Coluna Esquerda: Formulário de Configuração */}
+            <form onSubmit={handleSaveGeneralSettings} className="lg:col-span-7 space-y-6">
+              {/* Card 1: Personalização de Títulos do E-mail */}
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                  <Tag className="text-blue-600" size={16} />
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Personalização Visual do Cabeçalho & Corpo do E-mail
+                  </h3>
+                </div>
+
+                {/* Título do Cabeçalho */}
+                <div>
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                    Título Principal do Cabeçalho (Banner Superior) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={generalSettings.email_header_title}
+                    onChange={(e) => setGeneralSettings({ ...generalSettings, email_header_title: e.target.value })}
+                    placeholder="Ex: TIHFSA — Hotel Fasano Salvador"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-colors"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Nome institucional exibido com destaque branco no banner azul escuro superior.
+                  </p>
+                </div>
+
+                {/* Subtítulo do Cabeçalho */}
+                <div>
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                    Subtítulo do Cabeçalho
+                  </label>
+                  <input
+                    type="text"
+                    value={generalSettings.email_header_subtitle}
+                    onChange={(e) => setGeneralSettings({ ...generalSettings, email_header_subtitle: e.target.value })}
+                    placeholder="Ex: Central de Serviços & Suporte de TI"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-colors"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Linha descritiva exibida logo abaixo do título no topo do e-mail corporativo.
+                  </p>
+                </div>
+
+                {/* Título do Corpo do E-mail (SOLICITADO) */}
+                <div className="p-4 bg-blue-50/60 border-2 border-blue-200/80 rounded-2xl relative">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-black text-blue-900 uppercase tracking-wider block">
+                      Título do Corpo do E-mail (Mensagem Principal) <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-blue-600 text-white tracking-wider">
+                      Personalizável
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={generalSettings.email_body_title}
+                    onChange={(e) => setGeneralSettings({ ...generalSettings, email_body_title: e.target.value })}
+                    placeholder="Ex: Notificação de Atendimento"
+                    className="w-full bg-white border border-blue-300 rounded-xl px-3.5 py-2.5 text-xs font-black text-slate-900 outline-none focus:border-blue-600 transition-colors shadow-xs"
+                  />
+                  <p className="text-[10px] font-medium text-blue-700/80 mt-1.5 leading-relaxed">
+                    💡 Este título é renderizado no topo do corpo da mensagem com tipografia destacada para todos os e-mails disparados pelo sistema.
+                  </p>
+                </div>
+
+                {/* E-mail da Equipe de Suporte */}
+                <div>
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                    E-mail de Grupo da Equipe de Suporte / TI <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail size={14} className="absolute left-3.5 top-3 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      value={generalSettings.support_notification_email}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, support_notification_email: e.target.value })}
+                      placeholder="ti-hfsa@fasano.com.br"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-colors"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Endereço que recebe as notificações de novos chamados, reaberturas e alertas NOC.
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Servidor LDAP Ativo</label>
-                <input
-                  type="text"
-                  disabled
-                  value="ad.fasano.local (Porta 389)"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700"
-                />
+              {/* Card 2: Garantia e Pesquisa CSAT */}
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                  <ShieldCheck className="text-emerald-600" size={16} />
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Garantia de Atendimento & Pesquisa de Satisfação
+                  </h3>
+                </div>
+
+                {/* Prazo de Garantia */}
+                <div>
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                    Prazo de Garantia para Reabertura do Chamado (em Dias) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      required
+                      value={generalSettings.ticket_warranty_days}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, ticket_warranty_days: parseInt(e.target.value || "1", 10) })}
+                      className="w-28 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 text-center"
+                    />
+                    <span className="text-xs font-bold text-slate-600">dias corridos após o fechamento</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Durante esse período, o solicitante pode clicar em "Reabrir Chamado" caso o mesmo problema persista. Após esse prazo, o sistema bloqueia e orienta a abertura de um novo chamado.
+                  </p>
+                </div>
+
+                {/* Toggle Pesquisa CSAT */}
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-slate-800 block">
+                      Pesquisa de Satisfação CSAT (1 a 5 Estrelas)
+                    </span>
+                    <p className="text-[10px] text-slate-500">
+                      Disparar e-mail com estrelas clicáveis ao solicitante quando o chamado for solucionado.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={generalSettings.csat_enabled}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, csat_enabled: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Card 3: Regras de Disparo de E-mails */}
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                  <Bell className="text-amber-500" size={16} />
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Regras de Notificação Automática por E-mail
+                  </h3>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <span className="text-xs font-bold text-slate-700">Notificar Solicitante ao Registrar Chamado</span>
+                    <input
+                      type="checkbox"
+                      checked={generalSettings.notify_requester_on_create}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_create: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <span className="text-xs font-bold text-slate-700">Notificar Solicitante ao Designar Técnico</span>
+                    <input
+                      type="checkbox"
+                      checked={generalSettings.notify_requester_on_assign}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_assign: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <span className="text-xs font-bold text-slate-700">Notificar Solicitante ao Solucionar Chamado (CSAT)</span>
+                    <input
+                      type="checkbox"
+                      checked={generalSettings.notify_requester_on_solve}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_solve: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <span className="text-xs font-bold text-slate-700">Notificar Técnico Responsável ao ser Atribuído</span>
+                    <input
+                      type="checkbox"
+                      checked={generalSettings.notify_technician_on_assign}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, notify_technician_on_assign: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingGeneralSettings}
+                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {savingGeneralSettings ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                    <span>Salvar Alterações</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 4: Disparo de E-mail de Teste */}
+              <div className="bg-slate-50 rounded-3xl border border-slate-200 p-6 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Send className="text-blue-600" size={16} />
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Testar Disparo e Layout no Microsoft Outlook
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Envie um e-mail com os títulos configurados para sua caixa postal para validar a renderização corporativa.
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                  <input
+                    type="email"
+                    value={testEmailRecipient}
+                    onChange={(e) => setTestEmailRecipient(e.target.value)}
+                    placeholder={user?.email || "seu-email@fasano.com.br"}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendTestEmail}
+                    disabled={sendingTestEmail}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shrink-0 transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {sendingTestEmail ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                    <span>{sendingTestEmail ? "Enviando..." : "Enviar Teste"}</span>
+                  </button>
+                </div>
+
+                {testEmailFeedback && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                      testEmailFeedback.type === "success"
+                        ? "bg-emerald-100/70 text-emerald-800"
+                        : "bg-red-100/70 text-red-800"
+                    }`}
+                  >
+                    {testEmailFeedback.type === "success" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                    <span>{testEmailFeedback.text}</span>
+                  </div>
+                )}
+              </div>
+            </form>
+
+            {/* Coluna Direita: Live Preview do E-mail Corporativo */}
+            <div className="lg:col-span-5 sticky top-6 space-y-3">
+              <div className="flex items-center justify-between px-2">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Eye size={14} className="text-blue-500" />
+                  Live Preview • Microsoft Outlook
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Bulletproof MSO
+                </span>
+              </div>
+
+              {/* Mockup de E-mail */}
+              <div className="bg-slate-100/80 p-4 rounded-3xl border border-slate-200 shadow-inner">
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-lg transition-all">
+                  {/* Banner Superior Personalizável */}
+                  <div className="bg-[#1e3a8a] p-5 text-left border-b border-blue-950">
+                    <div className="text-white font-bold text-base leading-tight break-words">
+                      {generalSettings.email_header_title || "TIHFSA — Hotel Fasano Salvador"}
+                    </div>
+                    <div className="text-blue-200 text-xs font-normal mt-1 leading-normal break-words">
+                      {generalSettings.email_header_subtitle || "Central de Serviços & Suporte de TI"}
+                    </div>
+                  </div>
+
+                  {/* Corpo do E-mail */}
+                  <div className="p-5 bg-white space-y-3.5">
+                    {/* Badge */}
+                    <div>
+                      <span className="inline-block px-3 py-1 rounded-full text-[10px] font-extrabold uppercase bg-sky-100 text-sky-800 tracking-wider">
+                        CHAMADO REGISTRADO #1042
+                      </span>
+                    </div>
+
+                    {/* Título do Corpo com destaque */}
+                    <div className="text-slate-900 font-extrabold text-sm leading-snug break-words border-b border-slate-100 pb-2">
+                      {generalSettings.email_body_title || "Notificação de Atendimento"}
+                    </div>
+
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Olá <strong>{user?.display_name || "Diego Reis"}</strong>,
+                    </p>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Seu chamado foi registrado com sucesso em nosso sistema de atendimento de TI.
+                    </p>
+
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1 text-slate-700">
+                      <div><strong>Protocolo:</strong> #1042</div>
+                      <div><strong>Título:</strong> Configuração de Impressora Fiscal</div>
+                      <div><strong>Garantia do Serviço:</strong> {generalSettings.ticket_warranty_days} dias para reabertura</div>
+                    </div>
+
+                    {/* Botão de Ação */}
+                    <div className="pt-2 text-center">
+                      <div className="inline-block px-5 py-2.5 rounded-lg bg-[#1e3a8a] text-white font-bold text-xs shadow-sm">
+                        Acompanhar Chamado no Portal
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Rodapé do E-mail */}
+                  <div className="bg-slate-50 border-t border-slate-100 px-5 py-3 text-center text-[10px] text-slate-400">
+                    {generalSettings.email_header_title || "TIHFSA — Hotel Fasano Salvador"} | Notificação do Sistema
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-400 text-center mt-3 leading-normal">
+                  Este modelo renderiza em tabelas 100% nativas compatíveis com Outlook Desktop (Word engine), Outlook Web, iOS, Android e Dark Mode.
+                </p>
               </div>
             </div>
           </div>
         </div>
       )}
+
 
       {/* MODAL: Preview Users in OU */}
       {previewOu && (

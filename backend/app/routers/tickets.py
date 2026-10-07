@@ -11,6 +11,7 @@ Endpoints:
 - POST   /tickets/{id}/interactions → Adicionar comentário
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -29,6 +30,54 @@ from app.services.ticket_service import TicketService
 from app.services.evolution_service import EvolutionService
 
 router = APIRouter(prefix="/api/v1/tickets", tags=["Helpdesk"])
+
+
+def dispatch_csat_survey(ticket: Ticket, db: Session, background_tasks: BackgroundTasks):
+    """Gera token CSAT e agenda o envio do e-mail de satisfação com estrelas ao solicitante."""
+    try:
+        from app.models.system_setting import SystemSetting
+        from app.models.satisfaction_survey import TicketSatisfactionSurvey
+        from app.services.email_service import send_ticket_solved_csat_notification
+        import uuid
+
+        setting = db.query(SystemSetting).first()
+        csat_enabled = setting.csat_enabled if setting else True
+        notify_on_solve = setting.notify_requester_on_solve if setting else True
+        if not (csat_enabled and notify_on_solve):
+            return
+
+        req_user = db.query(User).filter(User.id == ticket.requester_id).first()
+        if not req_user or not req_user.email:
+            return
+
+        tech_user = db.query(User).filter(User.id == ticket.technician_id).first() if ticket.technician_id else None
+        tech_name = tech_user.display_name if tech_user else "Equipe de TI"
+
+        survey = db.query(TicketSatisfactionSurvey).filter(TicketSatisfactionSurvey.ticket_id == ticket.id).first()
+        if not survey:
+            survey = TicketSatisfactionSurvey(
+                ticket_id=ticket.id,
+                token=uuid.uuid4().hex,
+            )
+            db.add(survey)
+            db.commit()
+            db.refresh(survey)
+
+        warranty_days = setting.ticket_warranty_days if setting else 7
+        solution_txt = ticket.closure_reason or "Problema atendido e finalizado com sucesso pela equipe de suporte técnico."
+
+        background_tasks.add_task(
+            send_ticket_solved_csat_notification,
+            ticket=ticket,
+            requester_name=req_user.display_name,
+            requester_email=req_user.email,
+            technician_name=tech_name,
+            solution=solution_txt,
+            csat_token=survey.token,
+            warranty_days=warranty_days,
+        )
+    except Exception as e:
+        print(f"[WARN] Falha ao disparar pesquisa CSAT: {e}")
 
 
 @router.post("/", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
@@ -69,8 +118,27 @@ def create_ticket(
     msg_type = "ATENÇÃO: ATIVO OFFLINE" if "NOC Auto-Alerta" in ticket.title else "Novo Chamado Aberto"
     msg_text = f"{icon} *[{msg_type}]*\n\n*Título:* {ticket.title}\n*Prioridade:* {ticket.priority.value}\n*Status:* {ticket.status.value}\n\n*Descrição:* {ticket.description}"
     background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+
+    # Notificação por E-mail ao Solicitante
+    try:
+        from app.models.system_setting import SystemSetting
+        from app.services.email_service import send_ticket_created_notification
+        setting = db.query(SystemSetting).first()
+        notify_req = setting.notify_requester_on_create if setting else True
+        if notify_req:
+            req_user = db.query(User).filter(User.id == ticket.requester_id).first()
+            if req_user and req_user.email:
+                background_tasks.add_task(
+                    send_ticket_created_notification,
+                    ticket=ticket,
+                    requester_name=req_user.display_name,
+                    requester_email=req_user.email,
+                )
+    except Exception as e:
+        print(f"[WARN] Falha ao agendar e-mail de confirmação de chamado: {e}")
     
     return ticket
+
 
 
 @router.get("/notifications")
@@ -368,6 +436,23 @@ def get_ticket(
             )
         )
 
+    from datetime import timedelta
+    from app.models.system_setting import SystemSetting
+    from app.models.satisfaction_survey import TicketSatisfactionSurvey
+
+    setting = db.query(SystemSetting).first()
+    warranty_days = setting.ticket_warranty_days if (setting and setting.ticket_warranty_days) else 7
+
+    can_reopen = False
+    warranty_expires_at = None
+    if ticket.status == TicketStatus.CLOSED and ticket.closed_at:
+        warranty_expires_at = ticket.closed_at + timedelta(days=warranty_days)
+        if datetime.now(timezone.utc) <= warranty_expires_at:
+            can_reopen = True
+
+    survey = db.query(TicketSatisfactionSurvey).filter(TicketSatisfactionSurvey.ticket_id == ticket_id).first()
+    satisfaction_rating = survey.rating if survey else None
+
     return TicketDetail(
         id=ticket.id,
         title=ticket.title,
@@ -385,6 +470,11 @@ def get_ticket(
         solved_at=ticket.solved_at,
         closed_at=ticket.closed_at,
         closure_reason=ticket.closure_reason,
+        reopened_at=ticket.reopened_at,
+        reopen_count=ticket.reopen_count or 0,
+        can_reopen=can_reopen,
+        warranty_expires_at=warranty_expires_at,
+        satisfaction_rating=satisfaction_rating,
         requester_name=requester.display_name if requester else None,
         technician_name=technician.display_name if technician else None,
         asset_name=asset.name if asset else None,
@@ -393,6 +483,7 @@ def get_ticket(
         interactions=interaction_responses,
         attachments=[TicketAttachmentResponse.model_validate(a) for a in attachments],
     )
+
 
 
 @router.patch("/{ticket_id}", response_model=TicketResponse)
@@ -461,11 +552,33 @@ def update_ticket(
         if new_status == TicketStatus.CLOSED:
             reason = ticket.closure_reason or "Não informado"
             msg_text = f"🔒 *[Chamado Fechado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Responsável:* {current_user.display_name}\n*Motivo do Fechamento:* {reason}"
+            dispatch_csat_survey(ticket, db, background_tasks)
         else:
             msg_text = f"🔄 *[Chamado Atualizado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Novo Status:* {ticket.status.value}"
         background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+
+    # Notificação ao Solicitante se técnico foi designado
+    if "technician_id" in update_data and update_data["technician_id"]:
+        try:
+            from app.models.system_setting import SystemSetting
+            from app.services.email_service import send_ticket_assigned_notification
+            setting = db.query(SystemSetting).first()
+            if not setting or setting.notify_requester_on_assign:
+                req_user = db.query(User).filter(User.id == ticket.requester_id).first()
+                tech_user = db.query(User).filter(User.id == update_data["technician_id"]).first()
+                if req_user and req_user.email and tech_user:
+                    background_tasks.add_task(
+                        send_ticket_assigned_notification,
+                        ticket=ticket,
+                        requester_name=req_user.display_name,
+                        requester_email=req_user.email,
+                        technician_name=tech_user.display_name,
+                    )
+        except Exception as e:
+            print(f"[WARN] Falha ao agendar e-mail de técnico designado: {e}")
         
     return ticket
+
 
 
 @router.post("/batch-status")
@@ -542,6 +655,10 @@ def batch_update_status(
         updated_tickets.append(ticket)
 
     db.commit()
+
+    if target_status == TicketStatus.CLOSED:
+        for t in updated_tickets:
+            dispatch_csat_survey(t, db, background_tasks)
 
     # Notificação opcional no WhatsApp
     if data.notify_whatsapp and updated_tickets:
@@ -628,6 +745,7 @@ def validate_ticket(
         
         if data.action == "approve":
             msg_text = f"✅ *[Chamado Fechado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Status:* Fechado com Sucesso"
+            dispatch_csat_survey(ticket, db, background_tasks)
         else:
             msg_text = f"❌ *[Solução Rejeitada]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Motivo:* {data.rejection_reason or 'Não informado'}"
             
@@ -677,3 +795,88 @@ def add_interaction(
         user_role=u_role,
         created_at=interaction.created_at,
     )
+
+
+class TicketReopenRequest(BaseModel):
+    reason: str
+
+
+@router.post("/{ticket_id}/reopen", response_model=TicketResponse, summary="Reabrir chamado sob garantia")
+def reopen_ticket(
+    ticket_id: int,
+    data: TicketReopenRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Reabre um chamado concluído dentro do período de garantia configurado.
+    Permissão: Solicitante original do chamado ou técnicos/administradores.
+    """
+    from datetime import timedelta
+    from app.models.system_setting import SystemSetting
+    from app.services.email_service import send_ticket_reopened_notification
+
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado.")
+
+    if ticket.status != TicketStatus.CLOSED:
+        raise HTTPException(status_code=400, detail="Apenas chamados finalizados podem ser reabertos.")
+
+    role_val = current_user.role.value if isinstance(current_user.role, UserRole) else str(current_user.role).lower()
+    u_roles = current_user.roles if (current_user.roles and isinstance(current_user.roles, list)) else [role_val]
+    u_roles_lower = [r.lower() for r in u_roles]
+    is_privileged = any(r in u_roles_lower for r in ["admin", "technician", "tecnico"])
+
+    if not is_privileged and ticket.requester_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Você não tem permissão para reabrir este chamado.")
+
+    reason = data.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="É necessário informar a justificativa para reabrir o chamado.")
+
+    setting = db.query(SystemSetting).first()
+    warranty_days = setting.ticket_warranty_days if (setting and setting.ticket_warranty_days) else 7
+
+    now = datetime.now(timezone.utc)
+    if ticket.closed_at:
+        expiration_date = ticket.closed_at + timedelta(days=warranty_days)
+        if now > expiration_date:
+            raise HTTPException(
+                status_code=400,
+                detail=f"O prazo de garantia ({warranty_days} dias) para reabertura deste chamado expirou em {expiration_date.strftime('%d/%m/%Y')}. Por favor, abra um novo chamado."
+            )
+
+    ticket.status = TicketStatus.IN_PROGRESS
+    ticket.reopen_count = (ticket.reopen_count or 0) + 1
+    ticket.reopened_at = now
+    ticket.closed_at = None
+    ticket.closure_reason = None
+    ticket.updated_at = now
+
+    audit_msg = f"🔄 [Chamado Reaberto sob Garantia] Reaberto por {current_user.display_name} (#{ticket.reopen_count}ª reabertura).\nJustificativa: {reason}"
+    db.add(TicketInteraction(
+        ticket_id=ticket.id,
+        user_id=current_user.id,
+        message=audit_msg,
+        is_solution=False,
+    ))
+
+    db.commit()
+    db.refresh(ticket)
+
+    # Notificações imediatas
+    whatsapp_msg = (
+        f"🔄 *[Chamado Reaberto sob Garantia]*\n\n"
+        f"*Ticket ID:* #{ticket.id}\n"
+        f"*Título:* {ticket.title}\n"
+        f"*Solicitante:* {current_user.display_name}\n"
+        f"*Reabertura:* #{ticket.reopen_count}\n"
+        f"*Motivo:* {reason}"
+    )
+    background_tasks.add_task(EvolutionService.send_whatsapp_message, whatsapp_msg)
+    background_tasks.add_task(send_ticket_reopened_notification, ticket=ticket, user_name=current_user.display_name, reason=reason)
+
+    return ticket
+

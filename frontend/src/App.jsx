@@ -52,6 +52,8 @@ import PublicAssetTag from "./pages/public/PublicAssetTag";
 import QRCodeScannerPage from "./pages/public/QRCodeScannerPage";
 import QRCodeManager from "./pages/admin/QRCodeManager";
 
+import SatisfactionSurvey from "./pages/public/SatisfactionSurvey";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -67,6 +69,10 @@ export default function App() {
           <Route path="/chamado" element={<PublicTicketForm />} />
           <Route path="/abrir-chamado" element={<PublicTicketForm />} />
           <Route path="/suporte" element={<PublicTicketForm />} />
+          <Route path="/avaliacao/:token" element={<SatisfactionSurvey />} />
+          <Route path="/avaliacao" element={<SatisfactionSurvey />} />
+          <Route path="/csat/:token" element={<SatisfactionSurvey />} />
+          <Route path="/csat" element={<SatisfactionSurvey />} />
           <Route path="/" element={<RootRedirect />} />
           
           {/* Main Admin UI Route */}
