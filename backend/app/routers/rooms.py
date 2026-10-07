@@ -69,7 +69,7 @@ def list_rooms(
     res = []
     for r in sorted_rooms:
         num_str = _extract_room_number(r)
-        floor_label = _compute_floor(num_str)
+        floor_label = r.floor or _compute_floor(num_str)
 
         # Filtro de busca
         if search and search.strip():
@@ -133,6 +133,8 @@ def create_room(
                 existing.display_name = data.name.strip()
             if data.phone:
                 existing.phone = data.phone.strip()
+            if data.floor:
+                existing.floor = data.floor.strip()
             db.commit()
             db.refresh(existing)
             num_str = _extract_room_number(existing)
@@ -140,7 +142,7 @@ def create_room(
                 id=existing.id,
                 number=num_str,
                 name=existing.display_name,
-                floor=_compute_floor(num_str),
+                floor=existing.floor or _compute_floor(num_str),
                 phone=existing.phone,
                 is_active=existing.is_active,
                 asset_count=0,
@@ -150,10 +152,12 @@ def create_room(
         raise HTTPException(status_code=400, detail=f"O apartamento / UH '{clean_number}' já está cadastrado no sistema.")
 
     display_name = data.name.strip() if data.name and data.name.strip() else f"Apt {clean_number}"
+    floor_label = data.floor.strip() if data.floor and data.floor.strip() else _compute_floor(clean_number)
 
     new_room = User(
         display_name=display_name,
         room_number=clean_number,
+        floor=floor_label,
         phone=data.phone.strip() if data.phone else None,
         is_room=True,
         is_active=data.is_active,
@@ -168,7 +172,7 @@ def create_room(
         id=new_room.id,
         number=clean_number,
         name=new_room.display_name,
-        floor=_compute_floor(clean_number),
+        floor=new_room.floor or _compute_floor(clean_number),
         phone=new_room.phone,
         is_active=new_room.is_active,
         asset_count=0,
@@ -206,6 +210,9 @@ def update_room(
     elif data.number is not None and data.number.strip():
         room.display_name = f"Apt {data.number.strip()}"
 
+    if data.floor is not None:
+        room.floor = data.floor.strip() if data.floor.strip() else None
+
     if data.phone is not None:
         room.phone = data.phone.strip() if data.phone.strip() else None
 
@@ -230,7 +237,7 @@ def update_room(
         id=room.id,
         number=num_str,
         name=room.display_name,
-        floor=_compute_floor(num_str),
+        floor=room.floor or _compute_floor(num_str),
         phone=room.phone,
         is_active=room.is_active,
         asset_count=asset_cnt,
@@ -269,7 +276,7 @@ def toggle_room_active(
         id=room.id,
         number=num_str,
         name=room.display_name,
-        floor=_compute_floor(num_str),
+        floor=room.floor or _compute_floor(num_str),
         phone=room.phone,
         is_active=room.is_active,
         asset_count=asset_cnt,

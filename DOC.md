@@ -109,9 +109,27 @@ Gestão Completa de Apartamentos & UHs (`/admin/settings`):
   - Exclusão com desativação preventiva de segurança caso possua histórico de chamados ou ativos vinculados.
 - **Endpoints de Backend**: `GET /api/v1/rooms/`, `POST /api/v1/rooms/`, `PATCH /api/v1/rooms/{id}`, `PATCH /api/v1/rooms/{id}/toggle-active`, `DELETE /api/v1/rooms/{id}`.
 
+Gestão Completa de Andares & Pavimentos (`/admin/settings` - Módulo Andares):
+- **Tabela `Floor` no Banco**: Mapeamento estrutural de andares e pavimentos do hotel com `name` (ex: "Térreo", "Subsolo", "1º Andar" ao "7º Andar / Rooftop"), `number` (nível numérico para ordenação vertical), `description` e `is_active`.
+- **Painel de Controle em "Hotel & Espaços"**:
+  - Interface dedicada com métricas de topo: Total de andares, andares ativos, UHs alocadas por andar e quantidade de locais físicos vinculados.
+  - Tabela com ordenação por nível vertical, busca em tempo real e botão toggle de ativação/desativação em 1 clique.
+  - Modal para cadastrar novos andares, definir ordem numérica e editar descrições.
+- **Integração Bidirecional**:
+  - **No Cadastro de UHs**: Campo select dinâmico permitindo atribuir explicitamente qualquer andar cadastrado ou manter auto-detecção numérica.
+  - **No Filtro de UHs**: Botões de filtro gerados dinamicamente a partir dos andares cadastrados e ativos.
+  - **No Cadastro de Locais Físicos**: Seletor inteligente integrado com a lista de andares cadastrados.
+  - **Nos Portais de Chamados (PWA, Público e Admin)**: Agrupamento dinâmico automático das UHs pelos andares reais cadastrados (`r.floor`).
+- **Endpoints de Backend**: `GET /api/v1/floors/`, `POST /api/v1/floors/`, `PATCH /api/v1/floors/{id}`, `PATCH /api/v1/floors/{id}/toggle-active`, `DELETE /api/v1/floors/{id}`.
+
+Integridade dos Seletores de Localização Física (CMDB & Chamados):
+- **Correção de Escopo de Retorno**: Ajustada a lógica de `GET /api/v1/locations/` para que o painel de Ativos (CMDB) e administradores/técnicos recebam todas as localizações ativas (públicas e internas à TI como CPD e Racks), sem bloqueio indevido por ausência de filtro explícito.
+- **Carga de Locais Oficiais do Hotel**: Semeadas as localizações essenciais do Hotel Fasano Salvador com status ativo: `Recepção / Lobby`, `Restaurante Fasano / Gero`, `Bar da Piscina / Rooftop`, `Academia & Spa`, `Salão de Eventos / Business Center`, `Racks TI - CPD`, `Cozinha Central`, `Governança & Rouparia`, `Sala de Manutenção / Oficina` e `Garagem / Valet`.
+- **Preenchimento nos Modais**: O seletor de localização física do modal "Editar Equipamento" (`Assets.jsx`) e telas de chamados (`NewTicket.jsx`, `NewRequest.jsx`, `PublicTicketForm.jsx`) agora exibe toda a árvore de locais cadastrados com o andar correspondente entre parênteses.
+
 Novo Menu Lateral Agrupado de Configurações (`/admin/settings`):
 - **Substituição da Barra Horizontal**: A barra horizontal anterior (que quebrava em múltiplas linhas com o crescimento dos módulos) foi substituída por uma barra lateral moderna (Sticky Sidebar) agrupada em 5 categorias temáticas:
-  1. **Hotel & Espaços**: Localizações Físicas, Apartamentos (UHs), Setores & Grupos.
+  1. **Hotel & Espaços**: Localizações Físicas, Apartamentos (UHs), Andares & Pavimentos, Setores & Grupos.
   2. **Helpdesk & Chamados**: Categorias, Tipos de Problema, Diretrizes de SLA.
   3. **Equipamentos & CMDB**: Tipos de Equipamento.
   4. **Integrações**: Importação AD / LDAP, Integração Zabbix, Telefonia & WhatsApp.

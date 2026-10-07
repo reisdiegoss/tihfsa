@@ -249,28 +249,23 @@ export default function NewRequest() {
                   required={locationType === "UH"}
                 >
                   <option value="">Selecione o Quarto / UH...</option>
-                  <optgroup label="1º Andar">
-                    {rooms.filter((r) => r.number.startsWith("1")).map((r) => (
-                      <option key={r.id} value={r.number}>{r.name} (1º Andar)</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="2º Andar">
-                    {rooms.filter((r) => r.number.startsWith("2")).map((r) => (
-                      <option key={r.id} value={r.number}>{r.name} (2º Andar)</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="3º Andar">
-                    {rooms.filter((r) => r.number.startsWith("3")).map((r) => (
-                      <option key={r.id} value={r.number}>{r.name} (3º Andar)</option>
-                    ))}
-                  </optgroup>
-                  {rooms.filter((r) => !["1", "2", "3"].includes(r.number[0])).length > 0 && (
-                    <optgroup label="Outros">
-                      {rooms.filter((r) => !["1", "2", "3"].includes(r.number[0])).map((r) => (
-                        <option key={r.id} value={r.number}>{r.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
+                  {(() => {
+                    const floorsGrouped = {};
+                    rooms.forEach((r) => {
+                      const f = r.floor || "Outros Andares";
+                      if (!floorsGrouped[f]) floorsGrouped[f] = [];
+                      floorsGrouped[f].push(r);
+                    });
+                    return Object.entries(floorsGrouped).map(([floorName, floorRooms]) => (
+                      <optgroup key={floorName} label={floorName}>
+                        {floorRooms.map((r) => (
+                          <option key={r.id} value={r.number}>
+                            {r.name} ({floorName})
+                          </option>
+                        ))}
+                      </optgroup>
+                    ));
+                  })()}
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>

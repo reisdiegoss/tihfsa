@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 class RoomCreate(BaseModel):
     number: str
     name: str | None = None
+    floor: str | None = None
     phone: str | None = None
     is_active: bool = True
 
@@ -15,6 +16,7 @@ class RoomCreate(BaseModel):
 class RoomUpdate(BaseModel):
     number: str | None = None
     name: str | None = None
+    floor: str | None = None
     phone: str | None = None
     is_active: bool | None = None
 

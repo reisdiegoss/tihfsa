@@ -17,7 +17,7 @@ from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
     attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes,
-    sla, monitoring, public_tickets, rooms
+    sla, monitoring, public_tickets, rooms, floors
 )
 import app.models.network_map  # noqa: F401
 import app.models.qrcode       # noqa: F401
@@ -416,6 +416,7 @@ app.include_router(sla.router)
 app.include_router(monitoring.router)
 app.include_router(public_tickets.router)
 app.include_router(rooms.router)
+app.include_router(floors.router)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

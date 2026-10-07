@@ -122,6 +122,19 @@ def apply_migrations():
         ("categories.zabbix_group_name", "ALTER TABLE categories ADD COLUMN IF NOT EXISTS zabbix_group_name VARCHAR(150);"),
         ("categories.is_public", "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"),
         ("locations.is_public", "ALTER TABLE locations ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"),
+        ("users.floor", "ALTER TABLE users ADD COLUMN IF NOT EXISTS floor VARCHAR(100);"),
+
+        # Andares e Pavimentos
+        ("floors", """
+            CREATE TABLE IF NOT EXISTS floors (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) UNIQUE NOT NULL,
+                number INTEGER,
+                description TEXT,
+                is_active BOOLEAN DEFAULT TRUE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+        """),
 
         # Mapas de Rede / Topologia
         ("network_maps.pan_x", "ALTER TABLE network_maps ADD COLUMN IF NOT EXISTS pan_x INTEGER DEFAULT 0;"),
@@ -214,6 +227,78 @@ def seed_root_admin(db: Session):
         print(f"[INIT_DB] Erro ao criar usuário root inicial: {e}")
 
 
+def seed_floors_and_locations(db: Session):
+    """Cadastra os andares e as localizações físicas reais do Hotel Fasano Salvador e garante que estejam ativos."""
+    try:
+        from app.models.floor import Floor
+        from app.models.location import Location
+
+        # 1. Andares padrão do hotel
+        default_floors = [
+            {"name": "Subsolo", "number": -1, "description": "Garagem, Manutenção, Estoques e Rouparia"},
+            {"name": "Térreo", "number": 0, "description": "Lobby, Recepção, Restaurante Gero e Business Center"},
+            {"name": "1º Andar", "number": 1, "description": "Apartamentos 101 a 110, Academia & Spa, Racks TI"},
+            {"name": "2º Andar", "number": 2, "description": "Apartamentos 201 a 210"},
+            {"name": "3º Andar", "number": 3, "description": "Apartamentos 301 a 310"},
+            {"name": "4º Andar", "number": 4, "description": "Andar Administrativo e Backoffice"},
+            {"name": "5º Andar", "number": 5, "description": "Andar de Serviços e Suítes Especiais"},
+            {"name": "6º Andar", "number": 6, "description": "Suítes Presidenciais e Diretoria"},
+            {"name": "7º Andar / Rooftop", "number": 7, "description": "Bar da Piscina, Rooftop e Terraço Panorâmico"},
+        ]
+
+        for f_data in default_floors:
+            existing = db.query(Floor).filter(Floor.name == f_data["name"]).first()
+            if not existing:
+                db.add(Floor(
+                    name=f_data["name"],
+                    number=f_data["number"],
+                    description=f_data["description"],
+                    is_active=True,
+                ))
+            else:
+                existing.is_active = True
+                existing.number = f_data["number"]
+        db.commit()
+
+        # 2. Localizações Físicas padrão do Hotel
+        default_locations = [
+            {"name": "Recepção / Lobby", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Balcão da recepção, concierges e hall principal"},
+            {"name": "Restaurante Fasano / Gero", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Salão do restaurante, bar interno e caixas"},
+            {"name": "Bar da Piscina / Rooftop", "building": "Prédio Principal", "floor": "7º Andar / Rooftop", "is_public": True, "description": "Área da piscina, bar externo e terraço"},
+            {"name": "Academia & Spa", "building": "Prédio Principal", "floor": "1º Andar", "is_public": True, "description": "Salas de musculação, esteiras, saunas e spa"},
+            {"name": "Salão de Eventos / Business Center", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Salas de reunião e eventos corporativos"},
+            {"name": "Racks TI - CPD", "building": "Prédio Principal", "floor": "1º Andar", "is_public": False, "description": "Sala técnica de servidores, switches e infraestrutura de TI"},
+            {"name": "Cozinha Central", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Área de produção culinária e confeitaria"},
+            {"name": "Governança & Rouparia", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Central de camareiras, estoque de enxovais e uniformes"},
+            {"name": "Sala de Manutenção / Oficina", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Oficina técnica predial e marcenaria"},
+            {"name": "Garagem / Valet", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Área de manobristas e estacionamento"},
+        ]
+
+        for loc_data in default_locations:
+            existing = db.query(Location).filter(Location.name == loc_data["name"]).first()
+            if not existing:
+                db.add(Location(
+                    name=loc_data["name"],
+                    building=loc_data["building"],
+                    floor=loc_data["floor"],
+                    is_public=loc_data["is_public"],
+                    is_active=True,
+                    description=loc_data["description"],
+                ))
+            else:
+                existing.is_active = True
+                existing.floor = loc_data["floor"]
+                existing.is_public = loc_data["is_public"]
+
+        # Garantir que todas as localizações cadastradas estejam ativas
+        db.query(Location).update({"is_active": True})
+        db.commit()
+        print("[INIT_DB] Andares e Localizações Físicas padrão sincronizados e ativados.")
+    except Exception as e:
+        db.rollback()
+        print(f"[INIT_DB] Aviso ao sincronizar andares/localizações: {e}")
+
+
 def main():
     print("=" * 60)
     print("  TIHFSA — Inicialização e Migração do Banco de Dados")
@@ -251,6 +336,7 @@ def main():
     db = SessionLocal()
     try:
         seed_asset_types(db)
+        seed_floors_and_locations(db)
         seed_root_admin(db)
     finally:
         db.close()

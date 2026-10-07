@@ -11,7 +11,7 @@ from app.models.problem_type import ProblemType
 from app.models.asset_type import AssetTypeModel
 from app.models.integration_config import EvolutionConfig
 from app.models.network_map import NetworkMap
-from app.models.qrcode import QRCodeItem, QRCodeConfig
+from app.models.floor import Floor
 from app.models.sla import SLAConfig, SLACategoryRule
 from app.models.monitoring import AgentCheckin
 
@@ -19,6 +19,7 @@ __all__ = [
     "User",
     "Department",
     "Location",
+    "Floor",
     "Asset",
     "Ticket",
     "TicketInteraction",

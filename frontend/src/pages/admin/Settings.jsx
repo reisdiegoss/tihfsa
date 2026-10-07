@@ -69,6 +69,7 @@ const SETTINGS_SECTIONS = [
     items: [
       { id: "locations", label: "Localizações Físicas", icon: MapPin },
       { id: "rooms", label: "Apartamentos (UHs)", icon: Hotel },
+      { id: "floors", label: "Andares & Pavimentos", icon: Layers },
       { id: "departments", label: "Setores & Grupos", icon: Briefcase },
     ]
   },
@@ -441,10 +442,25 @@ export default function Settings() {
   const [roomFormData, setRoomFormData] = useState({
     number: "",
     name: "",
+    floor: "",
     phone: "",
     is_active: true,
   });
   const [savingRoom, setSavingRoom] = useState(false);
+
+  // Andares & Pavimentos States
+  const [floorsList, setFloorsList] = useState([]);
+  const [loadingFloors, setLoadingFloors] = useState(false);
+  const [floorSearch, setFloorSearch] = useState("");
+  const [floorModalOpen, setFloorModalOpen] = useState(false);
+  const [editingFloor, setEditingFloor] = useState(null);
+  const [floorFormData, setFloorFormData] = useState({
+    name: "",
+    number: "",
+    description: "",
+    is_active: true,
+  });
+  const [savingFloor, setSavingFloor] = useState(false);
 
   const fetchLocations = async () => {
     setLoadingLocations(true);
@@ -456,6 +472,19 @@ export default function Settings() {
       setErrorMsg("Erro ao carregar localizações.");
     } finally {
       setLoadingLocations(false);
+    }
+  };
+
+  const fetchFloors = async () => {
+    setLoadingFloors(true);
+    try {
+      const res = await api.get("/floors/?active_only=false");
+      setFloorsList(res.data);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Erro ao carregar andares.");
+    } finally {
+      setLoadingFloors(false);
     }
   };
 
@@ -472,12 +501,82 @@ export default function Settings() {
     }
   };
 
+  const handleOpenFloorModal = (floor = null) => {
+    if (floor) {
+      setEditingFloor(floor);
+      setFloorFormData({
+        name: floor.name || "",
+        number: floor.number !== null && floor.number !== undefined ? String(floor.number) : "",
+        description: floor.description || "",
+        is_active: floor.is_active !== undefined ? floor.is_active : true,
+      });
+    } else {
+      setEditingFloor(null);
+      setFloorFormData({
+        name: "",
+        number: "",
+        description: "",
+        is_active: true,
+      });
+    }
+    setFloorModalOpen(true);
+  };
+
+  const handleSaveFloor = async (e) => {
+    e.preventDefault();
+    if (!floorFormData.name.trim()) return alert("O nome do andar é obrigatório.");
+    setSavingFloor(true);
+    const payload = {
+      name: floorFormData.name.trim(),
+      number: floorFormData.number !== "" ? parseInt(floorFormData.number, 10) : null,
+      description: floorFormData.description?.trim() || null,
+      is_active: floorFormData.is_active,
+    };
+    try {
+      if (editingFloor) {
+        await api.patch(`/floors/${editingFloor.id}`, payload);
+      } else {
+        await api.post("/floors/", payload);
+      }
+      setFloorModalOpen(false);
+      fetchFloors();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao salvar andar.");
+    } finally {
+      setSavingFloor(false);
+    }
+  };
+
+  const handleToggleFloorActive = async (floor) => {
+    try {
+      await api.patch(`/floors/${floor.id}/toggle-active`);
+      fetchFloors();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao alterar status do andar.");
+    }
+  };
+
+  const handleDeleteFloor = async (floor) => {
+    if (!confirm(`Deseja realmente remover/desativar o andar '${floor.name}'?`)) return;
+    try {
+      const res = await api.delete(`/floors/${floor.id}`);
+      alert(res.data?.message || "Operação realizada com sucesso.");
+      fetchFloors();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao remover andar.");
+    }
+  };
+
   const handleOpenRoomModal = (room = null) => {
     if (room) {
       setEditingRoom(room);
       setRoomFormData({
         number: room.number || "",
         name: room.name || "",
+        floor: room.floor || "",
         phone: room.phone || "",
         is_active: room.is_active !== undefined ? room.is_active : true,
       });
@@ -486,6 +585,7 @@ export default function Settings() {
       setRoomFormData({
         number: "",
         name: "",
+        floor: "",
         phone: "",
         is_active: true,
       });
@@ -643,8 +743,12 @@ export default function Settings() {
       fetchSystemUsers();
     } else if (activeTab === "locations") {
       fetchLocations();
+      fetchFloors();
     } else if (activeTab === "rooms") {
       fetchRooms();
+      fetchFloors();
+    } else if (activeTab === "floors") {
+      fetchFloors();
     } else if (activeTab === "problems" || activeTab === "categories") {
       fetchCategoriesWithProblems();
     } else if (activeTab === "asset_types") {
@@ -2195,13 +2299,27 @@ export default function Settings() {
                 <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
                   Andar / Nível
                 </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Térreo, 1º Andar, 2º Andar, Subsolo, Cobertura"
-                  value={locationFormData.floor}
-                  onChange={(e) => setLocationFormData({ ...locationFormData, floor: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={floorsList.some(f => f.name === locationFormData.floor) ? locationFormData.floor : ""}
+                    onChange={(e) => {
+                      if (e.target.value) setLocationFormData({ ...locationFormData, floor: e.target.value });
+                    }}
+                    className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Selecione um Andar...</option>
+                    {floorsList.map((f) => (
+                      <option key={f.id} value={f.name}>{f.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Ou digite o andar/nível..."
+                    value={locationFormData.floor}
+                    onChange={(e) => setLocationFormData({ ...locationFormData, floor: e.target.value })}
+                    className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                  />
+                </div>
               </div>
 
               <div>
@@ -2326,22 +2444,29 @@ export default function Settings() {
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                { id: "all", label: "Todos os Andares" },
-                { id: "1", label: "1º Andar" },
-                { id: "2", label: "2º Andar" },
-                { id: "3", label: "3º Andar" },
-              ].map(f => (
+              <button
+                type="button"
+                onClick={() => setRoomFloorFilter("all")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                  roomFloorFilter === "all"
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
+                }`}
+              >
+                Todos os Andares
+              </button>
+              {floorsList.filter(f => f.is_active).map(f => (
                 <button
                   key={f.id}
-                  onClick={() => setRoomFloorFilter(f.id)}
+                  type="button"
+                  onClick={() => setRoomFloorFilter(f.name)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                    roomFloorFilter === f.id
+                    roomFloorFilter === f.name
                       ? "bg-blue-600 text-white shadow-xs"
                       : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
                   }`}
                 >
-                  {f.label}
+                  {f.name}
                 </button>
               ))}
             </div>
@@ -2377,8 +2502,10 @@ export default function Settings() {
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
                     {roomsList
                       .filter(r => {
-                        if (roomFloorFilter !== "all" && !r.number.startsWith(roomFloorFilter)) {
-                          return false;
+                        if (roomFloorFilter !== "all") {
+                          const matchesExplicit = r.floor && r.floor.toLowerCase() === roomFloorFilter.toLowerCase();
+                          const matchesPrefix = r.number && r.number.startsWith(roomFloorFilter.replace(/\D/g, ''));
+                          if (!matchesExplicit && !matchesPrefix) return false;
                         }
                         if (!roomSearch) return true;
                         const term = roomSearch.toLowerCase();
@@ -2506,7 +2633,27 @@ export default function Settings() {
                   onChange={(e) => setRoomFormData({ ...roomFormData, number: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-slate-900 outline-none focus:border-blue-500 focus:bg-white transition-all"
                 />
-                <p className="text-[10px] text-slate-400 mt-1">O andar será calculado automaticamente pelo primeiro dígito (ex: 201 = 2º Andar).</p>
+              </div>
+
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Andar / Pavimento
+                </label>
+                <select
+                  value={roomFormData.floor || ""}
+                  onChange={(e) => setRoomFormData({ ...roomFormData, floor: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
+                >
+                  <option value="">Auto-detectar pelo número da UH</option>
+                  {floorsList.map((f) => (
+                    <option key={f.id} value={f.name}>
+                      {f.name} {f.number !== null && f.number !== undefined ? `(Nível ${f.number})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Selecione o andar desta UH ou deixe no modo automático para deduzir pelo número.
+                </p>
               </div>
 
               <div>
@@ -2565,6 +2712,274 @@ export default function Settings() {
                 >
                   {savingRoom ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
                   {editingRoom ? "Salvar Alterações" : "Cadastrar Apartamento"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: Andares e Pavimentos */}
+      {activeTab === "floors" && (
+        <div className="space-y-6 animate-fade-in">
+          
+          {/* Header Bar */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Layers className="text-blue-600" size={20} /> Gestão de Andares & Pavimentos do Hotel
+              </h2>
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                Cadastre e estruture os andares do hotel (Subsolo, Térreo, 1º ao 7º Andar, Rooftop) para vincular UHs, salas e ativos no CMDB.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={() => handleOpenFloorModal()}
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-2xl text-sm font-bold shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all cursor-pointer"
+              >
+                <Plus size={18} /> Novo Andar / Pavimento
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total de Andares</span>
+              <span className="text-2xl font-black text-slate-900 mt-1">{floorsList.length}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Andares Ativos</span>
+              <span className="text-2xl font-black text-emerald-600 mt-1">{floorsList.filter(f => f.is_active).length}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">UHs Alocadas</span>
+              <span className="text-2xl font-black text-blue-600 mt-1">{floorsList.reduce((acc, f) => acc + (f.rooms_count || 0), 0)}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-purple-600 uppercase tracking-wider">Locais Físicos</span>
+              <span className="text-2xl font-black text-purple-600 mt-1">{floorsList.reduce((acc, f) => acc + (f.locations_count || 0), 0)}</span>
+            </div>
+          </div>
+
+          {/* Search Toolbar */}
+          <div className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                type="text"
+                placeholder="Pesquisar por nome do andar ou descrição..."
+                value={floorSearch}
+                onChange={(e) => setFloorSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-all"
+              />
+            </div>
+            <span className="text-xs font-bold text-slate-500">
+              {floorsList.filter(f => !floorSearch || f.name.toLowerCase().includes(floorSearch.toLowerCase())).length} andares encontrados
+            </span>
+          </div>
+
+          {/* Floors Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
+            {loadingFloors ? (
+              <div className="p-12 text-center text-slate-400 font-semibold space-y-3">
+                <RefreshCw size={24} className="animate-spin mx-auto text-blue-600" />
+                <p className="text-xs">Carregando andares e pavimentos...</p>
+              </div>
+            ) : floorsList.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 font-semibold space-y-3">
+                <Layers size={36} className="mx-auto text-slate-300" />
+                <p className="text-sm font-bold text-slate-600">Nenhum andar cadastrado.</p>
+                <p className="text-xs text-slate-400">Clique em "Novo Andar / Pavimento" para cadastrar os andares do hotel.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                      <th className="py-4 px-6">Nível / Ordem</th>
+                      <th className="py-4 px-4">Nome do Andar</th>
+                      <th className="py-4 px-4">UHs Vinculadas</th>
+                      <th className="py-4 px-4">Locais Vinculados</th>
+                      <th className="py-4 px-4">Status</th>
+                      <th className="py-4 px-6 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                    {floorsList
+                      .filter(f => {
+                        if (!floorSearch) return true;
+                        const term = floorSearch.toLowerCase();
+                        return (
+                          f.name.toLowerCase().includes(term) ||
+                          (f.description && f.description.toLowerCase().includes(term))
+                        );
+                      })
+                      .map((f) => (
+                        <tr key={f.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-4 px-6">
+                            <span className="font-mono text-xs font-black px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 border border-slate-200">
+                              {f.number !== null && f.number !== undefined ? `Nível ${f.number}` : "—"}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div>
+                              <p className="font-black text-slate-900 text-sm flex items-center gap-2">
+                                <Layers size={14} className="text-blue-600" /> {f.name}
+                              </p>
+                              {f.description && (
+                                <p className="text-[11px] text-slate-400 font-medium mt-0.5">{f.description}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold ${
+                              f.rooms_count > 0 ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
+                            }`}>
+                              {f.rooms_count} UH{f.rooms_count !== 1 ? "s" : ""}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold ${
+                              f.locations_count > 0 ? "bg-purple-100 text-purple-700" : "bg-slate-100 text-slate-500"
+                            }`}>
+                              {f.locations_count} local{f.locations_count !== 1 ? "is" : ""}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleFloorActive(f)}
+                              title={f.is_active ? "Clique para desativar o andar" : "Clique para ativar o andar"}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black transition-all cursor-pointer ${
+                                f.is_active
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${f.is_active ? "bg-emerald-500" : "bg-slate-400"}`} />
+                              <span>{f.is_active ? "Ativo" : "Inativo"}</span>
+                            </button>
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleOpenFloorModal(f)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                title="Editar Andar"
+                              >
+                                <Edit3 size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFloor(f)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                title="Remover ou Desativar Andar"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Novo / Editar Andar */}
+      {floorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <Layers className="text-blue-600" size={20} />
+                {editingFloor ? "Editar Andar / Pavimento" : "Novo Andar / Pavimento"}
+              </h3>
+              <button
+                onClick={() => setFloorModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFloor} className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Nome do Andar / Pavimento <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: 4º Andar, Subsolo 2, Terraço Rooftop"
+                  value={floorFormData.name}
+                  onChange={(e) => setFloorFormData({ ...floorFormData, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-slate-900 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Nível Numérico para Ordenação
+                </label>
+                <input
+                  type="number"
+                  placeholder="Ex: 4 (ou -1 para subsolo, 0 para térreo)"
+                  value={floorFormData.number}
+                  onChange={(e) => setFloorFormData({ ...floorFormData, number: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Usado para manter a ordem correta de baixo para cima nos relatórios e filtros.</p>
+              </div>
+
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Descrição / Finalidade
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ex: Área dos quartos 401 a 410, salas de gerência e diretoria..."
+                  value={floorFormData.description}
+                  onChange={(e) => setFloorFormData({ ...floorFormData, description: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={floorFormData.is_active}
+                    onChange={(e) => setFloorFormData({ ...floorFormData, is_active: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-700">Andar Ativo</span>
+                    <p className="text-[10px] text-slate-400">Andares inativos não aparecem para seleção nos formulários.</p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFloorModalOpen(false)}
+                  className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingFloor || !floorFormData.name.trim()}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {savingFloor ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  {editingFloor ? "Salvar Alterações" : "Cadastrar Andar"}
                 </button>
               </div>
             </form>

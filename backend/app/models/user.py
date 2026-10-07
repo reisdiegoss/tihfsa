@@ -36,6 +36,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     phone = Column(String(50), nullable=True)
     room_number = Column(String(20), nullable=True)  # Ex: "101", "204"
+    floor = Column(String(100), nullable=True)  # Andar da UH ou do colaborador (ex: "1º Andar", "2º Andar")
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
