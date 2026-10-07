@@ -292,10 +292,10 @@ def list_public_categories(db: Session = Depends(get_db)):
 
 @router.get("/locations", response_model=list[PublicLocationResponse])
 def list_public_locations(db: Session = Depends(get_db)):
-    """Lista locais físicos ativos (Lobby, Gero, Bar da Piscina, etc.)."""
+    """Lista locais físicos ativos e públicos (Lobby, Gero, Bar da Piscina, etc.)."""
     locs = (
         db.query(Location)
-        .filter(Location.is_active == True)  # noqa: E712
+        .filter(Location.is_active == True, Location.is_public == True)  # noqa: E712
         .order_by(Location.name.asc())
         .all()
     )

@@ -42,7 +42,8 @@ import {
   Send,
   Bell,
   Filter,
-  Globe
+  Globe,
+  Hotel
 } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -62,9 +63,49 @@ function formatApiError(err, fallback = "Ocorreu um erro na requisição.") {
   return String(detail);
 }
 
+const SETTINGS_SECTIONS = [
+  {
+    group: "Hotel & Espaços",
+    items: [
+      { id: "locations", label: "Localizações Físicas", icon: MapPin },
+      { id: "rooms", label: "Apartamentos (UHs)", icon: Hotel },
+      { id: "departments", label: "Setores & Grupos", icon: Briefcase },
+    ]
+  },
+  {
+    group: "Helpdesk & Chamados",
+    items: [
+      { id: "categories", label: "Categorias", icon: Tag },
+      { id: "problems", label: "Tipos de Problema", icon: AlertCircle },
+      { id: "sla", label: "Diretrizes de SLA", icon: Clock },
+    ]
+  },
+  {
+    group: "Equipamentos & CMDB",
+    items: [
+      { id: "asset_types", label: "Tipos de Equipamento", icon: Cpu },
+    ]
+  },
+  {
+    group: "Integrações",
+    items: [
+      { id: "ad", label: "Importação AD / LDAP", icon: Server },
+      { id: "zabbix", label: "Integração Zabbix", icon: Activity },
+      { id: "integrations", label: "Telefonia & WhatsApp", icon: Phone },
+    ]
+  },
+  {
+    group: "Segurança & Sistema",
+    items: [
+      { id: "users", label: "Usuários & Permissões", icon: UserCheck },
+      { id: "general", label: "Parâmetros Gerais", icon: SettingsIcon },
+    ]
+  }
+];
+
 export default function Settings() {
   const { user, canChangePassword } = useAuth();
-  const [activeTab, setActiveTab] = useState("ad");
+  const [activeTab, setActiveTab] = useState("locations");
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
   // Asset Types States
@@ -386,8 +427,24 @@ export default function Settings() {
     floor: "",
     description: "",
     is_active: true,
+    is_public: true,
   });
   const [savingLocation, setSavingLocation] = useState(false);
+
+  // Apartamentos / UHs States
+  const [roomsList, setRoomsList] = useState([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+  const [roomSearch, setRoomSearch] = useState("");
+  const [roomFloorFilter, setRoomFloorFilter] = useState("all");
+  const [roomModalOpen, setRoomModalOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState(null);
+  const [roomFormData, setRoomFormData] = useState({
+    number: "",
+    name: "",
+    phone: "",
+    is_active: true,
+  });
+  const [savingRoom, setSavingRoom] = useState(false);
 
   const fetchLocations = async () => {
     setLoadingLocations(true);
@@ -402,13 +459,91 @@ export default function Settings() {
     }
   };
 
-  useEffect(() => {
-    if (activeTab === "users") {
-      fetchSystemUsers();
-    } else if (activeTab === "locations") {
-      fetchLocations();
+  const fetchRooms = async () => {
+    setLoadingRooms(true);
+    try {
+      const res = await api.get("/rooms/?active_only=false");
+      setRoomsList(res.data);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Erro ao carregar apartamentos / UHs.");
+    } finally {
+      setLoadingRooms(false);
     }
-  }, [activeTab]);
+  };
+
+  const handleOpenRoomModal = (room = null) => {
+    if (room) {
+      setEditingRoom(room);
+      setRoomFormData({
+        number: room.number || "",
+        name: room.name || "",
+        phone: room.phone || "",
+        is_active: room.is_active !== undefined ? room.is_active : true,
+      });
+    } else {
+      setEditingRoom(null);
+      setRoomFormData({
+        number: "",
+        name: "",
+        phone: "",
+        is_active: true,
+      });
+    }
+    setRoomModalOpen(true);
+  };
+
+  const handleSaveRoom = async (e) => {
+    e.preventDefault();
+    if (!roomFormData.number.trim()) return alert("O número do apartamento é obrigatório.");
+    setSavingRoom(true);
+    try {
+      if (editingRoom) {
+        await api.patch(`/rooms/${editingRoom.id}`, roomFormData);
+      } else {
+        await api.post("/rooms/", roomFormData);
+      }
+      setRoomModalOpen(false);
+      fetchRooms();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao salvar apartamento / UH.");
+    } finally {
+      setSavingRoom(false);
+    }
+  };
+
+  const handleToggleRoomActive = async (room) => {
+    try {
+      await api.patch(`/rooms/${room.id}/toggle-active`);
+      fetchRooms();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao alterar status do apartamento.");
+    }
+  };
+
+  const handleDeleteRoom = async (room) => {
+    if (!confirm(`Deseja realmente remover ou desativar o apartamento '${room.name || room.number}'?`)) return;
+    try {
+      const res = await api.delete(`/rooms/${room.id}`);
+      alert(res.data?.message || "Operação realizada com sucesso.");
+      fetchRooms();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao remover apartamento.");
+    }
+  };
+
+  const handleToggleLocationPublic = async (loc) => {
+    try {
+      await api.patch(`/locations/${loc.id}/toggle-public`);
+      fetchLocations();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao alterar visibilidade pública da localização.");
+    }
+  };
 
   const handleOpenLocationModal = (loc = null) => {
     if (loc) {
@@ -418,6 +553,7 @@ export default function Settings() {
         floor: loc.floor || "",
         description: loc.description || "",
         is_active: loc.is_active !== undefined ? loc.is_active : true,
+        is_public: loc.is_public !== undefined ? loc.is_public : true,
       });
     } else {
       setEditingLocation(null);
@@ -426,6 +562,7 @@ export default function Settings() {
         floor: "",
         description: "",
         is_active: true,
+        is_public: true,
       });
     }
     setLocationModalOpen(true);
@@ -506,6 +643,8 @@ export default function Settings() {
       fetchSystemUsers();
     } else if (activeTab === "locations") {
       fetchLocations();
+    } else if (activeTab === "rooms") {
+      fetchRooms();
     } else if (activeTab === "problems" || activeTab === "categories") {
       fetchCategoriesWithProblems();
     } else if (activeTab === "asset_types") {
@@ -980,129 +1119,55 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Modern Segmented Tabs Bar */}
-      <div className="bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/80 shadow-inner flex flex-wrap items-center gap-1.5">
-        <button
-          onClick={() => setActiveTab("ad")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "ad"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <Server size={16} /> Importação AD
-        </button>
+      {/* Layout Split: Menu Lateral Agrupado de Configurações + Painel de Conteúdo */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        
+        {/* Menu Lateral de Configurações */}
+        <aside className="w-full lg:w-72 shrink-0 bg-white rounded-3xl border border-slate-200 p-4 sm:p-5 shadow-xs lg:sticky lg:top-20 space-y-5">
+          <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Configurações</span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+              {SETTINGS_SECTIONS.flatMap(s => s.items).length} Módulos
+            </span>
+          </div>
 
-        <button
-          onClick={() => setActiveTab("users")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "users"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <UserCheck size={16} /> Usuários & Permissões
-        </button>
+          <nav className="space-y-4">
+            {SETTINGS_SECTIONS.map((sec, idx) => (
+              <div key={idx} className="space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-3">
+                  {sec.group}
+                </p>
+                <div className="space-y-0.5">
+                  {sec.items.map((item) => {
+                    const IconComponent = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActiveTab(item.id)}
+                        className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-blue-600 text-white shadow-md shadow-blue-500/20 font-extrabold translate-x-1"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <IconComponent size={16} className={isActive ? "text-white" : "text-slate-400"} />
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        {isActive && <ChevronRight size={14} className="text-white/80 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
+        </aside>
 
-        <button
-          onClick={() => setActiveTab("departments")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "departments"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <Briefcase size={16} /> Setores & Grupos
-        </button>
-
-        <button
-          onClick={() => setActiveTab("zabbix")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "zabbix"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <Activity size={16} /> Integração Zabbix
-        </button>
-
-        <button
-          onClick={() => setActiveTab("locations")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "locations"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <MapPin size={16} /> Localizações Físicas
-        </button>
-
-        <button
-          onClick={() => setActiveTab("problems")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "problems"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <AlertCircle size={16} /> Tipos de Problema
-        </button>
-
-        <button
-          onClick={() => setActiveTab("categories")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "categories"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <Tag size={16} /> Categorias
-        </button>
-
-        <button
-          onClick={() => setActiveTab("integrations")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "integrations"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <Phone size={16} /> Integrações
-        </button>
-
-        <button
-          onClick={() => setActiveTab("asset_types")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "asset_types"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <Cpu size={16} /> Tipos de Equipamento
-        </button>
-
-        <button
-          onClick={() => setActiveTab("sla")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "sla"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <Clock size={16} /> Diretrizes de SLA
-        </button>
-
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap ${
-            activeTab === "general"
-              ? "bg-white text-blue-600 shadow-sm shadow-slate-200/60 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold"
-          }`}
-        >
-          <SettingsIcon size={16} /> Parâmetros Gerais
-        </button>
-      </div>
+        {/* Área Principal de Conteúdo */}
+        <main className="flex-1 w-full min-w-0">
 
       {/* TAB CONTENT: Active Directory */}
       {activeTab === "ad" && (
@@ -1997,6 +2062,7 @@ export default function Settings() {
                       <th className="py-4 px-6">Nome da Localização</th>
                       <th className="py-4 px-4">Andar / Nível</th>
                       <th className="py-4 px-4">Ativos Vinculados</th>
+                      <th className="py-4 px-4">Visibilidade</th>
                       <th className="py-4 px-4">Status</th>
                       <th className="py-4 px-6 text-right">Ações</th>
                     </tr>
@@ -2038,6 +2104,21 @@ export default function Settings() {
                             }`}>
                               {loc.asset_count} ativo{loc.asset_count !== 1 ? "s" : ""}
                             </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleLocationPublic(loc)}
+                              title={loc.is_public ? "Clique para tornar interna da TI" : "Clique para tornar visível para usuários"}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black transition-all cursor-pointer ${
+                                loc.is_public
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                              }`}
+                            >
+                              {loc.is_public ? <Globe size={12} /> : <Lock size={12} />}
+                              <span>{loc.is_public ? "🌐 Pública" : "🔒 Interna TI"}</span>
+                            </button>
                           </td>
                           <td className="py-4 px-4">
                             {loc.is_active ? (
@@ -2136,8 +2217,20 @@ export default function Settings() {
                 />
               </div>
 
-              <div className="pt-2">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="pt-2 space-y-2 border-t border-slate-100">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={locationFormData.is_public}
+                    onChange={(e) => setLocationFormData({ ...locationFormData, is_public: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-700">Visível para Usuários Comuns (Pública)</span>
+                    <p className="text-[10px] text-slate-400">Se desmarcado, esta área será restrita apenas para alocação de ativos e chamados internos da TI.</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={locationFormData.is_active}
@@ -2163,6 +2256,315 @@ export default function Settings() {
                 >
                   {savingLocation ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
                   {editingLocation ? "Salvar Alterações" : "Cadastrar Localização"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: Apartamentos / UHs */}
+      {activeTab === "rooms" && (
+        <div className="space-y-6 animate-fade-in">
+          
+          {/* Header Bar */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Hotel className="text-blue-600" size={20} /> Gestão de Apartamentos & UHs (Unidades Habitacionais)
+              </h2>
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                Cadastre e configure os apartamentos do hotel para controle de inventário no CMDB (TVs, APs UniFi, SKY, ramais) e abertura de chamados técnicos.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={() => handleOpenRoomModal()}
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-2xl text-sm font-bold shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all cursor-pointer"
+              >
+                <Plus size={18} /> Novo Apartamento / UH
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total de UHs</span>
+              <span className="text-2xl font-black text-slate-900 mt-1">{roomsList.length}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">UHs Ativas</span>
+              <span className="text-2xl font-black text-emerald-600 mt-1">{roomsList.filter(r => r.is_active).length}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">1º Andar</span>
+              <span className="text-2xl font-black text-blue-600 mt-1">{roomsList.filter(r => r.number.startsWith('1')).length}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">2º Andar</span>
+              <span className="text-2xl font-black text-indigo-600 mt-1">{roomsList.filter(r => r.number.startsWith('2')).length}</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <span className="text-[11px] font-bold text-purple-600 uppercase tracking-wider">3º Andar</span>
+              <span className="text-2xl font-black text-purple-600 mt-1">{roomsList.filter(r => r.number.startsWith('3')).length}</span>
+            </div>
+          </div>
+
+          {/* Search & Floor Filters Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70 p-3 rounded-2xl border border-slate-200">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                type="text"
+                placeholder="Pesquisar por número ou nome da UH (ex: 101, 204)..."
+                value={roomSearch}
+                onChange={(e) => setRoomSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-all"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[
+                { id: "all", label: "Todos os Andares" },
+                { id: "1", label: "1º Andar" },
+                { id: "2", label: "2º Andar" },
+                { id: "3", label: "3º Andar" },
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setRoomFloorFilter(f.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                    roomFloorFilter === f.id
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Rooms Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
+            {loadingRooms ? (
+              <div className="p-12 text-center text-slate-400 font-semibold space-y-3">
+                <RefreshCw size={24} className="animate-spin mx-auto text-blue-600" />
+                <p className="text-xs">Carregando apartamentos e UHs...</p>
+              </div>
+            ) : roomsList.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 font-semibold space-y-3">
+                <Hotel size={36} className="mx-auto text-slate-300" />
+                <p className="text-sm font-bold text-slate-600">Nenhum apartamento cadastrado.</p>
+                <p className="text-xs text-slate-400">Clique em "Novo Apartamento / UH" para adicionar o primeiro quarto do hotel.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                      <th className="py-4 px-6">Apartamento / UH</th>
+                      <th className="py-4 px-4">Andar</th>
+                      <th className="py-4 px-4">Ramal Telefônico</th>
+                      <th className="py-4 px-4">Ativos Vinculados</th>
+                      <th className="py-4 px-4">Chamados Abertos</th>
+                      <th className="py-4 px-4">Status</th>
+                      <th className="py-4 px-6 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                    {roomsList
+                      .filter(r => {
+                        if (roomFloorFilter !== "all" && !r.number.startsWith(roomFloorFilter)) {
+                          return false;
+                        }
+                        if (!roomSearch) return true;
+                        const term = roomSearch.toLowerCase();
+                        return (
+                          r.number.toLowerCase().includes(term) ||
+                          r.name.toLowerCase().includes(term) ||
+                          (r.phone && r.phone.toLowerCase().includes(term))
+                        );
+                      })
+                      .map((r) => (
+                        <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-4 px-6 font-extrabold text-slate-900">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center shrink-0">
+                                <Hotel size={18} />
+                              </div>
+                              <div>
+                                <p className="font-extrabold text-slate-900 text-sm">UH {r.number}</p>
+                                <p className="text-[11px] font-semibold text-slate-400">{r.name}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className="font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md text-[11px]">
+                              {r.floor || "Geral"}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            {r.phone ? (
+                              <span className="font-bold text-slate-800 flex items-center gap-1">
+                                <Phone size={12} className="text-slate-400" /> {r.phone}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 italic">—</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-4">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold ${
+                              r.asset_count > 0 ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
+                            }`}>
+                              <Tv size={12} /> {r.asset_count} ativo{r.asset_count !== 1 ? "s" : ""}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            {r.open_tickets_count > 0 ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800 border border-amber-200">
+                                <AlertCircle size={12} /> {r.open_tickets_count} em aberto
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                                <Check size={12} /> Sem pendências
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-4 px-4">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRoomActive(r)}
+                              title={r.is_active ? "Clique para desativar a UH" : "Clique para ativar a UH"}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black transition-all cursor-pointer ${
+                                r.is_active
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${r.is_active ? "bg-emerald-500" : "bg-slate-400"}`} />
+                              <span>{r.is_active ? "Ativa" : "Inativa"}</span>
+                            </button>
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleOpenRoomModal(r)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                title="Editar Apartamento / UH"
+                              >
+                                <Edit3 size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRoom(r)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                title="Remover ou Desativar"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Novo / Editar Apartamento (UH) */}
+      {roomModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <Hotel className="text-blue-600" size={20} />
+                {editingRoom ? "Editar Apartamento / UH" : "Novo Apartamento / UH"}
+              </h3>
+              <button
+                onClick={() => setRoomModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRoom} className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Número do Apartamento (UH) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: 101, 204, 310, 401"
+                  value={roomFormData.number}
+                  onChange={(e) => setRoomFormData({ ...roomFormData, number: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-slate-900 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">O andar será calculado automaticamente pelo primeiro dígito (ex: 201 = 2º Andar).</p>
+              </div>
+
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Nome de Exibição
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Apt 101 ou Suíte Presidencial (Opcional)"
+                  value={roomFormData.name}
+                  onChange={(e) => setRoomFormData({ ...roomFormData, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Ramal Telefônico
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: 1101 ou ramal direto do quarto"
+                  value={roomFormData.phone}
+                  onChange={(e) => setRoomFormData({ ...roomFormData, phone: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={roomFormData.is_active}
+                    onChange={(e) => setRoomFormData({ ...roomFormData, is_active: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-700">Apartamento Ativo</span>
+                    <p className="text-[10px] text-slate-400">Apenas UHs ativas aparecem para seleção ao abrir chamados de vistoria.</p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRoomModalOpen(false)}
+                  className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingRoom}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {savingRoom ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  {editingRoom ? "Salvar Alterações" : "Cadastrar Apartamento"}
                 </button>
               </div>
             </form>
@@ -3146,6 +3548,8 @@ export default function Settings() {
       {activeTab === "sla" && (
         <SLASettingsSection />
       )}
+        </main>
+      </div>
 
       {/* Modal de Alteração de Senha */}
       <ChangePasswordModal

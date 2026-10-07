@@ -86,6 +86,38 @@ Categorias Públicas vs. Internas (TI / Atendentes):
   - `GET /api/v1/categories`: Retorna categorias públicas para usuários comuns do portal, e o catálogo completo para técnicos e administradores.
   - No Painel de Criação da TI (`/admin/tickets/new`), categorias internas são sinalizadas com o selo `🔒 [Interna TI]`.
 
+Locais Físicos Públicos vs. Internos (`Location.is_public`):
+- **Campo `is_public` no Banco**: Adicionado à tabela `locations` com default `True`.
+- **Governança no Painel de Configurações (`/admin/settings`)**:
+  - Coluna de Visibilidade com botão toggle de 1 clique (`🌐 Pública` / `🔒 Interna TI`) na tabela de locais.
+  - Checkbox explicativo nos modais de criação e edição de localizações físicas.
+- **Controle de Escopo**: Locais estritamente técnicos (ex: `Racks TI - CPD`, Data Centers, Salas Elétricas) permanecem marcados como `Interna TI`, servindo para alocação de ativos CMDB e chamados de técnicos, mas ocultos para usuários comuns e do formulário público.
+- **Filtro nas APIs**:
+  - `GET /api/v1/public/locations`: Retorna somente locais onde `is_active == True` e `is_public == True`.
+  - `GET /api/v1/locations/`: Retorna locais públicos para usuários comuns e o catálogo completo para admins/técnicos.
+
+Gestão Completa de Apartamentos & UHs (`/admin/settings`):
+- **Módulo Dedicado de UHs**: Interface completa para gestão dos quartos do hotel integrada à tabela de `User` (`is_room == True`), preservando histórico e vínculos de ativos do CMDB.
+- **Métricas e Filtros**:
+  - Contadores rápidos no topo: Total de UHs, UHs Ativas e contadores por andar (1º, 2º e 3º Andares).
+  - Barra de busca em tempo real por número ou nome descritivo.
+  - Filtro por abas de andar para navegação rápida.
+- **Tabela de Inventário**: Exibe número, nome descritivo, ramal telefônico, contadores de ativos alocados (TVs, APs, etc.), chamados abertos e status ativo/inativo.
+- **Ações Rápidas**:
+  - Toggle de 1 clique para ativar/desativar UH.
+  - Modal para cadastrar ou editar número, nome, ramal e status.
+  - Exclusão com desativação preventiva de segurança caso possua histórico de chamados ou ativos vinculados.
+- **Endpoints de Backend**: `GET /api/v1/rooms/`, `POST /api/v1/rooms/`, `PATCH /api/v1/rooms/{id}`, `PATCH /api/v1/rooms/{id}/toggle-active`, `DELETE /api/v1/rooms/{id}`.
+
+Novo Menu Lateral Agrupado de Configurações (`/admin/settings`):
+- **Substituição da Barra Horizontal**: A barra horizontal anterior (que quebrava em múltiplas linhas com o crescimento dos módulos) foi substituída por uma barra lateral moderna (Sticky Sidebar) agrupada em 5 categorias temáticas:
+  1. **Hotel & Espaços**: Localizações Físicas, Apartamentos (UHs), Setores & Grupos.
+  2. **Helpdesk & Chamados**: Categorias, Tipos de Problema, Diretrizes de SLA.
+  3. **Equipamentos & CMDB**: Tipos de Equipamento.
+  4. **Integrações**: Importação AD / LDAP, Integração Zabbix, Telefonia & WhatsApp.
+  5. **Segurança & Sistema**: Usuários & Permissões, Parâmetros Gerais.
+- **Experiência Visual**: Navegação categorizada, indicação do módulo ativo com realce azul e contador dinâmico de módulos disponíveis, mantendo layout limpo e expansível.
+
 Painel NOC & Topologia de Rede (TV / 4K Ready):
 - **Diagramas de Topologia Interativos**: Suporte completo a nós de infraestrutura (Switches, Racks, Access Points, Servidores, Firewalls, Roteadores).
 - **Dimensionamento Personalizado de Cards**: Suporte a ajuste de largura e altura (pixels manuais ou presets: Padrão, Médio, Largo, Extra Largo), além de alça interativa de redimensionamento direto no canvas. Quebra de texto inteligente para manter nomes longos legíveis sem corte.

@@ -17,7 +17,7 @@ from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
     attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes,
-    sla, monitoring, public_tickets
+    sla, monitoring, public_tickets, rooms
 )
 import app.models.network_map  # noqa: F401
 import app.models.qrcode       # noqa: F401
@@ -314,9 +314,11 @@ async def lifespan(app: FastAPI):
                 );
             """))
             conn.execute(text("ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS encode_mode VARCHAR(20) DEFAULT 'vcard';"))
-            conn.execute(text("UPDATE qrcodes SET encode_mode = 'vcard';"))
             conn.execute(text("ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("UPDATE categories SET is_public = TRUE WHERE is_public IS NULL;"))
+            conn.execute(text("ALTER TABLE locations ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("UPDATE locations SET is_public = TRUE WHERE is_public IS NULL;"))
+            conn.execute(text("UPDATE locations SET is_public = FALSE WHERE name ILIKE '%rack%' OR name ILIKE '%cpd%' OR name ILIKE '%servidor%';"))
             # Tabela de Telemetria do TIHFSA Agent (Substituição Nativa Zabbix)
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS agent_checkins (
@@ -413,6 +415,7 @@ app.include_router(qrcodes.router)
 app.include_router(sla.router)
 app.include_router(monitoring.router)
 app.include_router(public_tickets.router)
+app.include_router(rooms.router)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

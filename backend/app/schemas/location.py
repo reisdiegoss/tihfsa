@@ -9,6 +9,7 @@ class LocationCreate(BaseModel):
     name: str
     floor: str | None = None
     description: str | None = None
+    is_public: bool = True
 
 
 class LocationUpdate(BaseModel):
@@ -16,6 +17,7 @@ class LocationUpdate(BaseModel):
     floor: str | None = None
     description: str | None = None
     is_active: bool | None = None
+    is_public: bool | None = None
 
 
 class LocationResponse(BaseModel):
@@ -26,5 +28,6 @@ class LocationResponse(BaseModel):
     floor: str | None = None
     description: str | None = None
     is_active: bool
+    is_public: bool = True
     asset_count: int = 0
     created_at: datetime

@@ -18,6 +18,7 @@ class Location(Base):
     floor = Column(String(50), nullable=True)  # Ex: "Térreo", "1º Andar", "Subsolo"
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    is_public = Column(Boolean, default=True, server_default="1", nullable=False)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

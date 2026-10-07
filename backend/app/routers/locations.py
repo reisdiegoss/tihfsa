@@ -18,15 +18,28 @@ router = APIRouter(prefix="/api/v1/locations", tags=["Localizações"])
 @router.get("/", response_model=list[LocationResponse])
 def list_locations(
     active_only: bool = True,
+    public_only: bool = False,
     search: str | None = Query(None),
     db: Session = Depends(get_db),
-    _: User | None = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
-    """Lista todas as localizações com contagem de ativos cadastrados."""
+    """
+    Lista todas as localizações com contagem de ativos cadastrados.
+    - Se public_only=True ou se for usuário comum sem perfil tech/admin: retorna apenas locais públicos.
+    - Se técnico/admin: retorna todos os locais (com indicação se é público ou interno).
+    """
     query = db.query(Location)
 
     if active_only:
         query = query.filter(Location.is_active == True)
+
+    is_tech_or_admin = False
+    if current_user:
+        u_roles = current_user.roles if (current_user.roles and isinstance(current_user.roles, list)) else [current_user.role.value]
+        is_tech_or_admin = any(r in ["technician", "admin"] for r in u_roles)
+
+    if public_only or not is_tech_or_admin:
+        query = query.filter(Location.is_public == True)
 
     if search and isinstance(search, str) and search.strip():
         term = f"%{search.strip()}%"
@@ -52,6 +65,7 @@ def list_locations(
             floor=loc.floor,
             description=loc.description,
             is_active=loc.is_active,
+            is_public=getattr(loc, "is_public", True),
             asset_count=asset_cnt,
             created_at=loc.created_at
         ))
@@ -76,6 +90,7 @@ def create_location(
         floor=data.floor.strip() if data.floor else None,
         description=data.description.strip() if data.description else None,
         is_active=True,
+        is_public=data.is_public if data.is_public is not None else True,
     )
     db.add(loc)
     db.commit()
@@ -87,6 +102,7 @@ def create_location(
         floor=loc.floor,
         description=loc.description,
         is_active=loc.is_active,
+        is_public=loc.is_public,
         asset_count=0,
         created_at=loc.created_at
     )
@@ -114,6 +130,7 @@ def get_location(
         floor=loc.floor,
         description=loc.description,
         is_active=loc.is_active,
+        is_public=getattr(loc, "is_public", True),
         asset_count=asset_cnt,
         created_at=loc.created_at
     )
@@ -149,6 +166,8 @@ def update_location(
         loc.description = update_data["description"].strip() if update_data["description"] else None
     if "is_active" in update_data and update_data["is_active"] is not None:
         loc.is_active = update_data["is_active"]
+    if "is_public" in update_data and update_data["is_public"] is not None:
+        loc.is_public = update_data["is_public"]
 
     db.commit()
     db.refresh(loc)
@@ -164,6 +183,39 @@ def update_location(
         floor=loc.floor,
         description=loc.description,
         is_active=loc.is_active,
+        is_public=getattr(loc, "is_public", True),
+        asset_count=asset_cnt,
+        created_at=loc.created_at
+    )
+
+
+@router.patch("/{location_id}/toggle-public", response_model=LocationResponse)
+def toggle_location_public(
+    location_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_technician),
+):
+    """Alterna rapidamente o status de visibilidade pública do local com 1 clique."""
+    loc = db.query(Location).filter(Location.id == location_id).first()
+    if not loc:
+        raise HTTPException(status_code=404, detail="Localização não encontrada")
+
+    loc.is_public = not bool(getattr(loc, "is_public", True))
+    db.commit()
+    db.refresh(loc)
+
+    asset_cnt = db.query(func.count(Asset.id)).filter(
+        Asset.location_id == loc.id,
+        Asset.is_active == True
+    ).scalar() or 0
+
+    return LocationResponse(
+        id=loc.id,
+        name=loc.name,
+        floor=loc.floor,
+        description=loc.description,
+        is_active=loc.is_active,
+        is_public=loc.is_public,
         asset_count=asset_cnt,
         created_at=loc.created_at
     )
