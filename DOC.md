@@ -810,3 +810,8 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Interface Administrativa - Ajuste e Responsividade da Grid de Localizacoes Fisicas (/admin -> Configuracoes)**:
       - **Truncamento Inteligente de Descricao**: As descricoes longas de locais fisicos possuem conteiner com min-w-0, max-w-[170px] e 	runcate, exibindo o texto completo atraves do atributo 	itle ao passar o mouse.
       - **Preservacao da Grade Padrao**: As colunas de *Andar / Nivel*, *Ativos Vinculados*, *Visibilidade*, *Status* e *Acoes* contam com espacamento otimizado e whitespace-nowrap, impedindo que a tabela transborde a viewport ou oculte os botoes de edicao e exclusao.
+
+    - **Serviço de E-mail & Notificações SMTP**:
+      - **Configuração**: Conecta via STARTTLS em smtp-mail.outlook.com:587 utilizando a conta suportessa@fasano.com.br.
+      - **Casos de Uso**: Aprovações e validações de chamados por gestores, encerramento de atendimentos e alertas de monitoramento NOC.
+      - **Utilitário de Teste**: Disponível em scripts/test_smtp.py (py scripts/test_smtp.py) para validar conectividade e disparar e-mail de teste com template corporativo HTML.
