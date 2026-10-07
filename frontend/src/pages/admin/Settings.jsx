@@ -43,7 +43,9 @@ import {
   Bell,
   Filter,
   Globe,
-  Hotel
+  Hotel,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -423,12 +425,14 @@ export default function Settings() {
   const [locationSearch, setLocationSearch] = useState("");
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState(null);
+  const [movingLocationId, setMovingLocationId] = useState(null);
   const [locationFormData, setLocationFormData] = useState({
     name: "",
     floor: "",
     description: "",
     is_active: true,
     is_public: true,
+    order_index: 0,
   });
   const [savingLocation, setSavingLocation] = useState(false);
 
@@ -536,7 +540,11 @@ export default function Settings() {
       if (editingFloor) {
         await api.patch(`/floors/${editingFloor.id}`, payload);
       } else {
-        await api.post("/floors/", payload);
+        const { data: createdFloor } = await api.post("/floors/", payload);
+        if (createdFloor?.name) {
+          setRoomFormData(prev => ({ ...prev, floor: createdFloor.name }));
+          setLocationFormData(prev => ({ ...prev, floor: createdFloor.name }));
+        }
       }
       setFloorModalOpen(false);
       fetchFloors();
@@ -654,18 +662,37 @@ export default function Settings() {
         description: loc.description || "",
         is_active: loc.is_active !== undefined ? loc.is_active : true,
         is_public: loc.is_public !== undefined ? loc.is_public : true,
+        order_index: loc.order_index !== undefined ? loc.order_index : 0,
       });
     } else {
       setEditingLocation(null);
+      const nextOrder = locationsList.length > 0
+        ? Math.max(...locationsList.map(l => l.order_index || 0)) + 1
+        : 1;
       setLocationFormData({
         name: "",
         floor: "",
         description: "",
         is_active: true,
         is_public: true,
+        order_index: nextOrder,
       });
     }
     setLocationModalOpen(true);
+  };
+
+  const handleMoveLocation = async (loc, direction) => {
+    setMovingLocationId(loc.id);
+    try {
+      const res = await api.patch(`/locations/${loc.id}/move?direction=${direction}`);
+      setLocationsList(res.data);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao reordenar localização.");
+      fetchLocations();
+    } finally {
+      setMovingLocationId(null);
+    }
   };
 
   const handleSaveLocation = async (e) => {
@@ -2163,6 +2190,7 @@ export default function Settings() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                      <th className="py-4 px-3 text-center w-20">Ordem</th>
                       <th className="py-4 px-6">Nome da Localização</th>
                       <th className="py-4 px-4">Andar / Nível</th>
                       <th className="py-4 px-4">Ativos Vinculados</th>
@@ -2182,8 +2210,35 @@ export default function Settings() {
                           (loc.description && loc.description.toLowerCase().includes(term))
                         );
                       })
-                      .map((loc) => (
+                      .map((loc, idx) => (
                         <tr key={loc.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-4 px-3 text-center">
+                            <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 shadow-2xs">
+                              <span className="font-black text-slate-700 text-xs w-4 text-center">
+                                {loc.order_index !== undefined && loc.order_index !== null ? loc.order_index : idx + 1}
+                              </span>
+                              <div className="flex flex-col gap-0.5 border-l border-slate-200 pl-1.5">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0 || movingLocationId === loc.id || !!locationSearch}
+                                  onClick={() => handleMoveLocation(loc, "up")}
+                                  className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:hover:text-slate-400 disabled:hover:bg-transparent cursor-pointer transition-colors"
+                                  title={locationSearch ? "Limpe a busca para mover" : "Mover para cima"}
+                                >
+                                  <ArrowUp size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === locationsList.length - 1 || movingLocationId === loc.id || !!locationSearch}
+                                  onClick={() => handleMoveLocation(loc, "down")}
+                                  className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:hover:text-slate-400 disabled:hover:bg-transparent cursor-pointer transition-colors"
+                                  title={locationSearch ? "Limpe a busca para mover" : "Mover para baixo"}
+                                >
+                                  <ArrowDown size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          </td>
                           <td className="py-4 px-6 font-extrabold text-slate-900">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0">
@@ -2295,29 +2350,45 @@ export default function Settings() {
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
-                  Andar / Nível
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    value={floorsList.some(f => f.name === locationFormData.floor) ? locationFormData.floor : ""}
-                    onChange={(e) => {
-                      if (e.target.value) setLocationFormData({ ...locationFormData, floor: e.target.value });
-                    }}
-                    className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
-                  >
-                    <option value="">Selecione um Andar...</option>
-                    {floorsList.map((f) => (
-                      <option key={f.id} value={f.name}>{f.name}</option>
-                    ))}
-                  </select>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
+                    Andar / Nível
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={floorsList.some(f => f.name === locationFormData.floor) ? locationFormData.floor : ""}
+                      onChange={(e) => {
+                        if (e.target.value) setLocationFormData({ ...locationFormData, floor: e.target.value });
+                      }}
+                      className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      <option value="">Selecione...</option>
+                      {floorsList.map((f) => (
+                        <option key={f.id} value={f.name}>{f.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Ou digite..."
+                      value={locationFormData.floor}
+                      onChange={(e) => setLocationFormData({ ...locationFormData, floor: e.target.value })}
+                      className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5" title="Define a prioridade/ordem numérica de exibição">
+                    Ordem
+                  </label>
                   <input
-                    type="text"
-                    placeholder="Ou digite o andar/nível..."
-                    value={locationFormData.floor}
-                    onChange={(e) => setLocationFormData({ ...locationFormData, floor: e.target.value })}
-                    className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                    type="number"
+                    min="1"
+                    placeholder="Ex: 1"
+                    value={locationFormData.order_index}
+                    onChange={(e) => setLocationFormData({ ...locationFormData, order_index: parseInt(e.target.value, 10) || 0 })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
                   />
                 </div>
               </div>
@@ -2397,6 +2468,14 @@ export default function Settings() {
             </div>
 
             <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab("floors")}
+                className="flex items-center justify-center gap-2 bg-slate-100 text-slate-700 hover:text-blue-700 hover:bg-blue-50 border border-slate-200 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer"
+                title="Ir para o cadastro de andares e pavimentos"
+              >
+                <Layers size={16} className="text-blue-600" /> Gerenciar Andares
+              </button>
               <button
                 onClick={() => handleOpenRoomModal()}
                 className="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-2xl text-sm font-bold shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all cursor-pointer"
@@ -2636,23 +2715,44 @@ export default function Settings() {
               </div>
 
               <div>
-                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
-                  Andar / Pavimento
-                </label>
-                <select
-                  value={roomFormData.floor || ""}
-                  onChange={(e) => setRoomFormData({ ...roomFormData, floor: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                >
-                  <option value="">Auto-detectar pelo número da UH</option>
-                  {floorsList.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} {f.number !== null && f.number !== undefined ? `(Nível ${f.number})` : ""}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
+                    Andar / Pavimento
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenFloorModal()}
+                    className="text-[11px] font-extrabold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors"
+                    title="Cadastrar um novo andar no sistema"
+                  >
+                    <Plus size={12} /> Novo Andar
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={floorsList.some(f => f.name === roomFormData.floor) ? roomFormData.floor : ""}
+                    onChange={(e) => {
+                      if (e.target.value) setRoomFormData({ ...roomFormData, floor: e.target.value });
+                    }}
+                    className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Selecione um Andar...</option>
+                    {floorsList.map((f) => (
+                      <option key={f.id} value={f.name}>
+                        {f.name} {f.number !== null && f.number !== undefined ? `(Nível ${f.number})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Ou digite o andar..."
+                    value={roomFormData.floor || ""}
+                    onChange={(e) => setRoomFormData({ ...roomFormData, floor: e.target.value })}
+                    className="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                  />
+                </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Selecione o andar desta UH ou deixe no modo automático para deduzir pelo número.
+                  Selecione da lista, digite livremente ou clique em "+ Novo Andar" para cadastrar um novo pavimento.
                 </p>
               </div>
 
@@ -2893,7 +2993,7 @@ export default function Settings() {
 
       {/* MODAL: Novo / Editar Andar */}
       {floorModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-fade-in">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-fade-in">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">

@@ -417,9 +417,9 @@ export default function StationMonitoringTab() {
                     </span>
                     {m.asset_id && (
                       <a
-                        href={`/admin/assets?search=${m.hostname}`}
+                        href={`/admin/assets?assetId=${m.asset_id}&search=${encodeURIComponent(m.hostname)}`}
                         className="inline-flex items-center gap-1 font-bold text-blue-600 hover:text-blue-800 hover:underline shrink-0"
-                        title="Ver ativo no CMDB"
+                        title="Ver detalhes do ativo no CMDB"
                       >
                         <CheckCircle2 size={11} className="text-emerald-500" />
                         <span>CMDB #{m.asset_id}</span>

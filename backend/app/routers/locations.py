@@ -49,7 +49,7 @@ def list_locations(
             (Location.description.ilike(term))
         )
 
-    locations = query.order_by(Location.name.asc()).all()
+    locations = query.order_by(Location.order_index.asc(), Location.name.asc()).all()
 
     # Contar ativos por localização
     res = []
@@ -66,6 +66,7 @@ def list_locations(
             description=loc.description,
             is_active=loc.is_active,
             is_public=getattr(loc, "is_public", True),
+            order_index=getattr(loc, "order_index", 0),
             asset_count=asset_cnt,
             created_at=loc.created_at
         ))
@@ -85,12 +86,18 @@ def create_location(
     if existing:
         raise HTTPException(status_code=400, detail="Já existe uma localização cadastrada com este nome.")
 
+    order_val = data.order_index
+    if not order_val:
+        max_order = db.query(func.max(Location.order_index)).scalar() or 0
+        order_val = max_order + 1
+
     loc = Location(
         name=data.name.strip(),
         floor=data.floor.strip() if data.floor else None,
         description=data.description.strip() if data.description else None,
         is_active=True,
         is_public=data.is_public if data.is_public is not None else True,
+        order_index=order_val,
     )
     db.add(loc)
     db.commit()
@@ -103,6 +110,7 @@ def create_location(
         description=loc.description,
         is_active=loc.is_active,
         is_public=loc.is_public,
+        order_index=loc.order_index,
         asset_count=0,
         created_at=loc.created_at
     )
@@ -131,6 +139,7 @@ def get_location(
         description=loc.description,
         is_active=loc.is_active,
         is_public=getattr(loc, "is_public", True),
+        order_index=getattr(loc, "order_index", 0),
         asset_count=asset_cnt,
         created_at=loc.created_at
     )
@@ -168,6 +177,8 @@ def update_location(
         loc.is_active = update_data["is_active"]
     if "is_public" in update_data and update_data["is_public"] is not None:
         loc.is_public = update_data["is_public"]
+    if "order_index" in update_data and update_data["order_index"] is not None:
+        loc.order_index = update_data["order_index"]
 
     db.commit()
     db.refresh(loc)
@@ -184,9 +195,62 @@ def update_location(
         description=loc.description,
         is_active=loc.is_active,
         is_public=getattr(loc, "is_public", True),
+        order_index=getattr(loc, "order_index", 0),
         asset_count=asset_cnt,
         created_at=loc.created_at
     )
+
+
+@router.patch("/{location_id}/move", response_model=list[LocationResponse])
+def move_location_order(
+    location_id: int,
+    direction: str = Query(..., regex="^(up|down)$"),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_technician),
+):
+    """
+    Move a posição de ordenação de uma localização para cima ('up') ou para baixo ('down').
+    Normaliza a sequência inteira de 1 a N e retorna a lista ordenada.
+    """
+    locs = db.query(Location).filter(Location.is_active == True).order_by(Location.order_index.asc(), Location.name.asc()).all()
+
+    idx = None
+    for i, item in enumerate(locs):
+        if item.id == location_id:
+            idx = i
+            break
+
+    if idx is None:
+        raise HTTPException(status_code=404, detail="Localização não encontrada ou inativa.")
+
+    if direction == "up" and idx > 0:
+        locs[idx], locs[idx - 1] = locs[idx - 1], locs[idx]
+    elif direction == "down" and idx < len(locs) - 1:
+        locs[idx], locs[idx + 1] = locs[idx + 1], locs[idx]
+
+    for i, item in enumerate(locs, start=1):
+        item.order_index = i
+
+    db.commit()
+
+    res = []
+    for l in locs:
+        asset_cnt = db.query(func.count(Asset.id)).filter(
+            Asset.location_id == l.id,
+            Asset.is_active == True
+        ).scalar() or 0
+        res.append(LocationResponse(
+            id=l.id,
+            name=l.name,
+            floor=l.floor,
+            description=l.description,
+            is_active=l.is_active,
+            is_public=getattr(l, "is_public", True),
+            order_index=getattr(l, "order_index", 0),
+            asset_count=asset_cnt,
+            created_at=l.created_at
+        ))
+    return res
 
 
 @router.patch("/{location_id}/toggle-public", response_model=LocationResponse)
@@ -216,6 +280,7 @@ def toggle_location_public(
         description=loc.description,
         is_active=loc.is_active,
         is_public=loc.is_public,
+        order_index=getattr(loc, "order_index", 0),
         asset_count=asset_cnt,
         created_at=loc.created_at
     )

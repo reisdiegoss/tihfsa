@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { 
   Search, Monitor, HardDrive, Wifi, Phone, Plus, Server, 
   CheckCircle, AlertTriangle, AlertCircle, RefreshCw, CloudDownload, 
@@ -1584,15 +1585,20 @@ function AssetInventoryModal({ asset, onClose }) {
 }
 
 export default function Assets() {
+  const [searchParams] = useSearchParams();
+  const urlAssetId = searchParams.get("assetId");
+  const urlSearch = searchParams.get("search");
+
   const [assets, setAssets] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [locationsList, setLocationsList] = useState([]);
   const [assetTypesConfig, setAssetTypesConfig] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(urlSearch || "");
   const [selectedType, setSelectedType] = useState("Todos");
   const [selectedLocation, setSelectedLocation] = useState("Todas");
   const [selectedStatus, setSelectedStatus] = useState("Todos");
+  const [hasHandledUrlParam, setHasHandledUrlParam] = useState(false);
   
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isUnifiSyncModalOpen, setIsUnifiSyncModalOpen] = useState(false);
@@ -1655,6 +1661,29 @@ export default function Assets() {
     const interval = setInterval(fetchAssets, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Abre diretamente o ativo requisitado via URL (?assetId=206 ou ?search=FASSA28)
+  useEffect(() => {
+    if (!loading && assets.length > 0 && !hasHandledUrlParam) {
+      if (urlAssetId) {
+        const target = assets.find(a => String(a.id) === String(urlAssetId));
+        if (target) {
+          setHasHandledUrlParam(true);
+          setSearchTerm(target.name || target.asset_tag || target.ip_address || "");
+          openInventoryModal(target);
+        }
+      } else if (urlSearch) {
+        const target = assets.find(a => 
+          a.name?.toLowerCase() === urlSearch.toLowerCase() ||
+          a.specs?.hostname?.toLowerCase() === urlSearch.toLowerCase()
+        );
+        if (target) {
+          setHasHandledUrlParam(true);
+          openInventoryModal(target);
+        }
+      }
+    }
+  }, [loading, assets, urlAssetId, urlSearch, hasHandledUrlParam]);
 
   const handleDeleteAsset = async (assetId, assetName) => {
     if (!window.confirm(`Tem certeza que deseja excluir o ativo "${assetName}"?`)) return;
@@ -1929,15 +1958,25 @@ export default function Assets() {
             {/* Visualização de Cards para Telas Menores (< 1024px) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden p-4">
               {filteredAssets.map((asset) => (
-                <div key={asset.id} className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
+                <div 
+                  key={asset.id} 
+                  className={`border rounded-2xl p-4 space-y-3 shadow-xs transition-all ${
+                    String(asset.id) === String(urlAssetId)
+                      ? "bg-blue-50/90 border-blue-400 ring-2 ring-blue-500/30"
+                      : "bg-slate-50/70 border-slate-200/80"
+                  }`}
+                >
                   {/* Top Bar: Icon, Name, Actions */}
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 shadow-2xs">
+                    <div 
+                      onClick={() => openInventoryModal(asset)}
+                      className="flex items-center gap-2.5 min-w-0 cursor-pointer group/title"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 shadow-2xs group-hover/title:border-blue-300 transition-colors">
                         {getIconForType(asset.type)}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">{asset.name}</h4>
+                        <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm truncate group-hover/title:text-blue-600 transition-colors">{asset.name}</h4>
                         <p className="text-[11px] font-semibold text-slate-400 truncate">{asset.brand} {asset.model} • {asset.type}</p>
                       </div>
                     </div>
@@ -2055,14 +2094,24 @@ export default function Assets() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-semibold">
                   {filteredAssets.map((asset) => (
-                    <tr key={asset.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <tr 
+                      key={asset.id} 
+                      className={`transition-colors group ${
+                        String(asset.id) === String(urlAssetId)
+                          ? "bg-blue-50/90 ring-2 ring-blue-500/30"
+                          : "hover:bg-slate-50/50"
+                      }`}
+                    >
                       <td className="px-5 py-3.5 pl-6">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                        <div 
+                          onClick={() => openInventoryModal(asset)}
+                          className="flex items-center gap-3 min-w-0 cursor-pointer group/title"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-blue-50 group-hover:text-blue-600 group-hover/title:border group-hover/title:border-blue-200 transition-colors">
                             {getIconForType(asset.type)}
                           </div>
                           <div className="min-w-0 max-w-[220px] xl:max-w-[260px]">
-                            <p className="font-extrabold text-slate-900 truncate">{asset.name}</p>
+                            <p className="font-extrabold text-slate-900 truncate group-hover/title:text-blue-600 transition-colors">{asset.name}</p>
                             <p className="text-[11px] font-semibold text-slate-400 truncate">{asset.brand} {asset.model} • {asset.type}</p>
                             {asset.specs && Object.keys(asset.specs).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1">

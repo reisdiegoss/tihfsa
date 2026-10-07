@@ -122,6 +122,7 @@ def apply_migrations():
         ("categories.zabbix_group_name", "ALTER TABLE categories ADD COLUMN IF NOT EXISTS zabbix_group_name VARCHAR(150);"),
         ("categories.is_public", "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"),
         ("locations.is_public", "ALTER TABLE locations ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"),
+        ("locations.order_index", "ALTER TABLE locations ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 0 NOT NULL;"),
         ("users.floor", "ALTER TABLE users ADD COLUMN IF NOT EXISTS floor VARCHAR(100);"),
 
         # Andares e Pavimentos
@@ -260,40 +261,35 @@ def seed_floors_and_locations(db: Session):
                 existing.number = f_data["number"]
         db.commit()
 
-        # 2. Localizações Físicas padrão do Hotel
-        default_locations = [
-            {"name": "Recepção / Lobby", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Balcão da recepção, concierges e hall principal"},
-            {"name": "Restaurante Fasano / Gero", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Salão do restaurante, bar interno e caixas"},
-            {"name": "Bar da Piscina / Rooftop", "building": "Prédio Principal", "floor": "7º Andar / Rooftop", "is_public": True, "description": "Área da piscina, bar externo e terraço"},
-            {"name": "Academia & Spa", "building": "Prédio Principal", "floor": "1º Andar", "is_public": True, "description": "Salas de musculação, esteiras, saunas e spa"},
-            {"name": "Salão de Eventos / Business Center", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Salas de reunião e eventos corporativos"},
-            {"name": "Racks TI - CPD", "building": "Prédio Principal", "floor": "1º Andar", "is_public": False, "description": "Sala técnica de servidores, switches e infraestrutura de TI"},
-            {"name": "Cozinha Central", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Área de produção culinária e confeitaria"},
-            {"name": "Governança & Rouparia", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Central de camareiras, estoque de enxovais e uniformes"},
-            {"name": "Sala de Manutenção / Oficina", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Oficina técnica predial e marcenaria"},
-            {"name": "Garagem / Valet", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Área de manobristas e estacionamento"},
-        ]
+        # 2. Localizações Físicas padrão do Hotel (apenas se a tabela estiver completamente vazia)
+        if db.query(Location).count() == 0:
+            default_locations = [
+                {"name": "Recepção / Lobby", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Balcão da recepção, concierges e hall principal", "order_index": 1},
+                {"name": "Restaurante Fasano / Gero", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Salão do restaurante, bar interno e caixas", "order_index": 2},
+                {"name": "Bar da Piscina / Rooftop", "building": "Prédio Principal", "floor": "7º Andar / Rooftop", "is_public": True, "description": "Área da piscina, bar externo e terraço", "order_index": 3},
+                {"name": "Academia & Spa", "building": "Prédio Principal", "floor": "1º Andar", "is_public": True, "description": "Salas de musculação, esteiras, saunas e spa", "order_index": 4},
+                {"name": "Salão de Eventos / Business Center", "building": "Prédio Principal", "floor": "Térreo", "is_public": True, "description": "Salas de reunião e eventos corporativos", "order_index": 5},
+                {"name": "Racks TI - CPD", "building": "Prédio Principal", "floor": "1º Andar", "is_public": False, "description": "Sala técnica de servidores, switches e infraestrutura de TI", "order_index": 6},
+                {"name": "Cozinha Central", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Área de produção culinária e confeitaria", "order_index": 7},
+                {"name": "Governança & Rouparia", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Central de camareiras, estoque de enxovais e uniformes", "order_index": 8},
+                {"name": "Sala de Manutenção / Oficina", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Oficina técnica predial e marcenaria", "order_index": 9},
+                {"name": "Garagem / Valet", "building": "Prédio Principal", "floor": "Subsolo", "is_public": False, "description": "Área de manobristas e estacionamento", "order_index": 10},
+            ]
 
-        for loc_data in default_locations:
-            existing = db.query(Location).filter(Location.name == loc_data["name"]).first()
-            if not existing:
+            for loc_data in default_locations:
                 db.add(Location(
                     name=loc_data["name"],
                     building=loc_data["building"],
                     floor=loc_data["floor"],
                     is_public=loc_data["is_public"],
                     is_active=True,
+                    order_index=loc_data.get("order_index", 0),
                     description=loc_data["description"],
                 ))
-            else:
-                existing.is_active = True
-                existing.floor = loc_data["floor"]
-                existing.is_public = loc_data["is_public"]
-
-        # Garantir que todas as localizações cadastradas estejam ativas
-        db.query(Location).update({"is_active": True})
-        db.commit()
-        print("[INIT_DB] Andares e Localizações Físicas padrão sincronizados e ativados.")
+            db.commit()
+            print("[INIT_DB] Localizações Físicas padrão criadas.")
+        else:
+            print("[INIT_DB] Localizações Físicas já cadastradas pelo usuário preservadas.")
     except Exception as e:
         db.rollback()
         print(f"[INIT_DB] Aviso ao sincronizar andares/localizações: {e}")

@@ -19,6 +19,7 @@ class Location(Base):
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_public = Column(Boolean, default=True, server_default="1", nullable=False)
+    order_index = Column(Integer, default=0, server_default="0", nullable=False)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

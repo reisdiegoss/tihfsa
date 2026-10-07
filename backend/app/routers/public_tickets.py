@@ -296,7 +296,7 @@ def list_public_locations(db: Session = Depends(get_db)):
     locs = (
         db.query(Location)
         .filter(Location.is_active == True, Location.is_public == True)  # noqa: E712
-        .order_by(Location.name.asc())
+        .order_by(Location.order_index.asc(), Location.name.asc())
         .all()
     )
     return [

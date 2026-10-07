@@ -122,6 +122,24 @@ Gestão Completa de Andares & Pavimentos (`/admin/settings` - Módulo Andares):
   - **Nos Portais de Chamados (PWA, Público e Admin)**: Agrupamento dinâmico automático das UHs pelos andares reais cadastrados (`r.floor`).
 - **Endpoints de Backend**: `GET /api/v1/floors/`, `POST /api/v1/floors/`, `PATCH /api/v1/floors/{id}`, `PATCH /api/v1/floors/{id}/toggle-active`, `DELETE /api/v1/floors/{id}`.
 
+Ordenação Personalizada de Localizações Físicas (`Location.order_index`):
+- **Controle Total da Sequência Predial**: Adicionada a coluna `order_index` (inteiro) na tabela `locations` para permitir que o usuário defina a ordem exata das áreas físicas (ex: Subsolo 2, Subsolo 1, Térreo, 1º Andar, 2º Andar, Racks TI - CPD), superando a ordenação alfabética padrão.
+- **Reordenação com 1 Clique (⬆️ / ⬇️)**: Na tabela de configurações (`/admin/settings`), cada localidade possui botões dedicados de subir e descer que reorganizam e normalizam instantaneamente a sequência inteira.
+- **Edição Numérica no Formulário**: O modal de cadastro/edição de localização física possui o campo "Ordem de Exibição" para ajuste manual direto da posição.
+- **Endpoint de Backend**: `PATCH /api/v1/locations/{id}/move?direction=up|down` que reordena e salva as posições sequenciais.
+- **Consistência em Toda a Aplicação**: Os seletores de chamados (`PublicTicketForm.jsx`, `NewRequest.jsx`, `NewTicket.jsx`), CMDB de ativos (`Assets.jsx`) e Topologia agora listam as localizações rigorosamente ordenadas por `order_index ASC, name ASC`.
+
+Atribuição e Criação Rápida de Andar no Cadastro de UHs:
+- **Criação Inline sem Sair do Modal**: No formulário de "Novo / Editar Apartamento (UH)", o campo "Andar / Pavimento" conta com um botão em destaque `+ Novo Andar`, que abre o modal de criação de andar com sobreposição de camada (`z-60`).
+- **Auto-Preenchimento Imediato**: Ao salvar o novo andar criado, o formulário da UH seleciona e preenche automaticamente o novo pavimento criado.
+- **Atalho Rápido na Aba de UHs**: Adicionado o botão `Gerenciar Andares` no cabeçalho da aba de Apartamentos/UHs para navegação instantânea à gestão completa de pavimentos.
+- **Campo Flexível**: Permite selecionar da lista existente ou digitar livremente um pavimento específico.
+
+Navegação Direta e Detalhada do Ativo CMDB a partir do Agente / Telemetria:
+- **Acesso Direto com 1 Clique**: Ao clicar no selo `CMDB #{id}` no card de qualquer estação ou servidor monitorado (`StationMonitoringTab.jsx`), o sistema redireciona diretamente para `/admin/assets?assetId={id}&search={hostname}`.
+- **Abertura Automática do Inventário**: A página de Ativos (`Assets.jsx`) detecta os parâmetros de URL, localiza o ativo correspondente, aplica realce visual (borda azul e fundo destacado) na linha da tabela e abre imediatamente o Modal de Inventário Completo (GLPI) com todos os dados de hardware, CPU, memória, discos, SO e histórico.
+- **Interatividade na Grid de Ativos**: O nome e ícone de qualquer ativo na tabela e nos cards agora são clicáveis diretamente para abrir a ficha de inventário completa.
+
 Integridade dos Seletores de Localização Física (CMDB & Chamados):
 - **Correção de Escopo de Retorno**: Ajustada a lógica de `GET /api/v1/locations/` para que o painel de Ativos (CMDB) e administradores/técnicos recebam todas as localizações ativas (públicas e internas à TI como CPD e Racks), sem bloqueio indevido por ausência de filtro explícito.
 - **Carga de Locais Oficiais do Hotel**: Semeadas as localizações essenciais do Hotel Fasano Salvador com status ativo: `Recepção / Lobby`, `Restaurante Fasano / Gero`, `Bar da Piscina / Rooftop`, `Academia & Spa`, `Salão de Eventos / Business Center`, `Racks TI - CPD`, `Cozinha Central`, `Governança & Rouparia`, `Sala de Manutenção / Oficina` e `Garagem / Valet`.
