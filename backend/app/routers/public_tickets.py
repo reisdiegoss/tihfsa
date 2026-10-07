@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.models.ticket import Ticket, TicketStatus, TicketPriority
+from app.models.asset import Asset
 from app.models.category import Category, Subcategory
 from app.models.problem_type import ProblemType
 from app.models.ticket_attachment import TicketAttachment
@@ -63,25 +64,35 @@ class PublicTicketResponse(BaseModel):
 class ClientInfoResponse(BaseModel):
     ip: str
     hostname: str | None = None
+    asset_id: int | None = None
     user_agent: str | None = None
 
 
 # --- Helpers ---
 
-def _resolve_hostname(ip: str, timeout_sec: float = 0.8) -> str | None:
-    """Tenta resolver o Hostname reverso da máquina com timeout rápido para não bloquear a requisição."""
-    if not ip or ip in ("unknown", "127.0.0.1", "localhost", "::1"):
-        return None
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(socket.gethostbyaddr, ip)
-            return future.result(timeout=timeout_sec)[0]
-    except Exception:
-        return None
+def _resolve_client_info_and_asset(
+    request: Request,
+    user: User | None = None,
+    db: Session | None = None,
+    timeout_sec: float = 0.8,
+) -> tuple[dict, int | None]:
+    """
+    Identifica de forma profunda e resiliente o IP, Hostname e Equipamento (Asset)
+    do solicitante a partir do request HTTP e da base de inventário CMDB / Sentinel Agent:
 
-
-def _get_client_info(request: Request) -> dict:
-    """Extrai IP, hostname e user-agent do request HTTP de forma transparente."""
+    1. Extração do IP real (X-Forwarded-For, X-Real-IP ou request.client.host).
+    2. Busca no CMDB do TIHFSA pelo IP (tabela assets.ip_address):
+       - As estações corporativas com o Sentinel Agent reportam seu IP de rede e nome de computador (ex: HFSA000080D).
+       - Como redes locais DHCP frequentemente não possuem zona reversa PTR no DNS, essa é a fonte
+         mais precisa e imediata para resolver o hostname de qualquer máquina da rede.
+    3. Busca no CMDB pelo Colaborador (assets.assigned_user_id == user.id):
+       - Caso o IP seja novo/DHCP e ainda não atualizado no ativo, identifica a máquina
+         nominalmente atribuída ao colaborador.
+    4. Busca no CMDB pelo último usuário logado (assets.specs['logged_user']):
+       - Verifica se o ad_username do solicitante é o usuário ativo registrado pelo Sentinel Agent.
+    5. DNS Reverso do Sistema Operacional (socket.gethostbyaddr):
+       - Executado em thread separada com timeout para faixas que possuam PTR configurado.
+    """
     forwarded = request.headers.get("X-Forwarded-For")
     real_ip = request.headers.get("X-Real-IP")
 
@@ -94,14 +105,84 @@ def _get_client_info(request: Request) -> dict:
     else:
         client_ip = "unknown"
 
-    hostname = _resolve_hostname(client_ip)
+    hostname = None
+    detected_asset_id = None
+    is_valid_lan_ip = bool(client_ip and client_ip not in ("unknown", "127.0.0.1", "localhost", "::1"))
+
+    # 1. Busca por IP no CMDB (Mais preciso para a rede do hotel)
+    if is_valid_lan_ip and db:
+        try:
+            asset_by_ip = (
+                db.query(Asset)
+                .filter(
+                    or_(
+                        Asset.ip_address == client_ip,
+                        Asset.ip_address.ilike(f"%{client_ip}%"),
+                    ),
+                    Asset.is_active == True,  # noqa: E712
+                )
+                .first()
+            )
+            if asset_by_ip:
+                hostname = asset_by_ip.name
+                detected_asset_id = asset_by_ip.id
+        except Exception as e:
+            print(f"[ClientInfo] Erro ao buscar asset por IP: {e}")
+
+    # 2. Busca por Colaborador no CMDB (Equipamento atribuído)
+    if not hostname and user and db:
+        try:
+            asset_by_user = (
+                db.query(Asset)
+                .filter(
+                    Asset.assigned_user_id == user.id,
+                    Asset.is_active == True,  # noqa: E712
+                )
+                .first()
+            )
+            if asset_by_user:
+                hostname = asset_by_user.name
+                detected_asset_id = asset_by_user.id
+        except Exception as e:
+            print(f"[ClientInfo] Erro ao buscar asset por user: {e}")
+
+    # 3. Busca por Usuário Logado nas specs do Sentinel Agent
+    if not hostname and user and user.ad_username and db:
+        try:
+            ad_clean = user.ad_username.lower().replace("fasanobr\\", "").strip()
+            assets_with_specs = (
+                db.query(Asset)
+                .filter(Asset.specs.isnot(None), Asset.is_active == True)  # noqa: E712
+                .all()
+            )
+            for a in assets_with_specs:
+                if a.specs and isinstance(a.specs, dict):
+                    logged = str(a.specs.get("logged_user", "")).lower()
+                    if ad_clean and ad_clean in logged:
+                        hostname = a.name
+                        detected_asset_id = a.id
+                        break
+        except Exception as e:
+            print(f"[ClientInfo] Erro ao buscar asset por logged_user: {e}")
+
+    # 4. Fallback: Tentativa de DNS reverso via socket padrão
+    if not hostname and is_valid_lan_ip:
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(socket.gethostbyaddr, client_ip)
+                resolved = future.result(timeout=timeout_sec)[0]
+                if resolved:
+                    hostname = resolved.split(".")[0] if "." in resolved else resolved
+        except Exception:
+            pass
+
     user_agent = request.headers.get("User-Agent", "unknown")
 
     return {
         "ip": client_ip,
         "hostname": hostname,
         "user_agent": user_agent,
-    }
+    }, detected_asset_id
 
 
 def _get_manager_name(u: User) -> str | None:
@@ -188,6 +269,23 @@ def list_public_categories(db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/client-info", response_model=ClientInfoResponse)
+def get_public_client_info(
+    request: Request,
+    user_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Retorna IP, Hostname detectado e Equipamento do solicitante para pré-visualização."""
+    user = db.query(User).filter(User.id == user_id).first() if user_id else None
+    client_info, detected_asset_id = _resolve_client_info_and_asset(request, user=user, db=db)
+    return ClientInfoResponse(
+        ip=client_info["ip"],
+        hostname=client_info["hostname"],
+        asset_id=detected_asset_id,
+        user_agent=client_info["user_agent"],
+    )
+
+
 @router.post("/tickets", response_model=PublicTicketResponse, status_code=status.HTTP_201_CREATED)
 def create_public_ticket(
     data: PublicTicketCreate,
@@ -226,8 +324,8 @@ def create_public_ticket(
     if not user:
         raise HTTPException(status_code=404, detail="Colaborador solicitante não encontrado ou inativo")
 
-    # 2. Capturar informações do cliente para auditoria
-    client_info = _get_client_info(request)
+    # 2. Capturar informações do cliente para auditoria e identificar equipamento
+    client_info, detected_asset_id = _resolve_client_info_and_asset(request, user=user, db=db)
     dept_name = user.department.name if user.department else "Sem Setor"
     mgr_name = _get_manager_name(user)
 
@@ -235,24 +333,26 @@ def create_public_ticket(
     final_title = f"[{data.location}] {data.title}" if data.location else data.title
 
     # 4. Montar descrição com metadados de auditoria
+    hostname_label = client_info["hostname"] or "Não detectado"
     audit_block = (
         f"\n\n---\n"
         f"📋 Origem: Formulário Público\n"
         f"👤 Solicitante: {user.display_name} (Setor: {dept_name})\n"
         f"👔 Chefe/Gestor do Setor: {mgr_name or 'Não cadastrado'}\n"
         f"🖥️ IP de Origem: {client_info['ip']}\n"
-        f"🏷️ Hostname da Máquina: {client_info['hostname'] or 'N/A'}\n"
+        f"🏷️ Hostname da Máquina: {hostname_label}\n"
         f"🌐 User-Agent: {client_info['user_agent']}\n"
         f"📅 Data/Hora de Abertura: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M:%S UTC')}"
     )
     final_description = (data.description or "") + audit_block
 
-    # 5. Criar o ticket vinculado ao solicitante real (requester_id)
+    # 5. Criar o ticket vinculado ao solicitante real (requester_id) e ao ativo identificado
     ticket = Ticket(
         title=final_title,
         description=final_description,
         priority=TicketPriority(data.priority) if data.priority else TicketPriority.MEDIUM,
         requester_id=user.id,
+        asset_id=detected_asset_id,
         category_id=data.category_id,
         subcategory_id=data.subcategory_id,
         problem_type_id=data.problem_type_id,
@@ -264,6 +364,7 @@ def create_public_ticket(
     db.refresh(ticket)
 
     # 6. Notificação WhatsApp no grupo de TI
+    asset_str = f" ({hostname_label})" if hostname_label != "Não detectado" else ""
     msg_text = (
         f"🎫 *[Novo Chamado - Formulário Público]*\n\n"
         f"*Ticket ID:* #{ticket.id}\n"
@@ -275,7 +376,7 @@ def create_public_ticket(
         f"*Descrição:* {data.description or 'Sem descrição'}\n\n"
         f"🌐 *Auditoria Anti-Fraude:*\n"
         f"• IP: {client_info['ip']}\n"
-        f"• Hostname: {client_info['hostname'] or 'N/A'}"
+        f"• Hostname: {hostname_label}{asset_str}"
     )
     background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
 

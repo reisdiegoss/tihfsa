@@ -48,10 +48,19 @@ export default function PublicTicketForm() {
   const [filePreviews, setFilePreviews] = useState([]);
   const fileInputRef = useRef(null);
 
+  const [clientInfo, setClientInfo] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [createdTicket, setCreatedTicket] = useState(null);
   const [error, setError] = useState(null);
+
+  // Carrega informações do cliente (IP e Hostname detectado via CMDB/Sentinel Agent)
+  useEffect(() => {
+    const query = selectedUser?.id ? `?user_id=${selectedUser.id}` : "";
+    publicApi.get(`/public/client-info${query}`)
+      .then((res) => setClientInfo(res.data))
+      .catch(() => {});
+  }, [selectedUser]);
 
   // Debounced search de colaboradores
   const handleSearch = useCallback((value) => {
@@ -236,6 +245,12 @@ export default function PublicTicketForm() {
                 <span style={{ color: "#64748b" }}>Gestor / Chefe do Setor:</span>
                 <span className="font-semibold text-right" style={{ color: "#34d399" }}>{createdTicket?.manager_name || "Chefia do Departamento"}</span>
               </div>
+              {clientInfo?.hostname && (
+                <div className="flex justify-between py-1">
+                  <span style={{ color: "#64748b" }}>Computador / Hostname:</span>
+                  <span className="font-semibold text-right" style={{ color: "#38bdf8" }}>{clientInfo.hostname}</span>
+                </div>
+              )}
             </div>
 
             <div className="pt-2 text-[11px] leading-relaxed" style={{ color: "#94a3b8", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
@@ -385,6 +400,11 @@ export default function PublicTicketForm() {
                     <p style={{ color: "#94a3b8" }}>
                       Chefe / Gestor do Setor: <strong style={{ color: "#34d399" }}>{selectedUser.manager_name || "Gestão Geral"}</strong>
                     </p>
+                    {clientInfo?.hostname && (
+                      <p style={{ color: "#94a3b8" }}>
+                        Computador de Origem: <strong style={{ color: "#38bdf8" }}>{clientInfo.hostname}</strong> <span style={{ color: "#64748b" }}>({clientInfo.ip})</span>
+                      </p>
+                    )}
                   </div>
 
                   <div className="pt-2 text-[11px] flex items-center gap-1.5" style={{ color: "#6ee7b7", borderTop: "1px solid rgba(16,185,129,0.15)" }}>
@@ -419,27 +439,36 @@ export default function PublicTicketForm() {
         {/* ─── Step 1: Formulário + Fotos e Evidências ─── */}
         {step === 1 && (
           <form onSubmit={submit} className="space-y-4 animate-fade-in">
-            {/* Resumo do Solicitante no Topo */}
-            <div className="rounded-xl p-3 flex items-center justify-between" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(59,130,246,0.2)" }}>
-                  <User size={14} style={{ color: "#3b82f6" }} />
+            {/* Resumo do Solicitante e Estação no Topo */}
+            <div className="rounded-xl p-3 space-y-2" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(59,130,246,0.2)" }}>
+                    <User size={14} style={{ color: "#3b82f6" }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold truncate" style={{ color: "#f1f5f9" }}>{selectedUser?.display_name}</p>
+                    <p className="text-[10px] truncate" style={{ color: "#94a3b8" }}>
+                      Setor: {selectedUser?.department_name || "Geral"} {selectedUser?.manager_name ? `· Chefe: ${selectedUser.manager_name}` : ""}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold truncate" style={{ color: "#f1f5f9" }}>{selectedUser?.display_name}</p>
-                  <p className="text-[10px] truncate" style={{ color: "#94a3b8" }}>
-                    Setor: {selectedUser?.department_name || "Geral"} {selectedUser?.manager_name ? `· Chefe: ${selectedUser.manager_name}` : ""}
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep(0)}
+                  className="text-[11px] font-bold px-2 py-1 rounded transition-colors"
+                  style={{ color: "#60a5fa" }}
+                >
+                  Alterar
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setStep(0)}
-                className="text-[11px] font-bold px-2 py-1 rounded transition-colors"
-                style={{ color: "#60a5fa" }}
-              >
-                Alterar
-              </button>
+
+              {clientInfo?.hostname && (
+                <div className="pt-1.5 flex items-center gap-1.5 text-[11px]" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", color: "#38bdf8" }}>
+                  <Monitor size={13} />
+                  <span>Máquina identificada: <strong>{clientInfo.hostname}</strong> ({clientInfo.ip})</span>
+                </div>
+              )}
             </div>
 
             {/* Localização / UH */}

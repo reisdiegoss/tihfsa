@@ -662,8 +662,12 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Upload de Fotos & Evidências Direto no Formulário**:
         - Suporte a envio de imagens (JPG, PNG, WEBP) e documentos (PDF) de até 15MB através do endpoint público `POST /api/v1/public/tickets/{ticket_id}/attachments`.
         - Permite que o colaborador tire fotos diretamente pela câmera do celular ou anexe arquivos do computador, com miniaturas e opção de exclusão antes do envio.
-      - **Auditoria Anti-Fraude & Rastreabilidade**:
-        - O backend extrai automaticamente o endereço IP do cliente (`X-Forwarded-For` / `X-Real-IP`), resolve o Hostname da máquina cliente via DNS reverso com timeout rápido e registra o `User-Agent`.
-        - Essas informações são anexadas de forma estruturada na descrição do chamado para auditoria interna.
+      - **Auditoria Anti-Fraude, Resolução de Hostname & Vínculo de Equipamento**:
+        - **Resolução Multi-Camadas de Hostname (`_resolve_client_info_and_asset`)**:
+          - Em redes corporativas locais onde o servidor DNS do Active Directory não possui zonas reversas (PTR) configuradas para sub-redes DHCP/Wi-Fi (retornando `NXDOMAIN` ou `host not found`), o sistema resolve o nome da máquina consultando o **CMDB do TIHFSA alimentado pelo Sentinel Agent**.
+          - Cruza o IP real (`192.168.163.x`) diretamente com `Asset.ip_address` no inventário, identificando instantaneamente a estação de trabalho (ex: `HFSA000080D`).
+          - Caso o IP seja dinâmico ou novo, verifica alternativamente equipamentos nominais atribuídos ao colaborador (`Asset.assigned_user_id`) e histórico de login nas telemetrias do agente (`specs.logged_user`).
+          - **Vínculo Automático do Ativo ao Chamado (`ticket.asset_id`)**: Ao detectar o computador de origem, o sistema associa o ID do equipamento diretamente ao ticket, permitindo que os técnicos de TI tenham acesso imediato a todas as especificações de hardware, software, licenças e telemetrias da máquina na tela de atendimento.
+        - Captura transparente de IP (`X-Forwarded-For` / `X-Real-IP`) e User-Agent, persistidos na linha do tempo e auditoria do ticket.
       - **Notificação Automática via WhatsApp**:
-        - Disparo imediato de notificação no grupo da TI via `EvolutionService`, detalhando o solicitante, setor, chefe do setor, local/UH, título, descrição e dados de auditoria anti-fraude.
+        - Disparo imediato de notificação no grupo da TI via `EvolutionService`, detalhando o solicitante, setor, chefe do setor, computador detectado (com hostname e ativo), local/UH, título, descrição e dados de auditoria anti-fraude.
