@@ -802,7 +802,11 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
            - O script `tihfsa-agent.ps1` agora possui a função `Ensure-TihfsaRootCertificate` e `Update-AgentScriptSelf`:
              - A cada 15 minutos, quando a tarefa agendada executa em segundo plano com privilégios de `NT AUTHORITY\SYSTEM`, o agente valida se a autoridade raiz está presente. Se ausente, baixa e instala silenciosamente sem pedir confirmação ou exibir janelas ao usuário.
              - Atualiza a si mesmo para a versão mais recente caso haja novidades no servidor.
-        8. **Script de Atualização em Massa na Rede (`scripts/atualizar-agentes-e-certificado-rede.ps1`)**:
-           - Permite que a equipe de TI atualize todas as 50+ máquinas da rede de uma só vez a partir de um único comando PowerShell, consultando a lista de estações do TIHFSA e aplicando a instalação via WinRM/PowerShell Remoting sem necessidade de ir de máquina em máquina.
+        8. **Script de Atualizacao em Massa na Rede (scripts/atualizar-agentes-e-certificado-rede.ps1)**:
+           - Permite que a equipe de TI atualize todas as estacoes da rede de uma so vez a partir de um unico comando PowerShell.
+           - **Resiliencia Multi-Protocolo**: Suporta WinRM e fallback via compartilhamento administrativo SMB (\\host\c$\ProgramData\TIHFSA-Agent\tihfsa-agent.ps1) com disparo imediato da tarefa agendada (schtasks /Run /S host).
+           - **Gatilho para Maquinas Legadas**: Maquinas com a versao antiga do agente precisam receber o novo script uma primeira vez (via script de rede ou GPO de inicializacao) para que o mecanismo de sincronizacao de 15 minutos passe a operar automaticamente.
 
-
+    - **Interface Administrativa - Ajuste e Responsividade da Grid de Localizacoes Fisicas (/admin -> Configuracoes)**:
+      - **Truncamento Inteligente de Descricao**: As descricoes longas de locais fisicos possuem conteiner com min-w-0, max-w-[170px] e 	runcate, exibindo o texto completo atraves do atributo 	itle ao passar o mouse.
+      - **Preservacao da Grade Padrao**: As colunas de *Andar / Nivel*, *Ativos Vinculados*, *Visibilidade*, *Status* e *Acoes* contam com espacamento otimizado e whitespace-nowrap, impedindo que a tabela transborde a viewport ou oculte os botoes de edicao e exclusao.

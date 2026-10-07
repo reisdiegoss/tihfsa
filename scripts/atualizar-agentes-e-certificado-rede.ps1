@@ -13,7 +13,8 @@
 
 param(
     [string]$ServerUrl = "https://fassa29",
-    [string]$DomainName = "fasanobr.local"
+    [string]$DomainName = "fasanobr.local",
+    [PSCredential]$Credential
 )
 
 # Requer privilegios administrativos
@@ -65,7 +66,17 @@ if ($targetHosts.Count -eq 0) {
     exit 0
 }
 
-# 2. Atualizar cada maquina remotamente via PowerShell / WinRM
+# Pre-download do script mais recente localmente para suporte a copia SMB rapida
+$localAgentCache = "$env:TEMP\tihfsa-agent-deploy.ps1"
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+    Invoke-RestMethod -Uri "$ServerUrl/api/v1/monitoring/agent/script" -OutFile $localAgentCache -TimeoutSec 10 -ErrorAction Stop
+} catch {
+    curl.exe -k -s -m 10 "$ServerUrl/api/v1/monitoring/agent/script" -o $localAgentCache 2>$null
+}
+
+# 2. Atualizar cada maquina remotamente via WinRM ou SMB Admin Share
 Write-Host ""
 Write-Host "[2/3] Atualizando agentes e instalando certificado raiz nas estacoes..." -ForegroundColor Yellow
 
@@ -101,7 +112,7 @@ $remoteCommand = {
             } catch {
                 curl.exe -k -s -m 10 $scriptUrl -o $targetScript 2>$null
             }
-            # C. Roda tarefa agendada
+            # C. Roda tarefa agendada imediatamente
             schtasks.exe /Run /TN "TIHFSA Sentinel Agent" 2>$null | Out-Null
         }
         return "OK"
@@ -122,17 +133,41 @@ foreach ($hostName in $targetHosts) {
         continue
     }
 
+    # Metodo 1: WinRM (Invoke-Command)
+    $updated = $false
     try {
-        $res = Invoke-Command -ComputerName $hostName -ScriptBlock $remoteCommand -ArgumentList $ServerUrl -ErrorAction Stop
-        if ($res -like "*OK*") {
-            Write-Host "[ATUALIZADO COM SUCESSO]" -ForegroundColor Green
-            $successCount++
-        } else {
-            Write-Host "[$res]" -ForegroundColor Yellow
-            $failCount++
+        $invArgs = @{
+            ComputerName = $hostName
+            ScriptBlock  = $remoteCommand
+            ArgumentList = $ServerUrl
+            ErrorAction  = "Stop"
         }
-    } catch {
-        Write-Host "[FALHA WINRM/ACESSO: $($_.Exception.Message)]" -ForegroundColor Red
+        if ($Credential) { $invArgs["Credential"] = $Credential }
+        $res = Invoke-Command @invArgs
+        if ($res -like "*OK*") {
+            Write-Host "[ATUALIZADO VIA WINRM]" -ForegroundColor Green
+            $successCount++
+            $updated = $true
+        }
+    } catch {}
+
+    # Metodo 2: Fallback via Compartilhamento Administrativo SMB (C$)
+    if (-not $updated -and (Test-Path $localAgentCache)) {
+        try {
+            $destDir = "\\$hostName\c$\ProgramData\TIHFSA-Agent"
+            if (Test-Path $destDir) {
+                Copy-Item -Path $localAgentCache -Destination "$destDir\tihfsa-agent.ps1" -Force -ErrorAction Stop
+                # Dispara a tarefa agendada na maquina remota
+                schtasks.exe /Run /S $hostName /TN "TIHFSA Sentinel Agent" 2>$null | Out-Null
+                Write-Host "[ATUALIZADO VIA SMB C$ + TAREFA DISPARADA]" -ForegroundColor Green
+                $successCount++
+                $updated = $true
+            }
+        } catch {}
+    }
+
+    if (-not $updated) {
+        Write-Host "[PENDENTE - REQUER GPO OU ADMIN DOMINIO]" -ForegroundColor Yellow
         $failCount++
     }
 }
@@ -143,5 +178,5 @@ Write-Host " Resumo da Atualizacao em Rede:" -ForegroundColor White
 Write-Host "  * Sucesso: $successCount maquinas" -ForegroundColor Green
 Write-Host "  * Pendentes / Offline: $failCount maquinas" -ForegroundColor Yellow
 Write-Host "==========================================================================" -ForegroundColor Cyan
-Write-Host " Dica: Para as maquinas offline, a Tarefa Agendada existente executara" -ForegroundColor White
-Write-Host " o script atualizado assim que ligarem e conectarem na rede." -ForegroundColor White
+Write-Host " Dica: Para maquinas pendentes ou offline, a recomendacao corporativa e" -ForegroundColor White
+Write-Host " aplicar a linha de comando via GPO de Inicializacao no Active Directory." -ForegroundColor White

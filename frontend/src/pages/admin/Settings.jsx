@@ -2208,13 +2208,13 @@ export default function Settings() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-black text-slate-400 uppercase tracking-wider">
-                      <th className="py-4 px-3 text-center w-20">Ordem</th>
-                      <th className="py-4 px-6">Nome da Localização</th>
-                      <th className="py-4 px-4">Andar / Nível</th>
-                      <th className="py-4 px-4">Ativos Vinculados</th>
-                      <th className="py-4 px-4">Visibilidade</th>
-                      <th className="py-4 px-4">Status</th>
-                      <th className="py-4 px-6 text-right">Ações</th>
+                      <th className="py-4 px-3 text-center w-16">Ordem</th>
+                      <th className="py-4 px-4">Nome da Localização</th>
+                      <th className="py-4 px-3 whitespace-nowrap">Andar / Nível</th>
+                      <th className="py-4 px-3 whitespace-nowrap">Ativos Vinculados</th>
+                      <th className="py-4 px-3 whitespace-nowrap">Visibilidade</th>
+                      <th className="py-4 px-3 whitespace-nowrap">Status</th>
+                      <th className="py-4 px-4 text-right whitespace-nowrap w-24">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
@@ -2231,11 +2231,11 @@ export default function Settings() {
                       .map((loc, idx) => (
                         <tr key={loc.id} className="hover:bg-slate-50/80 transition-colors">
                           <td className="py-4 px-3 text-center">
-                            <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 shadow-2xs">
+                            <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200/90 rounded-xl px-2 py-1 shadow-2xs">
                               <span className="font-black text-slate-700 text-xs w-4 text-center">
                                 {loc.order_index !== undefined && loc.order_index !== null ? loc.order_index : idx + 1}
                               </span>
-                              <div className="flex flex-col gap-0.5 border-l border-slate-200 pl-1.5">
+                              <div className="flex flex-col gap-0.5 border-l border-slate-200 pl-1">
                                 <button
                                   type="button"
                                   disabled={idx === 0 || movingLocationId === loc.id || !!locationSearch}
@@ -2243,7 +2243,7 @@ export default function Settings() {
                                   className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:hover:text-slate-400 disabled:hover:bg-transparent cursor-pointer transition-colors"
                                   title={locationSearch ? "Limpe a busca para mover" : "Mover para cima"}
                                 >
-                                  <ArrowUp size={12} />
+                                  <ArrowUp size={11} />
                                 </button>
                                 <button
                                   type="button"
@@ -2252,37 +2252,41 @@ export default function Settings() {
                                   className="p-0.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 disabled:hover:text-slate-400 disabled:hover:bg-transparent cursor-pointer transition-colors"
                                   title={locationSearch ? "Limpe a busca para mover" : "Mover para baixo"}
                                 >
-                                  <ArrowDown size={12} />
+                                  <ArrowDown size={11} />
                                 </button>
                               </div>
                             </div>
                           </td>
-                          <td className="py-4 px-6 font-extrabold text-slate-900">
-                            <div className="flex items-center gap-2">
+                          <td className="py-4 px-4 font-extrabold text-slate-900 max-w-[220px]">
+                            <div className="flex items-center gap-2.5 min-w-0">
                               <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0">
                                 <MapPin size={16} />
                               </div>
-                              <div>
-                                <p className="font-extrabold text-slate-900">{loc.name}</p>
-                                {loc.description && <p className="text-[11px] font-medium text-slate-400 truncate max-w-xs">{loc.description}</p>}
+                              <div className="min-w-0 flex-1">
+                                <p className="font-extrabold text-slate-900 truncate" title={loc.name}>{loc.name}</p>
+                                {loc.description && (
+                                  <p className="text-[11px] font-medium text-slate-400 truncate max-w-[170px]" title={loc.description}>
+                                    {loc.description}
+                                  </p>
+                                )}
                               </div>
                             </div>
                           </td>
-                          <td className="py-4 px-4">
+                          <td className="py-4 px-3 whitespace-nowrap">
                             {loc.floor ? (
                               <span className="font-bold text-slate-800">{loc.floor}</span>
                             ) : (
                               <span className="text-slate-300 italic">—</span>
                             )}
                           </td>
-                          <td className="py-4 px-4">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold ${
+                          <td className="py-4 px-3 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-extrabold ${
                               loc.asset_count > 0 ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
                             }`}>
                               {loc.asset_count} ativo{loc.asset_count !== 1 ? "s" : ""}
                             </span>
                           </td>
-                          <td className="py-4 px-4">
+                          <td className="py-4 px-3 whitespace-nowrap">
                             <button
                               type="button"
                               onClick={() => handleToggleLocationPublic(loc)}
@@ -2297,7 +2301,7 @@ export default function Settings() {
                               <span>{loc.is_public ? "🌐 Pública" : "🔒 Interna TI"}</span>
                             </button>
                           </td>
-                          <td className="py-4 px-4">
+                          <td className="py-4 px-3 whitespace-nowrap">
                             {loc.is_active ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-700">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ativo
@@ -2308,21 +2312,21 @@ export default function Settings() {
                               </span>
                             )}
                           </td>
-                          <td className="py-4 px-6 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="py-4 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => handleOpenLocationModal(loc)}
                                 className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
                                 title="Editar Localização"
                               >
-                                <Edit3 size={16} />
+                                <Edit3 size={15} />
                               </button>
                               <button
                                 onClick={() => handleDeleteLocation(loc)}
                                 className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                                 title="Excluir ou Desativar"
                               >
-                                <Trash2 size={16} />
+                                <Trash2 size={15} />
                               </button>
                             </div>
                           </td>
