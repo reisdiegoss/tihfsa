@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Settings as SettingsIcon, 
   Server, 
@@ -6,6 +6,7 @@ import {
   Building, 
   RefreshCw, 
   CheckSquare, 
+  CheckCircle,
   Square, 
   DownloadCloud, 
   AlertCircle, 
@@ -465,6 +466,23 @@ export default function Settings() {
     is_active: true,
   });
   const [savingFloor, setSavingFloor] = useState(false);
+
+  // Filtra apenas os andares que realmente possuem UHs cadastradas
+  const activeFloorsWithRooms = useMemo(() => {
+    const presentFloorNames = new Set(
+      roomsList.map(r => r.floor).filter(Boolean)
+    );
+    const matched = floorsList
+      .filter(f => presentFloorNames.has(f.name))
+      .sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+
+    const matchedNames = new Set(matched.map(f => f.name));
+    const extras = Array.from(presentFloorNames)
+      .filter(name => !matchedNames.has(name))
+      .map(name => ({ id: `extra-${name}`, name, number: 999 }));
+
+    return [...matched, ...extras];
+  }, [floorsList, roomsList]);
 
   const fetchLocations = async () => {
     setLoadingLocations(true);
@@ -2485,31 +2503,84 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {/* Quick Metrics Bar - Redesenhado com Indicadores Operacionais Reais */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total de UHs</span>
-              <span className="text-2xl font-black text-slate-900 mt-1">{roomsList.length}</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Total de UHs</span>
+                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Hotel size={15} />
+                </div>
+              </div>
+              <div className="mt-2">
+                <span className="text-2xl font-black text-slate-900">{roomsList.length}</span>
+                <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Apartamentos cadastrados</p>
+              </div>
             </div>
+
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-              <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">UHs Ativas</span>
-              <span className="text-2xl font-black text-emerald-600 mt-1">{roomsList.filter(r => r.is_active).length}</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold text-emerald-600 uppercase tracking-wider">UHs Operacionais</span>
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle size={15} />
+                </div>
+              </div>
+              <div className="mt-2">
+                <span className="text-2xl font-black text-emerald-600">
+                  {roomsList.filter(r => r.is_active).length}
+                </span>
+                <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+                  {roomsList.filter(r => !r.is_active).length > 0 
+                    ? `${roomsList.filter(r => !r.is_active).length} desativada(s)` 
+                    : "100% disponíveis para hóspedes"}
+                </p>
+              </div>
             </div>
+
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">1º Andar</span>
-              <span className="text-2xl font-black text-blue-600 mt-1">{roomsList.filter(r => r.number.startsWith('1')).length}</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold text-indigo-600 uppercase tracking-wider">Ativos em UHs</span>
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Tv size={15} />
+                </div>
+              </div>
+              <div className="mt-2">
+                <span className="text-2xl font-black text-indigo-600">
+                  {roomsList.reduce((acc, r) => acc + (r.asset_count || 0), 0)}
+                </span>
+                <p className="text-[11px] font-semibold text-slate-400 mt-0.5">TVs, APs e telefonia no CMDB</p>
+              </div>
             </div>
+
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-              <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">2º Andar</span>
-              <span className="text-2xl font-black text-indigo-600 mt-1">{roomsList.filter(r => r.number.startsWith('2')).length}</span>
-            </div>
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-              <span className="text-[11px] font-bold text-purple-600 uppercase tracking-wider">3º Andar</span>
-              <span className="text-2xl font-black text-purple-600 mt-1">{roomsList.filter(r => r.number.startsWith('3')).length}</span>
+              <div className="flex items-center justify-between">
+                <span className={`text-[11px] font-extrabold uppercase tracking-wider ${
+                  roomsList.reduce((acc, r) => acc + (r.open_tickets_count || 0), 0) > 0 ? "text-amber-600" : "text-emerald-600"
+                }`}>
+                  Chamados Abertos
+                </span>
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                  roomsList.reduce((acc, r) => acc + (r.open_tickets_count || 0), 0) > 0 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+                }`}>
+                  <AlertCircle size={15} />
+                </div>
+              </div>
+              <div className="mt-2">
+                <span className={`text-2xl font-black ${
+                  roomsList.reduce((acc, r) => acc + (r.open_tickets_count || 0), 0) > 0 ? "text-amber-600" : "text-emerald-600"
+                }`}>
+                  {roomsList.reduce((acc, r) => acc + (r.open_tickets_count || 0), 0)}
+                </span>
+                <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+                  {roomsList.reduce((acc, r) => acc + (r.open_tickets_count || 0), 0) > 0 
+                    ? "Pendências técnicas ativas" 
+                    : "Nenhum chamado pendente"}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Search & Floor Filters Toolbar */}
+          {/* Search & Floor Filters Toolbar - Exibe apenas andares com UHs */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70 p-3 rounded-2xl border border-slate-200">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -2526,28 +2597,41 @@ export default function Settings() {
               <button
                 type="button"
                 onClick={() => setRoomFloorFilter("all")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
                   roomFloorFilter === "all"
                     ? "bg-blue-600 text-white shadow-xs"
                     : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
                 }`}
               >
-                Todos os Andares
+                <span>Todos os Andares</span>
+                <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                  roomFloorFilter === "all" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+                }`}>
+                  {roomsList.length}
+                </span>
               </button>
-              {floorsList.filter(f => f.is_active).map(f => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setRoomFloorFilter(f.name)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                    roomFloorFilter === f.name
-                      ? "bg-blue-600 text-white shadow-xs"
-                      : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
-                  }`}
-                >
-                  {f.name}
-                </button>
-              ))}
+              {activeFloorsWithRooms.map(f => {
+                const count = roomsList.filter(r => r.floor === f.name).length;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setRoomFloorFilter(f.name)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      roomFloorFilter === f.name
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
+                    }`}
+                  >
+                    <span>{f.name}</span>
+                    <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                      roomFloorFilter === f.name ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

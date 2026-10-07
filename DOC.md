@@ -98,10 +98,13 @@ Locais Físicos Públicos vs. Internos (`Location.is_public`):
 
 Gestão Completa de Apartamentos & UHs (`/admin/settings`):
 - **Módulo Dedicado de UHs**: Interface completa para gestão dos quartos do hotel integrada à tabela de `User` (`is_room == True`), preservando histórico e vínculos de ativos do CMDB.
-- **Métricas e Filtros**:
-  - Contadores rápidos no topo: Total de UHs, UHs Ativas e contadores por andar (1º, 2º e 3º Andares).
-  - Barra de busca em tempo real por número ou nome descritivo.
-  - Filtro por abas de andar para navegação rápida.
+- **Dashboard Operacional Redesenhado**: Substituídos os contadores individuais por andar por 4 métricas essenciais de gestão hoteleira e TI:
+  1. **Total de UHs**: Contagem total de apartamentos cadastrados.
+  2. **UHs Operacionais**: Quartos ativos disponíveis para hóspedes e chamados, com sinalização de desativações.
+  3. **Ativos em UHs**: Quantidade total de TVs, APs UniFi, decodificadores e ramais alocados no CMDB.
+  4. **Chamados em Aberto**: Quantidade de tickets técnicos pendentes em apartamentos.
+- **Filtro Inteligente de Andares**: A barra de filtros exibe exclusivamente os andares que possuem UHs cadastradas (ex: 1º Andar, 2º Andar, 3º Andar), acompanhados do badge com a contagem de quartos. Andares prediais sem quartos (Subsolos, Térreo, Rooftop, salas técnicas) são automaticamente omitidos do grid de UH para não poluir a interface.
+- **Barra de Busca**: Busca em tempo real por número ou nome descritivo da UH.
 - **Tabela de Inventário**: Exibe número, nome descritivo, ramal telefônico, contadores de ativos alocados (TVs, APs, etc.), chamados abertos e status ativo/inativo.
 - **Ações Rápidas**:
   - Toggle de 1 clique para ativar/desativar UH.
