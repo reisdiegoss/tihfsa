@@ -28,6 +28,7 @@ from app.schemas.ticket import (
 )
 from app.services.ticket_service import TicketService
 from app.services.evolution_service import EvolutionService
+from app.config import get_app_base_url
 
 router = APIRouter(prefix="/api/v1/tickets", tags=["Helpdesk"])
 
@@ -114,9 +115,18 @@ def create_ticket(
     db.refresh(ticket)
     
     # Notificação Evolution API para o Grupo da TI
+    base_url = get_app_base_url()
     icon = "🚨" if "NOC Auto-Alerta" in ticket.title else "🎫"
     msg_type = "ATENÇÃO: ATIVO OFFLINE" if "NOC Auto-Alerta" in ticket.title else "Novo Chamado Aberto"
-    msg_text = f"{icon} *[{msg_type}]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Prioridade:* {ticket.priority.value}\n*Status:* {ticket.status.value}\n\n*Descrição:* {ticket.description}"
+    msg_text = (
+        f"{icon} *[{msg_type}]*\n\n"
+        f"*Ticket ID:* #{ticket.id}\n"
+        f"*Título:* {ticket.title}\n"
+        f"*Prioridade:* {ticket.priority.value}\n"
+        f"*Status:* {ticket.status.value}\n\n"
+        f"*Descrição:* {ticket.description}\n\n"
+        f"🔗 *Acessar chamado:* {base_url}/admin/tickets?ticketId={ticket.id}"
+    )
     background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
 
     # Notificações ao Solicitante e à Equipe de TI
@@ -151,7 +161,8 @@ def create_ticket(
                 f"Seu chamado foi registrado com sucesso em nosso sistema de TI.\n"
                 f"*Título:* {ticket.title}\n"
                 f"*Prioridade:* {ticket.priority.value}\n\n"
-                f"Nossa equipe técnica já foi notificada e em breve dará início ao atendimento."
+                f"Nossa equipe técnica já foi notificada e em breve dará início ao atendimento.\n\n"
+                f"🔗 *Acompanhar chamado:* {base_url}/app?ticketId={ticket.id}"
             )
             background_tasks.add_task(
                 EvolutionService.send_whatsapp_message,
@@ -598,9 +609,17 @@ def update_ticket(
         req_user = db.query(User).filter(User.id == ticket.requester_id).first()
         req_name = req_user.display_name if req_user else "Solicitante"
 
+        base_url = get_app_base_url()
         if new_status == TicketStatus.CLOSED:
             reason = ticket.closure_reason or "Não informado"
-            msg_text = f"🔒 *[Chamado Fechado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Responsável:* {current_user.display_name}\n*Motivo do Fechamento:* {reason}"
+            msg_text = (
+                f"🔒 *[Chamado Fechado]*\n\n"
+                f"*Ticket ID:* #{ticket.id}\n"
+                f"*Título:* {ticket.title}\n"
+                f"*Responsável:* {current_user.display_name}\n"
+                f"*Motivo do Fechamento:* {reason}\n\n"
+                f"🔗 *Ver chamado:* {base_url}/admin/tickets?ticketId={ticket.id}"
+            )
             background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
             
             # Pesquisa CSAT ao solicitante
@@ -624,7 +643,8 @@ def update_ticket(
                     f"Seu chamado *'{ticket.title}'* foi finalizado pela equipe de TI.\n"
                     f"*Responsável:* {current_user.display_name}\n"
                     f"*Motivo / Resolução:* {reason}\n\n"
-                    f"Enviamos a pesquisa de avaliação para o seu e-mail corporativo."
+                    f"Enviamos a pesquisa de avaliação para o seu e-mail corporativo.\n\n"
+                    f"🔗 *Ver no portal:* {base_url}/app?ticketId={ticket.id}"
                 )
                 background_tasks.add_task(
                     EvolutionService.send_whatsapp_message,
@@ -634,7 +654,14 @@ def update_ticket(
                     recipient_name=req_name,
                 )
         else:
-            msg_text = f"🔄 *[Chamado Atualizado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Novo Status:* {ticket.status.value}\n*Responsável:* {current_user.display_name}"
+            msg_text = (
+                f"🔄 *[Chamado Atualizado]*\n\n"
+                f"*Ticket ID:* #{ticket.id}\n"
+                f"*Título:* {ticket.title}\n"
+                f"*Novo Status:* {ticket.status.value}\n"
+                f"*Responsável:* {current_user.display_name}\n\n"
+                f"🔗 *Acessar chamado:* {base_url}/admin/tickets?ticketId={ticket.id}"
+            )
             background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
 
             # Notificação ao Solicitante da alteração de status
@@ -652,7 +679,8 @@ def update_ticket(
                     wa_status = (
                         f"🔄 *[TIHFSA] Atualização do Chamado #{ticket.id}*\n\n"
                         f"Olá, *{req_name}*!\n"
-                        f"O status do seu chamado *'{ticket.title}'* mudou para: *{ticket.status.value}* por {current_user.display_name}."
+                        f"O status do seu chamado *'{ticket.title}'* mudou para: *{ticket.status.value}* por {current_user.display_name}.\n\n"
+                        f"🔗 *Acompanhar chamado:* {base_url}/app?ticketId={ticket.id}"
                     )
                     background_tasks.add_task(
                         EvolutionService.send_whatsapp_message,
@@ -935,8 +963,16 @@ def add_interaction(
     u_name = current_user.display_name
     u_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
+    base_url = get_app_base_url()
+
     # 1. Notificação Evolution API para o Grupo da TI
-    msg_text = f"💬 *[Novo Comentário no Chamado #{ticket.id}]*\n\n*Título:* {ticket.title}\n*Por:* {u_name}\n\n*Mensagem:* {interaction.message}"
+    msg_text = (
+        f"💬 *[Novo Comentário no Chamado #{ticket.id}]*\n\n"
+        f"*Título:* {ticket.title}\n"
+        f"*Por:* {u_name}\n\n"
+        f"*Mensagem:* {interaction.message}\n\n"
+        f"🔗 *Acessar chamado:* {base_url}/admin/tickets?ticketId={ticket.id}"
+    )
     background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
 
     # 2. Notificações adicionais por E-mail e WhatsApp
@@ -970,7 +1006,8 @@ def add_interaction(
                         f"💬 *[TIHFSA] Nova Resposta no Chamado #{ticket.id}*\n\n"
                         f"Olá, *{req_name}*!\n"
                         f"O analista *{u_name}* adicionou uma mensagem no seu chamado *'{ticket.title}'*:\n\n"
-                        f"\"{interaction.message}\""
+                        f"\"{interaction.message}\"\n\n"
+                        f"🔗 *Responder no portal:* {base_url}/app?ticketId={ticket.id}"
                     )
                     background_tasks.add_task(
                         EvolutionService.send_whatsapp_message,

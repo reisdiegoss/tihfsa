@@ -25,6 +25,7 @@ from app.models.problem_type import ProblemType
 from app.models.ticket_attachment import TicketAttachment
 from app.schemas.ticket import CategoryWithSubs, SubcategoryResponse, ProblemTypeResponse, TicketAttachmentResponse
 from app.services.evolution_service import EvolutionService
+from app.config import get_app_base_url
 
 router = APIRouter(prefix="/api/v1/public", tags=["Public Helpdesk"])
 
@@ -441,6 +442,7 @@ def create_public_ticket(
 
     # 6. Notificação WhatsApp no grupo de TI
     asset_str = f" ({hostname_label})" if hostname_label != "Não detectado" else ""
+    base_url = get_app_base_url()
     msg_text = (
         f"🎫 *[Novo Chamado - Formulário Público]*\n\n"
         f"*Ticket ID:* #{ticket.id}\n"
@@ -452,7 +454,8 @@ def create_public_ticket(
         f"*Descrição:* {data.description or 'Sem descrição'}\n\n"
         f"🌐 *Auditoria Anti-Fraude:*\n"
         f"• IP: {client_info['ip']}\n"
-        f"• Hostname: {hostname_label}{asset_str}"
+        f"• Hostname: {hostname_label}{asset_str}\n\n"
+        f"🔗 *Acessar chamado:* {base_url}/admin/tickets?ticketId={ticket.id}"
     )
     background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
 
@@ -484,7 +487,8 @@ def create_public_ticket(
                 f"Seu chamado foi registrado com sucesso em nosso sistema de TI.\n"
                 f"*Título:* {ticket.title}\n"
                 f"*Prioridade:* {ticket.priority.value}\n\n"
-                f"Nossa equipe técnica já foi notificada e em breve dará início ao atendimento."
+                f"Nossa equipe técnica já foi notificada e em breve dará início ao atendimento.\n\n"
+                f"🔗 *Acompanhar chamado:* {base_url}/app?ticketId={ticket.id}"
             )
             background_tasks.add_task(
                 EvolutionService.send_whatsapp_message,

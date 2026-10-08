@@ -10,7 +10,7 @@ from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.models.integration_config import EvolutionConfig
 from app.services.evolution_service import EvolutionService
 from app.services.email_service import send_noc_email
-from app.config import settings
+from app.config import settings, get_app_base_url
 
 def send_open_tickets_summary(db: Session = None, force: bool = False) -> dict:
     """
@@ -93,7 +93,7 @@ def send_open_tickets_summary(db: Session = None, force: bool = False) -> dict:
                 wa_lines.append(f"  _... e mais {len(in_progress_list) - 10} chamados._")
             wa_lines.append("")
 
-        base_url = settings.app_base_url or "https://192.168.168.26"
+        base_url = get_app_base_url()
         wa_lines.append(f"🔗 *Acesse o painel para gerenciar e encerrar:* {base_url}/admin/tickets")
         wa_msg = "\n".join(wa_lines)
 
@@ -118,7 +118,9 @@ def send_open_tickets_summary(db: Session = None, force: bool = False) -> dict:
 
             table_rows.append(f"""
             <tr style="border-bottom: 1px solid #e2e8f0;">
-                <td style="padding: 10px 8px; font-weight: bold; color: #1e293b;">#{t.id}</td>
+                <td style="padding: 10px 8px; font-weight: bold; color: #1e293b;">
+                    <a href="{base_url}/admin/tickets?ticketId={t.id}" style="color: #2563eb; text-decoration: none; font-weight: bold;">#{t.id}</a>
+                </td>
                 <td style="padding: 10px 8px; font-size: 13px; color: #334155;">{t.title}</td>
                 <td style="padding: 10px 8px; font-size: 12px; font-weight: bold; color: {prio_color};">{t.priority.value}</td>
                 <td style="padding: 10px 8px;">

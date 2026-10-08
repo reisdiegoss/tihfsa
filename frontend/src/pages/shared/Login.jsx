@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { LogIn, Monitor } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -8,8 +8,20 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { user, isStaff, login, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+
+  // Se já estiver logado, redireciona diretamente para o chamado ou dashboard
+  useEffect(() => {
+    if (!authLoading && user) {
+      const redirectParam = searchParams.get("redirect");
+      const defaultDest = isStaff ? "/admin" : "/app";
+      const target = redirectParam || location.state?.from?.pathname || defaultDest;
+      navigate(target, { replace: true });
+    }
+  }, [user, authLoading, isStaff, searchParams, location, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -17,10 +29,13 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(username, password);
-      // O redirecionamento real é feito pelo App.jsx (RootRedirect), 
-      // mas podemos forçar a navegação de forma limpa aqui para '/'
-      navigate("/");
+      const loggedUser = await login(username, password);
+      // Redireciona para o link direto do chamado ou página de destino
+      const redirectParam = searchParams.get("redirect");
+      const isStaffUser = loggedUser?.role === "admin" || loggedUser?.role === "technician" || (loggedUser?.roles && (loggedUser.roles.includes("admin") || loggedUser.roles.includes("technician")));
+      const defaultDest = isStaffUser ? "/admin" : "/app";
+      const target = redirectParam || location.state?.from?.pathname || defaultDest;
+      navigate(target, { replace: true });
     } catch (err) {
       setError(err.message || "Falha na autenticação. Verifique suas credenciais.");
     } finally {

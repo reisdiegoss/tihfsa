@@ -2,7 +2,7 @@
  * ClientHome — tela inicial do PWA do usuário (Light/Modern Theme) com acabamento premium.
  */
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Ticket, Sparkles, ChevronRight, MapPin, LogOut, QrCode, ShieldCheck, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -11,6 +11,7 @@ import StatusBadge from "../../components/ui/StatusBadge";
 export default function ClientHome() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [loadingTicketDetail, setLoadingTicketDetail] = useState(false);
@@ -36,6 +37,28 @@ export default function ClientHome() {
       alert("Não foi possível carregar os detalhes do chamado.");
     } finally {
       setLoadingTicketDetail(false);
+    }
+  };
+
+  // Abre automaticamente o modal se ticketId estiver na URL (ex: via notificação de e-mail / whatsapp)
+  useEffect(() => {
+    const tid = searchParams.get("ticketId");
+    if (tid) {
+      const parsed = parseInt(tid, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        handleOpenTicketDetail(parsed);
+      }
+    }
+  }, [searchParams]);
+
+  const handleCloseDetailModal = () => {
+    setSelectedTicket(null);
+    setReopening(false);
+    setReopenReason("");
+    if (searchParams.get("ticketId")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("ticketId");
+      setSearchParams(next, { replace: true });
     }
   };
 
@@ -229,7 +252,7 @@ export default function ClientHome() {
                 <StatusBadge status={selectedTicket.status} />
               </div>
               <button
-                onClick={() => setSelectedTicket(null)}
+                onClick={handleCloseDetailModal}
                 className="w-8 h-8 rounded-full bg-slate-200/60 hover:bg-slate-200 flex items-center justify-center text-slate-500 text-xs font-bold transition-colors cursor-pointer"
               >
                 ✕
@@ -336,7 +359,7 @@ export default function ClientHome() {
             <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
               <button
                 type="button"
-                onClick={() => setSelectedTicket(null)}
+                onClick={handleCloseDetailModal}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
               >
                 Fechar

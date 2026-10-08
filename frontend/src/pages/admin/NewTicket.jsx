@@ -95,12 +95,8 @@ export default function NewTicket() {
     }
   }, [requesterId, users]);
 
-  // Categories filtering based on requester assets and globals
-  const displayedCategories = categories.filter(c => {
-    if (requesterAssets.length === 0) return true; // Show all if no assets
-    const hasCategory = requesterAssets.some(a => a.category_id === c.id);
-    return c.is_global || hasCategory;
-  });
+  // Exibe todas as categorias cadastradas (Hardware, Sistemas, Redes, Aplicações, etc.)
+  const displayedCategories = categories;
 
   const selectedCategory = categories.find(c => c.id === Number(categoryId));
   const problemTypes = selectedCategory?.problem_types || [];
@@ -262,7 +258,6 @@ export default function NewTicket() {
                   value={categoryId}
                   onChange={(e) => {
                     setCategoryId(e.target.value);
-                    setAssetId("");
                     setProblemTypeId("");
                   }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"

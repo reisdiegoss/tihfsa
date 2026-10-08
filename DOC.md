@@ -990,3 +990,29 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - *Notificar Equipe de TI ao Fechar / Encerrar Chamado* (`notify_ti_on_close`)
         - *Notificar Técnico Responsável ao ser Atribuído* (`notify_technician_on_assign`)
       - Auditoria completa dos disparos de WhatsApp e E-mail gravados na tabela `notification_logs`.
+
+29. **Padronização Canônica da URL Base (`https://fassa29`)**:
+    - **Função Sanitizadora Central (`get_app_base_url()` em `config.py`)**:
+      - Garante que todos os e-mails (Bulletproof Outlook), mensagens de WhatsApp da Evolution API e resumos operacionais de chamados utilizem rigorosamente a URL base canônica `https://fassa29`.
+      - Sanitização automática descartando quaisquer resíduos legados de `localhost`, `127.0.0.1`, portas locais (`:5173`, `:3000`, `:8000`) ou IPs de homologação.
+      - Atualização em todos os serviços: `email_service.py`, `ticket_service.py`, `alert_summary_service.py` e rotas de helpdesk.
+
+30. **Deep Linking Direto nos Chamados com Redirecionamento Automático Pós-Login**:
+    - **Links Diretos nas Notificações (E-mail e WhatsApp)**:
+      - Equipe de TI: `https://fassa29/admin/tickets?ticketId={id}` (leva diretamente para a tela de atendimento do chamado específico).
+      - Colaborador / Solicitante: `https://fassa29/app?ticketId={id}` (abre diretamente a tela do chamado no portal do usuário).
+    - **Preservação de Rota nos Route Guards (`App.jsx`)**:
+      - Os componentes `ProtectedAdminRoute` e `ProtectedAppRoute` utilizam `useLocation` para capturar a rota completa e parâmetros de busca.
+      - Se o usuário não estiver autenticado, é redirecionado para `/login?redirect={fullPath}` preservando o destino original.
+      - Caso um colaborador acesse uma URL de chamado do admin, é redirecionado para `/app?ticketId={id}` mantendo o contexto.
+    - **Autenticação com Continuidade de Sessão (`Login.jsx`)**:
+      - Após autenticar com sucesso, o sistema lê o parâmetro `redirect` e navega instantaneamente para a URL com o chamado selecionado.
+      - Caso o usuário já possua sessão ativa no navegador, ele é imediatamente encaminhado para o chamado sem passar pelo formulário de login.
+    - **Abertura Automática nas Telas (`TicketList.jsx` e `ClientHome.jsx`)**:
+      - O painel administrativo (`TicketList.jsx`) e o portal do colaborador (`ClientHome.jsx`) escutam `ticketId` via `useSearchParams`.
+      - Carregam e abrem automaticamente o drawer / modal de detalhes do chamado específico via API.
+      - Ao fechar o modal/drawer, os parâmetros da URL são suavemente normalizados.
+    - **Exibição Global de Categorias no Cadastro de Chamados (`NewTicket.jsx`)**:
+      - Removida a restrição que limitava a listagem de categorias à do hardware do colaborador. Todas as categorias ativas (Sistemas, Aplicações, Redes, E-mail, etc.) permanecem disponíveis para seleção.
+      - A seleção de categoria preserva o equipamento já atribuído ao colaborador sem desselecioná-lo.
+

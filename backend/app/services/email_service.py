@@ -7,7 +7,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-from app.config import settings
+from app.config import settings, get_app_base_url
 from app.database import SessionLocal
 from app.models.system_setting import SystemSetting
 
@@ -311,7 +311,7 @@ def send_validation_email(
 
 def send_ticket_created_notification(ticket, requester_name: str, requester_email: str) -> bool:
     """Envia confirmação de abertura de chamado para o solicitante com o número do protocolo."""
-    base_url = settings.app_base_url or "https://fassa29"
+    base_url = get_app_base_url()
     content = f"""
     <p style="margin: 0 0 14px;">Olá <strong>{requester_name}</strong>,</p>
     <p style="margin: 0 0 16px;">Seu chamado foi registrado com sucesso em nosso sistema de atendimento de TI.</p>
@@ -335,7 +335,7 @@ def send_ticket_created_notification(ticket, requester_name: str, requester_emai
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
         <tr>
             <td align="center">
-                <a href="{base_url}/app" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                <a href="{base_url}/app?ticketId={ticket.id}" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
                     Acompanhar Chamado no Portal
                 </a>
             </td>
@@ -371,7 +371,7 @@ def send_ticket_created_staff_notification(
     location_or_asset: str = "",
 ) -> bool:
     """Envia notificação de abertura de novo chamado para o e-mail da equipe de TI/Suporte."""
-    base_url = settings.app_base_url or "https://fassa29"
+    base_url = get_app_base_url()
     target_email = get_support_email()
     prio_val = ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)
 
@@ -415,7 +415,7 @@ def send_ticket_created_staff_notification(
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
         <tr>
             <td align="center">
-                <a href="{base_url}/admin/tickets" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                <a href="{base_url}/admin/tickets?ticketId={ticket.id}" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
                     Atender Chamado #{ticket.id}
                 </a>
             </td>
@@ -455,8 +455,8 @@ def send_ticket_interaction_notification(
     is_for_requester: bool = True,
 ) -> bool:
     """Envia notificação de nova interação/comentário no chamado (ao solicitante ou à equipe de TI)."""
-    base_url = settings.app_base_url or "https://fassa29"
-    link_url = f"{base_url}/app" if is_for_requester else f"{base_url}/admin/tickets"
+    base_url = get_app_base_url()
+    link_url = f"{base_url}/app?ticketId={ticket.id}" if is_for_requester else f"{base_url}/admin/tickets?ticketId={ticket.id}"
     btn_text = "Ver Chamado no Portal" if is_for_requester else f"Atender Chamado #{ticket.id}"
     
     header_title = f"💬 Nova Atualização no Chamado #{ticket.id}" if is_for_requester else f"💬 Solicitante Respondeu ao Chamado #{ticket.id}"
@@ -529,7 +529,7 @@ def send_ticket_closed_staff_notification(
     requester_name: str = "",
 ) -> bool:
     """Envia notificação de fechamento do chamado para o e-mail de suporte da TI."""
-    base_url = settings.app_base_url or "https://fassa29"
+    base_url = get_app_base_url()
     target_email = get_support_email()
     req_label = requester_name or (ticket.requester.display_name if ticket.requester else "Solicitante")
 
@@ -562,7 +562,7 @@ def send_ticket_closed_staff_notification(
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
         <tr>
             <td align="center">
-                <a href="{base_url}/admin/tickets" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                <a href="{base_url}/admin/tickets?ticketId={ticket.id}" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
                     Ver Chamado no Painel #{ticket.id}
                 </a>
             </td>
@@ -598,7 +598,7 @@ def send_ticket_status_changed_notification(
     requester_email: str,
 ) -> bool:
     """Envia notificação ao solicitante informando mudança no status do chamado."""
-    base_url = settings.app_base_url or "https://fassa29"
+    base_url = get_app_base_url()
     content = f"""
     <p style="margin: 0 0 14px;">Olá <strong>{requester_name}</strong>,</p>
     <p style="margin: 0 0 16px;">O status do seu chamado foi atualizado:</p>
@@ -621,7 +621,7 @@ def send_ticket_status_changed_notification(
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
         <tr>
             <td align="center">
-                <a href="{base_url}/app" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                <a href="{base_url}/app?ticketId={ticket.id}" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
                     Acompanhar Chamado no Portal
                 </a>
             </td>
@@ -651,7 +651,7 @@ def send_ticket_status_changed_notification(
 
 def send_ticket_assigned_notification(ticket, requester_name: str, requester_email: str, technician_name: str) -> bool:
     """Envia notificação ao solicitante informando que um técnico assumiu o chamado."""
-    base_url = settings.app_base_url or "https://fassa29"
+    base_url = get_app_base_url()
     content = f"""
     <p style="margin: 0 0 14px;">Olá <strong>{requester_name}</strong>,</p>
     <p style="margin: 0 0 16px;">O técnico <strong>{technician_name}</strong> assumiu o atendimento do seu chamado:</p>
@@ -675,7 +675,7 @@ def send_ticket_assigned_notification(ticket, requester_name: str, requester_ema
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
         <tr>
             <td align="center">
-                <a href="{base_url}/app" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                <a href="{base_url}/app?ticketId={ticket.id}" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
                     Ver Detalhes do Atendimento
                 </a>
             </td>
@@ -713,7 +713,7 @@ def send_ticket_solved_csat_notification(
     Envia e-mail de conclusão ao solicitante com a solução adotada,
     aviso de garantia de reabertura (X dias) e as 5 ESTRELAS CLICÁVEIS para pesquisa CSAT.
     """
-    base_url = settings.app_base_url or "https://fassa29"
+    base_url = get_app_base_url()
     csat_base_url = f"{base_url}/avaliacao?token={csat_token}"
 
     content = f"""
@@ -813,7 +813,7 @@ def send_ticket_solved_csat_notification(
 
 def send_ticket_reopened_notification(ticket, user_name: str, reason: str) -> bool:
     """Notifica a equipe de TI que um chamado foi reaberto sob garantia."""
-    base_url = settings.app_base_url or "https://fassa29"
+    base_url = get_app_base_url()
     target_email = get_support_email()
 
     content = f"""
@@ -836,7 +836,7 @@ def send_ticket_reopened_notification(ticket, user_name: str, reason: str) -> bo
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
         <tr>
             <td align="center">
-                <a href="{base_url}/admin/tickets" style="display: inline-block; padding: 12px 28px; background-color: #dc2626; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                <a href="{base_url}/admin/tickets?ticketId={ticket.id}" style="display: inline-block; padding: 12px 28px; background-color: #dc2626; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
                     Atender Chamado Reaberto #{ticket.id}
                 </a>
             </td>
@@ -871,7 +871,7 @@ def send_noc_email(
 ) -> bool:
     """Envia e-mail formatado do NOC para a equipe de TI via SMTP."""
     target_email = to_email or get_support_email()
-    base_url = settings.app_base_url or "https://fassa29"
+    base_url = get_app_base_url()
 
     if status_type == "danger":
         badge_bg = "#fee2e2"
@@ -895,7 +895,7 @@ def send_noc_email(
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
             <tr>
                 <td align="center">
-                    <a href="{base_url}/admin/tickets" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                    <a href="{base_url}/admin/tickets?ticketId={ticket_id}" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
                         Visualizar Chamado #{ticket_id}
                     </a>
                 </td>

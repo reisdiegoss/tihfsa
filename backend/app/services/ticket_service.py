@@ -12,7 +12,7 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.ticket_interaction import TicketInteraction
 from app.models.user import User
 from app.auth.jwt_handler import create_validation_token, decode_token
-from app.config import settings
+from app.config import settings, get_app_base_url
 
 
 class TicketService:
@@ -53,8 +53,8 @@ class TicketService:
 
             ticket.validation_token = approve_token  # Armazena para referência
 
-            # Montar URLs de validação
-            base_url = settings.app_base_url
+            # Montar URLs de validação (garante https://fassa29)
+            base_url = get_app_base_url()
             approve_url = f"{base_url}/validate?token={approve_token}&action=approve"
             reject_url = f"{base_url}/validate?token={reject_token}&action=reject"
 

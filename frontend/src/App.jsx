@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 // Layout
@@ -24,24 +24,37 @@ import Login from "./pages/shared/Login";
 
 function ProtectedAdminRoute({ children }) {
   const { user, isStaff, loading } = useAuth();
+  const location = useLocation();
   if (loading) return null;
-  if (!user) return <Navigate to="/login" replace />;
-  if (!isStaff) return <Navigate to="/app" replace />;
+  if (!user) {
+    const fullPath = location.pathname + location.search;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(fullPath)}`} state={{ from: location }} replace />;
+  }
+  if (!isStaff) return <Navigate to={`/app${location.search}`} replace />;
   return children; 
 }
 
 function ProtectedAppRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return null;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    const fullPath = location.pathname + location.search;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(fullPath)}`} state={{ from: location }} replace />;
+  }
   return children; 
 }
 
 // Rota raiz "/"
 function RootRedirect() {
   const { user, isStaff, loading } = useAuth();
+  const location = useLocation();
   if (loading) return null;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    const fullPath = location.pathname + location.search;
+    const redirectUrl = fullPath && fullPath !== "/" ? `/login?redirect=${encodeURIComponent(fullPath)}` : "/login";
+    return <Navigate to={redirectUrl} replace />;
+  }
   if (!isStaff) return <Navigate to="/app" replace />;
   return <Navigate to="/admin" replace />;
 }

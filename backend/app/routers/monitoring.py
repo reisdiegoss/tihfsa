@@ -882,7 +882,7 @@ def get_agent_machine_history(
 @router.get("/agent/machines/{machine_id}/metrics-chart", response_model=MachineMetricsChartResponse, summary="Evolução temporal de CPU, RAM e Disco e análise de degradação")
 def get_agent_machine_metrics_chart(
     machine_id: int,
-    time_range: str = Query("24h", regex="^(24h|7d|30d|90d|1y|all)$"),
+    time_range: str = Query("24h", pattern="^(24h|7d|30d|90d|1y|all)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_technician),
 ):
