@@ -215,6 +215,104 @@ def apply_migrations():
             CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_hostname ON agent_metrics_history(hostname);
             CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_created_at ON agent_metrics_history(created_at);
         """),
+
+        # Módulo de Contratos e Fornecedores
+        ("suppliers", """
+            CREATE TABLE IF NOT EXISTS suppliers (
+                id SERIAL PRIMARY KEY,
+                corporate_name VARCHAR(200) NOT NULL,
+                trade_name VARCHAR(150) NOT NULL,
+                cnpj VARCHAR(25),
+                category VARCHAR(80) DEFAULT 'Geral',
+                support_portal VARCHAR(300),
+                address VARCHAR(300),
+                notes TEXT,
+                is_active BOOLEAN DEFAULT TRUE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_suppliers_trade_name ON suppliers(trade_name);
+            CREATE INDEX IF NOT EXISTS idx_suppliers_category ON suppliers(category);
+        """),
+
+        ("supplier_contacts", """
+            CREATE TABLE IF NOT EXISTS supplier_contacts (
+                id SERIAL PRIMARY KEY,
+                supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+                name VARCHAR(120) NOT NULL,
+                role_title VARCHAR(100),
+                contact_type VARCHAR(50) DEFAULT 'Comercial',
+                email VARCHAR(150),
+                phone VARCHAR(50),
+                mobile_whatsapp VARCHAR(50),
+                is_primary BOOLEAN DEFAULT FALSE NOT NULL,
+                notes TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_supplier_contacts_supplier_id ON supplier_contacts(supplier_id);
+        """),
+
+        ("contracts", """
+            CREATE TABLE IF NOT EXISTS contracts (
+                id SERIAL PRIMARY KEY,
+                contract_number VARCHAR(80),
+                title VARCHAR(200) NOT NULL,
+                supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+                manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+                start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                end_date DATE NOT NULL,
+                renewal_type VARCHAR(50) NOT NULL DEFAULT 'Automática',
+                notice_period_days INTEGER NOT NULL DEFAULT 30,
+                monthly_cost NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+                total_cost NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+                payment_terms VARCHAR(100) DEFAULT 'Boleto Bancário',
+                status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE',
+                notification_emails TEXT,
+                attachment_path VARCHAR(400),
+                notes TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_contracts_end_date ON contracts(end_date);
+            CREATE INDEX IF NOT EXISTS idx_contracts_status ON contracts(status);
+            CREATE INDEX IF NOT EXISTS idx_contracts_supplier_id ON contracts(supplier_id);
+        """),
+
+        ("contract_services", """
+            CREATE TABLE IF NOT EXISTS contract_services (
+                id SERIAL PRIMARY KEY,
+                contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+                name VARCHAR(180) NOT NULL,
+                service_type VARCHAR(80) DEFAULT 'Serviço Recorrente',
+                description TEXT,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                unit VARCHAR(40) NOT NULL DEFAULT 'un',
+                unit_price NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_contract_services_contract_id ON contract_services(contract_id);
+        """),
+
+        ("contract_invoices", """
+            CREATE TABLE IF NOT EXISTS contract_invoices (
+                id SERIAL PRIMARY KEY,
+                contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+                invoice_number VARCHAR(80),
+                competence VARCHAR(30),
+                due_date DATE NOT NULL,
+                amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+                paid_at TIMESTAMP WITH TIME ZONE,
+                payment_code VARCHAR(200),
+                status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+                file_attachment VARCHAR(400),
+                notes TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_contract_invoices_due_date ON contract_invoices(due_date);
+            CREATE INDEX IF NOT EXISTS idx_contract_invoices_status ON contract_invoices(status);
+            CREATE INDEX IF NOT EXISTS idx_contract_invoices_contract_id ON contract_invoices(contract_id);
+        """),
     ]
 
     with engine.connect() as conn:

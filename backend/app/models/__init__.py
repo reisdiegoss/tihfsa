@@ -18,6 +18,7 @@ from app.models.system_setting import SystemSetting
 from app.models.satisfaction_survey import TicketSatisfactionSurvey
 from app.models.qrcode import QRCodeItem, QRCodeConfig
 from app.models.notification_log import NotificationLog
+from app.models.contract import Supplier, SupplierContact, Contract, ContractService, ContractInvoice
 
 __all__ = [
     "User",
@@ -43,5 +44,10 @@ __all__ = [
     "SystemSetting",
     "TicketSatisfactionSurvey",
     "NotificationLog",
+    "Supplier",
+    "SupplierContact",
+    "Contract",
+    "ContractService",
+    "ContractInvoice",
 ]
 

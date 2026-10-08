@@ -15,6 +15,7 @@ import MonitoringHub from "./pages/admin/MonitoringHub";
 import PublicHelpdeskTv from "./pages/public/PublicHelpdeskTv";
 import PublicTicketForm from "./pages/public/PublicTicketForm";
 import CSATDashboard from "./pages/admin/CSATDashboard";
+import Contracts from "./pages/admin/Contracts";
 
 // Client App Pages (Colaboradores / Vistorias)
 import ClientHome from "./pages/client/ClientHome";
@@ -100,6 +101,8 @@ export default function App() {
             <Route path="tickets/new" element={<NewTicket />} />
             <Route path="csat" element={<CSATDashboard />} />
             <Route path="avaliacoes" element={<CSATDashboard />} />
+            <Route path="contracts" element={<Contracts />} />
+            <Route path="contratos" element={<Contracts />} />
             <Route path="assets" element={<Assets />} />
             <Route path="qrcodes" element={<QRCodeManager />} />
             <Route path="qrcodes/scan" element={<QRCodeScannerPage />} />

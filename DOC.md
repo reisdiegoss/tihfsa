@@ -849,7 +849,37 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - **Prazo Configurável**: Definido em `ticket_warranty_days` (1 a 90 dias, padrão 7 dias).
         - **Mecânica de Garantia**: Dentro da janela de garantia após o fechamento, o colaborador pode reabrir o chamado clicando em *"O problema voltou? Reabrir"* informando a justificativa.
         - **Bloqueio Pós-Prazo**: Após a expiração dos X dias, a reabertura é bloqueada pelo backend com mensagem clara orientando a abertura de um novo chamado.
-        - **Auditoria & Notificações**: Registra a reabertura na timeline (`TicketInteraction`), incrementa `reopen_count`, atualiza `reopened_at` e dispara alerta imediato à equipe de TI por WhatsApp e e-mail.
+      - **Módulo de Gestão de Contratos, Fornecedores e Faturas (`/admin/contracts` e `/admin/contratos`)**:
+        - **Visão Geral**: Módulo corporativo dedicado ao controle e governança de contratos de TI (Telecom/Links, Software/SaaS, Manutenções, Hardware, CFTV), catálogo de fornecedores e controle financeiro de faturas mensais e parcelas a vencer.
+        - **Cadastro de Fornecedores & Catálogo de Contatos**:
+          - Razão Social, Nome Fantasia, CNPJ, Categoria e link direto para o Portal de Chamados/Suporte do parceiro.
+          - Múltiplos contatos por fornecedor categorizados por tipo (Comercial, Suporte 24h/NOC, Financeiro/Cobrança, Plantão/Emergência) com atalhos de 1 clique para abertura de conversa no WhatsApp, ligação telefônica e e-mail.
+        - **Controle de Vigência e Término de Contratos**:
+          - Cálculo automático de status (`ACTIVE`, `EXPIRING_SOON`, `EXPIRED`, `CANCELLED`).
+          - Indicador visual do tempo restante em dias e avisos de prazos de aviso prévio para cancelamento/renovação (ex: 30 dias).
+          - Registro de cláusulas contratuais, SLAs de atendimento e regras de reajuste (IPCA/IGP-M).
+        - **Geração Automática de Parcelas & Gestão de Faturas**:
+          - Opção de gerar automaticamente as 12 parcelas mensais calculadas da data de início ao vencimento com base no custo mensal recorrente.
+          - Controle de competência (Mês/Ano), data de vencimento da fatura, valor e linha digitável/código PIX com botão de copiar em 1 clique.
+          - Ação imediata de baixa/liquidação (`Dar Baixa`) com registro de data/hora do pagamento.
+        - **Seleção Específica de E-mails para Alertas (`notification_emails`)**:
+          - Cada contrato possui campo explícito onde o gestor define exatamente quais e-mails corporativos receberão os alertas (ex: `ti-hfsa@fasano.com.br, compras@fasano.com.br, gestor@fasano.com.br`).
+          - Alertas automáticos disparados aos 60, 30 e 15 dias de antecedência do término do contrato.
+          - Lembretes de faturas a vencer enviados 7 dias antes, 2 dias antes e no dia do vencimento da fatura.
+        - **Upload e Download de Documentos**:
+          - Suporte a upload e download de arquivos em PDF do contrato original assinado e termos aditivos (`uploads/contracts/...`).
+          - Suporte a anexo de boletos, notas fiscais e comprovantes de liquidação vinculados às faturas (`uploads/invoices/...`).
+        - **Permissões Granulares**:
+          - Vinculado ao módulo `"contracts"`, liberado para administradores e técnicos autorizados na gestão de usuários.
+        - **APIs do Backend**:
+          - `GET /api/v1/contracts/dashboard`: Indicadores executivos, total de contratos ativos, faturas a vencer no mês e custos recorrentes.
+          - `GET`, `POST`, `PUT`, `DELETE /api/v1/suppliers`: CRUD completo de fornecedores.
+          - `POST`, `DELETE /api/v1/suppliers/{id}/contacts`: Gestão de contatos dos fornecedores.
+          - `GET`, `POST`, `PUT`, `DELETE /api/v1/contracts`: CRUD de contratos com geração automática de faturas.
+          - `POST`, `DELETE /api/v1/contracts/{id}/services`: Gestão de produtos/serviços contratados.
+          - `GET`, `POST`, `DELETE /api/v1/contracts/{id}/invoices` e `PATCH /api/v1/contracts/invoices/{id}/pay`: Lançamento e baixa de faturas.
+          - `POST /api/v1/contracts/{id}/upload` e `POST /api/v1/contracts/invoices/{id}/upload`: Upload de contratos e boletos.
+          - `POST /api/v1/contracts/alerts/trigger`: Processamento e envio de e-mails de alerta aos destinatários específicos configurados.
 
     - **Gestão Completa de Colaboradores & Permissões (`/admin/settings` -> Usuários)**:
       - **Restauração do Botão "Editar Usuário"**: O botão da lista de usuários agora é claramente destacado em azul como `[ ✏️ Editar Usuário ]`.
@@ -868,6 +898,7 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
           - Etiquetas e QR Codes (`qrcodes`)
           - Importação de Contas AD/LDAP (`ad_import`)
           - Relatórios e Indicadores Gerenciais (`reports`)
+          - Gestão de Contratos e Fornecedores (`contracts`)
           - Configurações do Sistema (`settings`)
         - **Atalhos Rápidos de Configuração**: Botões rápidos *"Marcar Todos"* e *"Apenas Chamados"* no modal de edição.
         - **Administradores Full**: Usuários com perfil Administrador mantêm acesso irrestrito automático a todos os módulos.

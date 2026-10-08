@@ -19,11 +19,11 @@ def _format_user_response(user: User) -> dict:
     is_admin = role_str == "admin" or "admin" in user_roles
     
     if is_admin:
-        user_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"]
+        user_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts"]
     elif user.allowed_modules is not None:
         user_modules = list(user.allowed_modules)
     elif "technician" in user_roles or role_str == "technician" or "tecnico" in user_roles:
-        user_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports"]
+        user_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts"]
     else:
         user_modules = ["tickets"]
 
