@@ -112,24 +112,7 @@ export default function PublicTicketForm() {
     }
   }, [step, categories.length, locations.length, rooms.length]);
 
-  // Contextualiza automaticamente a localização com base no setor do colaborador
-  useEffect(() => {
-    if (selectedUser?.department_name) {
-      const dept = selectedUser.department_name.toLowerCase();
-      if (dept.includes("govern") || dept.includes("camareira") || dept.includes("hospedag")) {
-        setLocationType("UH");
-      } else {
-        setLocationType("LOCAL");
-        if (dept.includes("a&b") || dept.includes("alimento") || dept.includes("bar") || dept.includes("restaurante")) {
-          setSelectedLocation("Gero");
-          setForm((prev) => ({ ...prev, location: "Gero" }));
-        } else if (dept.includes("recep") || dept.includes("front") || dept.includes("portaria")) {
-          setSelectedLocation("Recepção/Lobby");
-          setForm((prev) => ({ ...prev, location: "Recepção/Lobby" }));
-        }
-      }
-    }
-  }, [selectedUser]);
+
 
   const handleSwitchLocationType = (type) => {
     setLocationType(type);
@@ -650,21 +633,11 @@ export default function PublicTicketForm() {
                       required={locationType === "LOCAL"}
                     >
                       <option value="">Selecione o Local Físico...</option>
-                      {locations.map((loc) => {
-                        const isMatchDept = Boolean(
-                          (selectedUser?.department_id && loc.department_ids && loc.department_ids.includes(selectedUser.department_id)) ||
-                          (selectedUser?.department_name && loc.department_names && loc.department_names.some(d => d.toLowerCase() === selectedUser.department_name.toLowerCase())) ||
-                          (selectedUser?.department_name && (
-                            (selectedUser.department_name.toLowerCase().includes("a&b") && ["gero", "bar da piscina"].some(k => loc.name.toLowerCase().includes(k))) ||
-                            (selectedUser.department_name.toLowerCase().includes("recep") && loc.name.toLowerCase().includes("recep"))
-                          ))
-                        );
-                        return (
-                          <option key={loc.id} value={loc.name}>
-                            {loc.name} {loc.floor ? `(${loc.floor})` : ""} {isMatchDept ? "⭐ [Seu Setor]" : (loc.department_names?.length ? `• ${loc.department_names.join(", ")}` : "")}
-                          </option>
-                        );
-                      })}
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.name}>
+                          {loc.name} {loc.floor ? `(${loc.floor})` : ""} {loc.department_names?.length ? `• ${loc.department_names.join(", ")}` : ""}
+                        </option>
+                      ))}
                       <option value="OUTRO">Outro Local (Digitar Manualmente)...</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "#64748b" }} />

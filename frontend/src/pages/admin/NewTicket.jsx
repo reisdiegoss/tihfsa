@@ -97,21 +97,6 @@ export default function NewTicket() {
     api.get("/public/rooms").then(r => setRooms(r.data)).catch(console.error);
   }, []);
 
-  // Handle location auto-population from asset
-  useEffect(() => {
-    if (assetId) {
-      const selectedAsset = assets.find(a => a.id === Number(assetId));
-      if (selectedAsset && selectedAsset.location_id) {
-        const locObj = locations.find(l => l.id === selectedAsset.location_id);
-        if (locObj) {
-          setLocationType("LOCAL");
-          setSelectedLocation(locObj.name);
-          setLocation(locObj.name.toUpperCase());
-        }
-      }
-    }
-  }, [assetId, assets, locations]);
-
   // Load users when department changes
   useEffect(() => {
     if (departmentId) {
@@ -125,7 +110,7 @@ export default function NewTicket() {
     }
   }, [departmentId]);
 
-  // Load requester assets and auto-fill location when requester changes
+  // Load requester assets when requester changes
   useEffect(() => {
     if (requesterId) {
       api.get(`/assets/?assigned_user_id=${requesterId}`).then(r => {
@@ -134,51 +119,16 @@ export default function NewTicket() {
         setAssets(userAssets);
         if (userAssets.length === 1) {
           setAssetId(String(userAssets[0].id));
-          if (userAssets[0].location_id) {
-            const locObj = locations.find(l => l.id === userAssets[0].location_id);
-            if (locObj) {
-              setLocationType("LOCAL");
-              setSelectedLocation(locObj.name);
-              setLocation(locObj.name.toUpperCase());
-            }
-          }
         } else {
           setAssetId("");
         }
       }).catch(console.error);
-
-      const reqUser = users.find(u => u.id === Number(requesterId));
-      if (reqUser && reqUser.is_room && reqUser.room_number) {
-        setLocationType("UH");
-        setSelectedRoom(reqUser.room_number);
-        setLocation(`UH ${reqUser.room_number}`);
-      } else if (reqUser) {
-        const dept = (departments.find(d => d.id === Number(departmentId))?.name || "").toLowerCase();
-        if (dept.includes("govern") || dept.includes("camareira") || dept.includes("hospedag")) {
-          setLocationType("UH");
-        } else {
-          setLocationType("LOCAL");
-          if (dept.includes("a&b") || dept.includes("alimento") || dept.includes("bar") || dept.includes("restaurante")) {
-            const geroLoc = locations.find(l => l.name.toLowerCase().includes("gero"));
-            if (geroLoc) {
-              setSelectedLocation(geroLoc.name);
-              setLocation(geroLoc.name.toUpperCase());
-            }
-          } else if (dept.includes("recep") || dept.includes("front") || dept.includes("portaria")) {
-            const recepLoc = locations.find(l => l.name.toLowerCase().includes("recep"));
-            if (recepLoc) {
-              setSelectedLocation(recepLoc.name);
-              setLocation(recepLoc.name.toUpperCase());
-            }
-          }
-        }
-      }
     } else {
       setRequesterAssets([]);
       setAssets([]);
       setAssetId("");
     }
-  }, [requesterId, users, departmentId, departments, locations]);
+  }, [requesterId]);
 
   // Exibe todas as categorias cadastradas (Hardware, Sistemas, Redes, Aplicações, etc.)
   const displayedCategories = categories;
@@ -520,18 +470,11 @@ export default function NewTicket() {
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer appearance-none"
                     >
                       <option value="">Selecione o Local Físico...</option>
-                      {locations.map((loc) => {
-                        const selectedDeptObj = departments.find(d => d.id === Number(departmentId));
-                        const isMatchDept = Boolean(
-                          (departmentId && loc.department_ids && loc.department_ids.includes(Number(departmentId))) ||
-                          (selectedDeptObj && loc.department_names && loc.department_names.some(dn => dn.toLowerCase() === selectedDeptObj.name.toLowerCase()))
-                        );
-                        return (
-                          <option key={loc.id} value={loc.name}>
-                            🏢 {loc.name} {loc.floor ? `(${loc.floor})` : ""} {isMatchDept ? "⭐ [Setor do Solicitante]" : (loc.department_names?.length ? `• [${loc.department_names.join(", ")}]` : "")}
-                          </option>
-                        );
-                      })}
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.name}>
+                          🏢 {loc.name} {loc.floor ? `(${loc.floor})` : ""} {loc.department_names?.length ? `• [${loc.department_names.join(", ")}]` : ""}
+                        </option>
+                      ))}
                       <option value="OUTRO">Outro Local (Digitar Manualmente)...</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
