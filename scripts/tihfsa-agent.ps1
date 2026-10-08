@@ -153,17 +153,47 @@ function Install-SentinelTask {
         schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
     } catch {}
 
-    $actionArg = "powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$TargetUrl`" -AgentSecret `"$Secret`" -Silent"
+    $actionArg = "-NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$TargetUrl`" -AgentSecret `"$Secret`" -Silent"
 
     $created = $false
-    if ($isAdmin) {
-        schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\SYSTEM" /RL HIGHEST /SC MINUTE /MO $Interval /TR $actionArg 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { $created = $true }
-    }
+    # 1. Registro nativo PowerShell (garante que notebooks rodem em bateria e ao despertar)
+    try {
+        $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $actionArg
+        $taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $Interval) -RepetitionDuration ([TimeSpan]::MaxValue)
+        $taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
 
-    if (-not $created) {
-        schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO $Interval /TR $actionArg 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { $created = $true }
+        if ($isAdmin) {
+            Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -User "NT AUTHORITY\SYSTEM" -RunLevel Highest -Force -ErrorAction Stop | Out-Null
+        } else {
+            Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -Force -ErrorAction Stop | Out-Null
+        }
+        $created = $true
+    } catch {
+        # Fallback via schtasks tradicional com correção de XML para bateria
+        $legacyCmd = "powershell.exe $actionArg"
+        if ($isAdmin) {
+            schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\SYSTEM" /RL HIGHEST /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { $created = $true }
+        }
+        if (-not $created) {
+            schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { $created = $true }
+        }
+        if ($created) {
+            try {
+                $tempXml = "$env:TEMP\tihfsa_task.xml"
+                schtasks.exe /Query /TN $taskName /XML > $tempXml 2>$null
+                if (Test-Path $tempXml) {
+                    $xmlContent = [System.IO.File]::ReadAllText($tempXml)
+                    $xmlContent = $xmlContent.Replace("<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>")
+                    $xmlContent = $xmlContent.Replace("<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>")
+                    $xmlContent = $xmlContent.Replace("<StartWhenAvailable>false</StartWhenAvailable>", "<StartWhenAvailable>true</StartWhenAvailable>")
+                    [System.IO.File]::WriteAllText($tempXml, $xmlContent)
+                    schtasks.exe /Create /TN $taskName /XML $tempXml /F 2>$null | Out-Null
+                    Remove-Item $tempXml -Force -ErrorAction SilentlyContinue
+                }
+            } catch {}
+        }
     }
 
     if ($created) {
@@ -174,6 +204,7 @@ function Install-SentinelTask {
         Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e agendado com sucesso!" -ForegroundColor Green
         Write-Host "==========================================================================" -ForegroundColor Green
         Write-Host " * Tarefa Agendada: '$taskName' (Executa a cada $Interval minutos)" -ForegroundColor White
+        Write-Host " * Suporte Bateria:  Ativado (executa normalmente em notebooks na bateria)" -ForegroundColor White
         Write-Host " * Local do Script:  $targetScript" -ForegroundColor White
         Write-Host " * Servidor:         $TargetUrl" -ForegroundColor White
         Write-Host " * Comportamento:    100% invisivel em segundo plano." -ForegroundColor Cyan
@@ -200,6 +231,20 @@ function Uninstall-SentinelTask {
     } catch {}
 }
 
+function Ensure-SentinelTaskBatterySettings {
+    try {
+        $task = Get-ScheduledTask -TaskName "TIHFSA Sentinel Agent" -ErrorAction SilentlyContinue
+        if ($task -and $task.Settings -and ($task.Settings.DisallowStartIfOnBatteries -or -not $task.Settings.StartWhenAvailable)) {
+            $task.Settings.DisallowStartIfOnBatteries = $false
+            $task.Settings.StopIfGoingOnBatteries = $false
+            $task.Settings.StartWhenAvailable = $true
+            $task.Settings.ExecutionTimeLimit = (New-TimeSpan -Minutes 5)
+            Set-ScheduledTask -InputObject $task -ErrorAction SilentlyContinue | Out-Null
+            Log-AgentMessage "[OK] Configuração de execução em bateria e despertar ativada para notebooks."
+        }
+    } catch {}
+}
+
 if ($Install) {
     Install-SentinelTask -TargetUrl $ServerUrl -Secret $AgentSecret -Interval $IntervalMinutes
     exit 0
@@ -217,6 +262,7 @@ function Test-IsAdminOrServiceAccount {
     $blackList = @('system', 'local service', 'network service', 'administrator', 'administrador', 'root', 'defaultuser0', 'guest', 'convidado')
     if ($blackList -contains $clean) { return $true }
     if ($clean -like 'adm_*' -or $clean -like 'adm-*' -or $clean -like 'suporte*' -or $clean -like 'admin*') { return $true }
+    if ($clean -like '*$') { return $true } # Filtra contas de computador do AD (ex: HFSA000001N$)
     return $false
 }
 
@@ -575,6 +621,9 @@ Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl
 
 # 2. Verifica auto-atualização silenciosa do script do agente
 Update-AgentScriptSelf -TargetServerUrl $ServerUrl
+
+# 3. Assegura configuração de bateria e despertar em notebooks
+Ensure-SentinelTaskBatterySettings
 
 # Execução do Check-in
 $payloadObj = Get-SystemMetrics

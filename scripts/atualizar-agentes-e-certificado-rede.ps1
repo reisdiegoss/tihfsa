@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     TIHFSA - Atualizador em Massa de Agentes e Certificado SSL na Rede Local
     Hotel Fasano Salvador - TI Corporativa
@@ -112,7 +112,17 @@ $remoteCommand = {
             } catch {
                 curl.exe -k -s -m 10 $scriptUrl -o $targetScript 2>$null
             }
-            # C. Roda tarefa agendada imediatamente
+            # C. Assegura configuração para notebooks em bateria e roda imediatamente
+            try {
+                $task = Get-ScheduledTask -TaskName "TIHFSA Sentinel Agent" -ErrorAction SilentlyContinue
+                if ($task -and $task.Settings) {
+                    $task.Settings.DisallowStartIfOnBatteries = $false
+                    $task.Settings.StopIfGoingOnBatteries = $false
+                    $task.Settings.StartWhenAvailable = $true
+                    $task.Settings.ExecutionTimeLimit = (New-TimeSpan -Minutes 5)
+                    Set-ScheduledTask -InputObject $task -ErrorAction SilentlyContinue | Out-Null
+                }
+            } catch {}
             schtasks.exe /Run /TN "TIHFSA Sentinel Agent" 2>$null | Out-Null
         }
         return "OK"

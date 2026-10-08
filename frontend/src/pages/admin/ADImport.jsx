@@ -15,10 +15,12 @@ import {
   FolderTree, 
   Layers, 
   ArrowRight,
+  Building2,
+  Tag,
   Search,
   Check,
-  Building2,
-  Tag
+  RotateCcw,
+  X
 } from "lucide-react";
 import api from "../../api/client";
 
@@ -263,17 +265,37 @@ export default function ADImport() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className="relative">
               <input
                 type="text"
                 placeholder="Filtrar por nome de OU ou grupo..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs outline-none focus:border-blue-500 w-64"
+                className="bg-white border border-slate-200 rounded-xl pl-8 pr-7 py-1.5 text-xs outline-none focus:border-blue-500 w-64"
               />
               <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  title="Limpar busca"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </div>
+
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="text-xs font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1.5 cursor-pointer bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-colors"
+                title="Limpar filtro de busca"
+              >
+                <RotateCcw size={12} className="text-slate-500" />
+                Limpar
+              </button>
+            )}
 
             {ous.length > 0 && (
               <button 

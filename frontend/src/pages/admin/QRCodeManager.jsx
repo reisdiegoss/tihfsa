@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { 
   QrCode, Plus, Search, RefreshCw, Wifi, Laptop, 
   Edit2, Trash2, Image as ImageIcon, Calendar, 
-  MapPin, User, Building2, CheckCircle2, ShieldCheck, Download, Camera
+  MapPin, User, Building2, CheckCircle2, ShieldCheck, Download, Camera,
+  RotateCcw, X
 } from "lucide-react";
 import api from "../../api/client";
 import QRCodeFormModal from "../../components/admin/QRCodeFormModal";
@@ -183,51 +184,76 @@ export default function QRCodeManager() {
       {/* Barra de Filtros e Busca */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
         {/* Campo de Busca */}
-        <div className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl w-full md:w-96 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
+        <div className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl w-full md:w-96 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all relative">
           <Search size={16} className="text-slate-400 shrink-0" />
           <input
             type="text"
             placeholder="Buscar por título, SSID, colaborador, patrimônio..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="bg-transparent text-xs font-medium text-slate-800 placeholder-slate-400 outline-none w-full"
+            className="bg-transparent text-xs font-medium text-slate-800 placeholder-slate-400 outline-none w-full pr-6"
           />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="absolute right-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+              title="Limpar busca"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
 
-        {/* Abas de Tipo */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-full md:w-auto">
-          <button
-            onClick={() => setSelectedType("all")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              selectedType === "all"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Todos ({items.length})
-          </button>
-          <button
-            onClick={() => setSelectedType("wifi")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              selectedType === "wifi"
-                ? "bg-white text-blue-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Wifi size={13} />
-            <span>Wi-Fi ({wifiCount})</span>
-          </button>
-          <button
-            onClick={() => setSelectedType("equipment")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              selectedType === "equipment"
-                ? "bg-white text-emerald-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Laptop size={13} />
-            <span>Equipamentos ({equipCount})</span>
-          </button>
+        {/* Abas de Tipo e Botão Limpar Filtros */}
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <div className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl">
+            <button
+              onClick={() => setSelectedType("all")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                selectedType === "all"
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Todos ({items.length})
+            </button>
+            <button
+              onClick={() => setSelectedType("wifi")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                selectedType === "wifi"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Wifi size={13} />
+              <span>Wi-Fi ({wifiCount})</span>
+            </button>
+            <button
+              onClick={() => setSelectedType("equipment")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                selectedType === "equipment"
+                  ? "bg-white text-emerald-700 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Laptop size={13} />
+              <span>Equipamentos ({equipCount})</span>
+            </button>
+          </div>
+
+          {(searchTerm !== "" || selectedType !== "all") && (
+            <button
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedType("all");
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+              title="Limpar todos os filtros"
+            >
+              <RotateCcw size={13} className="text-slate-500" />
+              <span>Limpar Filtros</span>
+            </button>
+          )}
         </div>
       </div>
 

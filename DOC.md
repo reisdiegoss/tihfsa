@@ -926,3 +926,22 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Linhas de referência operacional destacadas em **80% (Atenção)** e **90% (Crítico)**.
         - Tooltip flutuante com dados pontuais e picos máximos.
         - Cards com métricas consolidadas (Média, Pico e Valor Atual) e tabela cronológica de todas as medições do período.
+
+25. **Suporte Nativo a Notebooks em Bateria no Sentinel Agent e Auto-Reparo de Tarefa**:
+    - **Eliminação do Bloqueio de Bateria no Windows Task Scheduler**:
+      - Por padrão do Windows, tarefas agendadas criadas via `schtasks.exe /Create` configuram `<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>`. Isso causava a suspensão silenciosa da telemetria em notebooks corporativos desconectados da tomada (ficando com status "Offline / Na Fila").
+      - O instalador e o gerador de script (`get_agent_powershell_script`) foram atualizados para utilizar os cmdlets nativos do PowerShell com flags explícitas:
+        - `New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)`
+      - No fallback por `schtasks.exe`, o XML da tarefa é exportado e corrigido automaticamente para permitir execução contínua em bateria.
+    - **Rotina de Auto-Reparo de Energia (`Ensure-SentinelTaskBatterySettings`)**:
+      - A cada ciclo de telemetria, o próprio script do agente verifica as configurações da tarefa agendada e aplica o desbloqueio de bateria e despertar automático caso estejam desativadas.
+    - **Filtro de Contas de Computador do Active Directory (`HFSA...$`)**:
+      - A função `Test-IsAdminOrServiceAccount` do agente e o endpoint `agent_checkin` do backend ignoram contas finalizadas com `$` (contas de máquina do AD). Isso impede que o nome da máquina (ex: `HFSA000001N$`) substitua o nome do colaborador logado no Windows.
+
+26. **Padronização do Botão "Limpar Filtros" em Todas as Grids do Sistema**:
+    - **Estações de Trabalho (`StationMonitoringTab.jsx`)**: Botão "Limpar Filtros" com ícone de reset (`RotateCcw`), redefinindo busca textual, status (Online/Alerta/Offline), tipo de máquina e departamento.
+    - **Ativos CMDB (`Assets.jsx`)**: Botão dinâmico que limpa simultaneamente busca, status, categoria/tipo e localização física.
+    - **Chamados Helpdesk (`TicketList.jsx`)**: Botão "Limpar todos os filtros", redefinindo período, status, prioridade, categoria, origem do chamado e ordenação.
+    - **Gerenciador de QR Codes (`QRCodeManager.jsx`)**: Botão de limpeza de filtros e botão `X` rápido no campo de busca para redefinir termo e tipo selecionado (Wi-Fi/Equipamentos).
+    - **Importador Active Directory (`ADImport.jsx`)**: Botão `X` e botão "Limpar" para restaurar a lista completa de OUs do LDAP.
+    - **Painel TV NOC (`PublicNocPanel.jsx`)**: Botão `X` para remoção rápida de filtros de pesquisa na visualização de mosaico.
