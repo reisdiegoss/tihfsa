@@ -9,10 +9,29 @@ from app.database import get_db
 from app.auth.dependencies import get_current_user, get_optional_user, require_technician
 from app.models.user import User
 from app.models.location import Location
+from app.models.department import Department
 from app.models.asset import Asset
 from app.schemas.location import LocationCreate, LocationUpdate, LocationResponse
 
 router = APIRouter(prefix="/api/v1/locations", tags=["Localizações"])
+
+
+def _format_location(loc: Location, asset_cnt: int = 0) -> LocationResponse:
+    dept_ids = [d.id for d in loc.departments] if hasattr(loc, "departments") and loc.departments else []
+    dept_names = [d.name for d in loc.departments] if hasattr(loc, "departments") and loc.departments else []
+    return LocationResponse(
+        id=loc.id,
+        name=loc.name,
+        floor=loc.floor,
+        description=loc.description,
+        is_active=loc.is_active,
+        is_public=getattr(loc, "is_public", True),
+        order_index=getattr(loc, "order_index", 0),
+        asset_count=asset_cnt,
+        department_ids=dept_ids,
+        department_names=dept_names,
+        created_at=loc.created_at,
+    )
 
 
 @router.get("/", response_model=list[LocationResponse])
@@ -59,17 +78,7 @@ def list_locations(
             Asset.is_active == True
         ).scalar() or 0
 
-        res.append(LocationResponse(
-            id=loc.id,
-            name=loc.name,
-            floor=loc.floor,
-            description=loc.description,
-            is_active=loc.is_active,
-            is_public=getattr(loc, "is_public", True),
-            order_index=getattr(loc, "order_index", 0),
-            asset_count=asset_cnt,
-            created_at=loc.created_at
-        ))
+        res.append(_format_location(loc, asset_cnt))
 
     return res
 
@@ -99,21 +108,15 @@ def create_location(
         is_public=data.is_public if data.is_public is not None else True,
         order_index=order_val,
     )
+    if data.department_ids:
+        depts = db.query(Department).filter(Department.id.in_(data.department_ids)).all()
+        loc.departments = depts
+
     db.add(loc)
     db.commit()
     db.refresh(loc)
 
-    return LocationResponse(
-        id=loc.id,
-        name=loc.name,
-        floor=loc.floor,
-        description=loc.description,
-        is_active=loc.is_active,
-        is_public=loc.is_public,
-        order_index=loc.order_index,
-        asset_count=0,
-        created_at=loc.created_at
-    )
+    return _format_location(loc, 0)
 
 
 @router.get("/{location_id}", response_model=LocationResponse)
@@ -132,17 +135,7 @@ def get_location(
         Asset.is_active == True
     ).scalar() or 0
 
-    return LocationResponse(
-        id=loc.id,
-        name=loc.name,
-        floor=loc.floor,
-        description=loc.description,
-        is_active=loc.is_active,
-        is_public=getattr(loc, "is_public", True),
-        order_index=getattr(loc, "order_index", 0),
-        asset_count=asset_cnt,
-        created_at=loc.created_at
-    )
+    return _format_location(loc, asset_cnt)
 
 
 @router.patch("/{location_id}", response_model=LocationResponse)
@@ -179,6 +172,10 @@ def update_location(
         loc.is_public = update_data["is_public"]
     if "order_index" in update_data and update_data["order_index"] is not None:
         loc.order_index = update_data["order_index"]
+    if "department_ids" in update_data:
+        dept_ids = update_data.pop("department_ids") or []
+        depts = db.query(Department).filter(Department.id.in_(dept_ids)).all()
+        loc.departments = depts
 
     db.commit()
     db.refresh(loc)
@@ -188,17 +185,7 @@ def update_location(
         Asset.is_active == True
     ).scalar() or 0
 
-    return LocationResponse(
-        id=loc.id,
-        name=loc.name,
-        floor=loc.floor,
-        description=loc.description,
-        is_active=loc.is_active,
-        is_public=getattr(loc, "is_public", True),
-        order_index=getattr(loc, "order_index", 0),
-        asset_count=asset_cnt,
-        created_at=loc.created_at
-    )
+    return _format_location(loc, asset_cnt)
 
 
 @router.patch("/{location_id}/move", response_model=list[LocationResponse])

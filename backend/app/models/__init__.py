@@ -17,6 +17,7 @@ from app.models.monitoring import AgentCheckin
 from app.models.system_setting import SystemSetting
 from app.models.satisfaction_survey import TicketSatisfactionSurvey
 from app.models.qrcode import QRCodeItem, QRCodeConfig
+from app.models.notification_log import NotificationLog
 
 __all__ = [
     "User",
@@ -40,5 +41,6 @@ __all__ = [
     "AgentCheckin",
     "SystemSetting",
     "TicketSatisfactionSurvey",
+    "NotificationLog",
 ]
 

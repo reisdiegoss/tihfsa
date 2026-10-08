@@ -651,13 +651,17 @@ export default function PublicTicketForm() {
                     >
                       <option value="">Selecione o Local Físico...</option>
                       {locations.map((loc) => {
-                        const isMatchDept = selectedUser?.department_name && (
-                          (selectedUser.department_name.toLowerCase().includes("a&b") && ["gero", "bar da piscina"].some(k => loc.name.toLowerCase().includes(k))) ||
-                          (selectedUser.department_name.toLowerCase().includes("recep") && loc.name.toLowerCase().includes("recep"))
+                        const isMatchDept = Boolean(
+                          (selectedUser?.department_id && loc.department_ids && loc.department_ids.includes(selectedUser.department_id)) ||
+                          (selectedUser?.department_name && loc.department_names && loc.department_names.some(d => d.toLowerCase() === selectedUser.department_name.toLowerCase())) ||
+                          (selectedUser?.department_name && (
+                            (selectedUser.department_name.toLowerCase().includes("a&b") && ["gero", "bar da piscina"].some(k => loc.name.toLowerCase().includes(k))) ||
+                            (selectedUser.department_name.toLowerCase().includes("recep") && loc.name.toLowerCase().includes("recep"))
+                          ))
                         );
                         return (
                           <option key={loc.id} value={loc.name}>
-                            {loc.name} {loc.floor ? `(${loc.floor})` : ""} {isMatchDept ? "⭐ [Seu Setor]" : ""}
+                            {loc.name} {loc.floor ? `(${loc.floor})` : ""} {isMatchDept ? "⭐ [Seu Setor]" : (loc.department_names?.length ? `• ${loc.department_names.join(", ")}` : "")}
                           </option>
                         );
                       })}

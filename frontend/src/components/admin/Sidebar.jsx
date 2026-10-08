@@ -3,17 +3,26 @@ import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, QrCode, LogOut,
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function Sidebar() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
 
-  const menuItems = [
-    { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
-    { name: "Chamados", path: "/admin/tickets", icon: Ticket },
-    { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle },
-    { name: "Ativos", path: "/admin/assets", icon: Monitor },
-    { name: "QR Codes", path: "/admin/qrcodes", icon: QrCode },
-    { name: "Monitoramento", path: "/admin/monitoring", icon: Activity },
-    { name: "Configurações", path: "/admin/settings", icon: Settings },
+  const userRoles = user?.roles || (user?.role ? [user.role] : []);
+  const isAdmin = userRoles.some(r => r.toLowerCase() === "admin");
+  const userModules = user?.allowed_modules || [];
+
+  const rawMenuItems = [
+    { name: "Dashboard", path: "/admin", icon: LayoutDashboard, module: "all" },
+    { name: "Chamados", path: "/admin/tickets", icon: Ticket, module: "tickets" },
+    { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle, module: "tickets" },
+    { name: "Ativos", path: "/admin/assets", icon: Monitor, module: "assets" },
+    { name: "QR Codes", path: "/admin/qrcodes", icon: QrCode, module: "qrcodes" },
+    { name: "Monitoramento", path: "/admin/monitoring", icon: Activity, module: "monitoring" },
+    { name: "Configurações", path: "/admin/settings", icon: Settings, module: "settings" },
   ];
+
+  const menuItems = rawMenuItems.filter(item => {
+    if (item.module === "all" || isAdmin) return true;
+    return userModules.includes(item.module);
+  });
 
   return (
     <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 h-screen flex-col justify-between p-6 z-50">

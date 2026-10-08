@@ -3,10 +3,18 @@ Model Location — representa localizações físicas do hotel/empresa (ex: Lobb
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Table, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+
+# Association Table — Múltiplos Setores por Localização e Múltiplas Localizações por Setor
+location_departments = Table(
+    "location_departments",
+    Base.metadata,
+    Column("location_id", Integer, ForeignKey("locations.id", ondelete="CASCADE"), primary_key=True),
+    Column("department_id", Integer, ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class Location(Base):
@@ -28,6 +36,7 @@ class Location(Base):
 
     # Relationships
     assets = relationship("Asset", back_populates="location")
+    departments = relationship("Department", secondary=location_departments, backref="locations")
 
     def __repr__(self):
         return f"<Location {self.id}: {self.name}>"

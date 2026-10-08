@@ -17,7 +17,7 @@ from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
     attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes,
-    sla, monitoring, public_tickets, rooms, floors, system_settings, surveys
+    sla, monitoring, public_tickets, rooms, floors, system_settings, surveys, notification_logs
 )
 import app.models.network_map  # noqa: F401
 import app.models.qrcode       # noqa: F401
@@ -247,9 +247,31 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_active BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_times VARCHAR DEFAULT '09:00,14:00,18:00';"))
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_whatsapp BOOLEAN DEFAULT TRUE;"))
-            conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_email BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMP WITH TIME ZONE;"))
             conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS reopen_count INTEGER DEFAULT 0 NOT NULL;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_modules JSON;"))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS location_departments (
+                    location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,
+                    department_id INTEGER REFERENCES departments(id) ON DELETE CASCADE,
+                    PRIMARY KEY (location_id, department_id)
+                );
+                CREATE TABLE IF NOT EXISTS notification_logs (
+                    id SERIAL PRIMARY KEY,
+                    channel VARCHAR(30) NOT NULL,
+                    notification_type VARCHAR(50) NOT NULL,
+                    recipient VARCHAR(255) NOT NULL,
+                    recipient_name VARCHAR(150),
+                    subject VARCHAR(300),
+                    body TEXT,
+                    ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL,
+                    status VARCHAR(30) DEFAULT 'SENT' NOT NULL,
+                    error_message TEXT,
+                    resend_count INTEGER DEFAULT 0 NOT NULL,
+                    last_attempt_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+                );
+            """))
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS system_settings (
                     id SERIAL PRIMARY KEY,
@@ -449,6 +471,7 @@ app.include_router(rooms.router)
 app.include_router(floors.router)
 app.include_router(system_settings.router)
 app.include_router(surveys.router)
+app.include_router(notification_logs.router)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

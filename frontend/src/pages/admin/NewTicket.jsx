@@ -357,7 +357,7 @@ export default function NewTicket() {
                 <optgroup label="Locais Físicos / Setores">
                   {locations.map((loc) => (
                     <option key={`loc-${loc.id}`} value={loc.name}>
-                      🏢 {loc.name} {loc.floor ? `(${loc.floor})` : ""}
+                      🏢 {loc.name} {loc.floor ? `(${loc.floor})` : ""} {loc.department_names?.length ? `• [${loc.department_names.join(", ")}]` : ""}
                     </option>
                   ))}
                 </optgroup>

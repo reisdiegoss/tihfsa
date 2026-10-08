@@ -836,3 +836,45 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - **Mecânica de Garantia**: Dentro da janela de garantia após o fechamento, o colaborador pode reabrir o chamado clicando em *"O problema voltou? Reabrir"* informando a justificativa.
         - **Bloqueio Pós-Prazo**: Após a expiração dos X dias, a reabertura é bloqueada pelo backend com mensagem clara orientando a abertura de um novo chamado.
         - **Auditoria & Notificações**: Registra a reabertura na timeline (`TicketInteraction`), incrementa `reopen_count`, atualiza `reopened_at` e dispara alerta imediato à equipe de TI por WhatsApp e e-mail.
+
+    - **Gestão Completa de Colaboradores & Permissões (`/admin/settings` -> Usuários)**:
+      - **Restauração do Botão "Editar Usuário"**: O botão da lista de usuários agora é claramente destacado em azul como `[ ✏️ Editar Usuário ]`.
+      - **Modal Unificado de Edição Cadastral & Acesso**:
+        - **Dados de Cadastro e Contato**: Permite alterar Nome de Exibição, Login de Rede (AD/LDAP), E-mail Corporativo, Telefone/Ramal, Setor de Lotação e Status de Atividade (Ativo / Inativo).
+        - **Papéis no Sistema**: Atribuição flexível de funções (Solicitante Comum, Técnico de Suporte TI, Gestor de Setor e Administrador Geral).
+        - **Gestão de Setores Vinculados**: Permite selecionar múltiplos setores para gestores acompanharem seus chamados e equipamentos.
+
+    - **Parametrização Granular de Módulos para Técnicos, Analistas e Gestores**:
+      - **Controle por Usuário (`allowed_modules`)**:
+        - Cada técnico ou analista pode ter permissões específicas liberadas de forma cirúrgica, como:
+          - Apenas Atendimento de Chamados (`tickets`)
+          - Gestão de Inventário e CMDB (`assets`)
+          - Painel de Monitoramento NOC (`monitoring`)
+          - Diagramas e Topologia de Rede (`topology`)
+          - Etiquetas e QR Codes (`qrcodes`)
+          - Importação de Contas AD/LDAP (`ad_import`)
+          - Relatórios e Indicadores Gerenciais (`reports`)
+          - Configurações do Sistema (`settings`)
+        - **Atalhos Rápidos de Configuração**: Botões rápidos *"Marcar Todos"* e *"Apenas Chamados"* no modal de edição.
+        - **Administradores Full**: Usuários com perfil Administrador mantêm acesso irrestrito automático a todos os módulos.
+      - **Filtragem Dinâmica na Interface**: A barra lateral de navegação (`Sidebar.jsx`) e a validação de rotas adaptam os menus visíveis em tempo real de acordo com os módulos autorizados para a conta conectada.
+      - **Proteção no Backend**: Middleware e dependência `require_module(module_name)` disponíveis para bloqueio de rotas não autorizadas no backend.
+
+    - **Unificação de Localização Física & Múltiplos Setores (Vínculo N:N)**:
+      - **Associação Direta no Cadastro de Locais**:
+        - Tabela de relacionamento `location_departments` no banco de dados.
+        - Permite selecionar múltiplos setores que operam em cada área física (ou deixar sem seleção caso seja de uso geral do hotel).
+      - **Visualização na Grade Administrativa**: A tabela de localizações em `/admin/settings` agora possui a coluna *Setores Vinculados*, exibindo badges com os departamentos que atuam naquele local.
+      - **Propagação Inteligente em Formulários de Chamados**:
+        - Tanto no Portal Público (`PublicTicketForm.jsx`), quanto no Portal do Colaborador (`NewRequest.jsx`) e Abertura Administrativa (`NewTicket.jsx`), os locais vinculados ao setor do colaborador recebem destaque visual automático (`⭐ [Seu Setor]` ou rótulo do setor), facilitando o preenchimento sem digitação errada.
+
+    - **Módulo de Histórico, Auditoria & Reenvio de Notificações (`/admin/settings` -> Histórico de Notificações)**:
+      - **Rastreabilidade Completa (E-mail & WhatsApp)**:
+        - Tabela `notification_logs` registrando todos os disparos efetuados pelo sistema com `channel`, `recipient`, `recipient_name`, `subject`, `body`, `ticket_id`, `status` (`SENT` ou `FAILED`), `error_message`, `resend_count` e timestamps.
+      - **Painel de Métricas e Indicadores**:
+        - Contadores em tempo real de total de disparos, mensagens entregues com sucesso, falhas na entrega, volume por e-mail e volume por WhatsApp.
+      - **Filtros e Pesquisa**:
+        - Filtragem dinâmica por canal (Todos, E-mail, WhatsApp) e por status (Todos, Entregues, Falhas), além de campo de busca textual por destinatário ou assunto.
+      - **Reenvio com 1 Clique (`/api/v1/notifications/logs/{id}/resend`)**:
+        - Botão de reenvio manual na tabela e dentro do modal de detalhes. Permite reenviar instantaneamente qualquer mensagem caso o destinatário não tenha recebido ou em caso de instabilidade transitória de rede.
+      - **Visualizador Completo da Mensagem**: Modal com exibição detalhada do destinatário, data, assunto, corpo completo e mensagem técnica de erro retornada pelo servidor de SMTP caso tenha havido falha.

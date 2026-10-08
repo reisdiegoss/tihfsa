@@ -286,13 +286,18 @@ export default function NewRequest() {
                   <option value="">Selecione o Local Físico...</option>
                   {locations.map((loc) => {
                     const deptName = currentUserData?.department_name || "";
-                    const isMatchDept = deptName && (
-                      (deptName.toLowerCase().includes("a&b") && ["gero", "bar da piscina"].some(k => loc.name.toLowerCase().includes(k))) ||
-                      (deptName.toLowerCase().includes("recep") && loc.name.toLowerCase().includes("recep"))
+                    const deptId = currentUserData?.department_id || null;
+                    const isMatchDept = Boolean(
+                      (deptId && loc.department_ids && loc.department_ids.includes(deptId)) ||
+                      (deptName && loc.department_names && loc.department_names.some(d => d.toLowerCase() === deptName.toLowerCase())) ||
+                      (deptName && (
+                        (deptName.toLowerCase().includes("a&b") && ["gero", "bar da piscina"].some(k => loc.name.toLowerCase().includes(k))) ||
+                        (deptName.toLowerCase().includes("recep") && loc.name.toLowerCase().includes("recep"))
+                      ))
                     );
                     return (
                       <option key={loc.id} value={loc.name}>
-                        {loc.name} {loc.floor ? `(${loc.floor})` : ""} {isMatchDept ? "⭐ [Seu Setor]" : ""}
+                        {loc.name} {loc.floor ? `(${loc.floor})` : ""} {isMatchDept ? "⭐ [Seu Setor]" : (loc.department_names?.length ? `• ${loc.department_names.join(", ")}` : "")}
                       </option>
                     );
                   })}

@@ -163,10 +163,59 @@ def render_bulletproof_email(
 </html>"""
 
 
-def send_system_email(to_email: str, subject: str, html_body: str) -> bool:
-    """Envia um e-mail com protocolo STARTTLS via servidor SMTP configurado."""
+def log_notification(
+    channel: str,
+    notification_type: str,
+    recipient: str,
+    subject: str,
+    body: str,
+    ticket_id: int | None = None,
+    recipient_name: str | None = None,
+    status: str = "SENT",
+    error_message: str | None = None,
+):
+    """Registra histórico de notificação para auditoria e reenvio."""
+    try:
+        from datetime import datetime, timezone
+        from app.database import SessionLocal
+        from app.models.notification_log import NotificationLog
+
+        db = SessionLocal()
+        now = datetime.now(timezone.utc)
+        entry = NotificationLog(
+            channel=channel,
+            notification_type=notification_type,
+            recipient=recipient,
+            recipient_name=recipient_name,
+            subject=subject,
+            body=body,
+            ticket_id=ticket_id,
+            status=status,
+            error_message=error_message,
+            resend_count=0,
+            last_attempt_at=now,
+            created_at=now,
+        )
+        db.add(entry)
+        db.commit()
+        db.close()
+    except Exception as ex:
+        print(f"[WARN] Erro ao gravar NotificationLog: {ex}")
+
+
+def send_system_email(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    notification_type: str = "SYSTEM_EMAIL",
+    ticket_id: int | None = None,
+    recipient_name: str | None = None,
+) -> bool:
+    """Envia um e-mail com protocolo STARTTLS via servidor SMTP configurado e audita no banco."""
     if not settings.smtp_user or not settings.smtp_password:
-        print(f"[WARN] SMTP não configurado. E-mail '{subject}' não enviado para {to_email}.")
+        err = "SMTP não configurado no .env"
+        print(f"[WARN] {err}. E-mail '{subject}' não enviado para {to_email}.")
+        log_notification("EMAIL", notification_type, to_email, subject, html_body, ticket_id, recipient_name, status="FAILED", error_message=err)
         return False
 
     msg = MIMEMultipart("alternative")
@@ -181,9 +230,12 @@ def send_system_email(to_email: str, subject: str, html_body: str) -> bool:
             server.login(settings.smtp_user, settings.smtp_password)
             server.send_message(msg)
         print(f"[INFO] E-mail enviado com sucesso para {to_email}: {subject}")
+        log_notification("EMAIL", notification_type, to_email, subject, html_body, ticket_id, recipient_name, status="SENT")
         return True
     except Exception as e:
-        print(f"[ERROR] Falha ao enviar e-mail para {to_email}: {e}")
+        err = str(e)
+        print(f"[ERROR] Falha ao enviar e-mail para {to_email}: {err}")
+        log_notification("EMAIL", notification_type, to_email, subject, html_body, ticket_id, recipient_name, status="FAILED", error_message=err)
         return False
 
 

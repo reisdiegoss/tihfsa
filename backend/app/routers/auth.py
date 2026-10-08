@@ -57,6 +57,7 @@ def login(
                 display_name=admin.display_name,
                 role=admin.role.value,
                 roles=admin_roles,
+                allowed_modules=["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"],
                 can_change_password=True,
             )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
@@ -74,12 +75,25 @@ def login(
 
     token = create_access_token({"sub": str(user.id), "role": user.role.value})
     user_roles = user.roles if (user.roles and isinstance(user.roles, list)) else [user.role.value]
+    
+    # Determinar allowed_modules
+    is_admin = user.role == UserRole.ADMIN or "admin" in user_roles
+    if is_admin:
+        u_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"]
+    elif user.allowed_modules is not None:
+        u_modules = list(user.allowed_modules)
+    elif "technician" in user_roles or user.role == UserRole.TECHNICIAN:
+        u_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports"]
+    else:
+        u_modules = ["tickets"]
+
     return TokenResponse(
         access_token=token,
         user_id=user.id,
         display_name=user.display_name,
         role=user.role.value,
         roles=user_roles,
+        allowed_modules=u_modules,
         can_change_password=False,
     )
 

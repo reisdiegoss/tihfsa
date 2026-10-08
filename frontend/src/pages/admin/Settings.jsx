@@ -46,7 +46,8 @@ import {
   Globe,
   Hotel,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  MessageSquare
 } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -102,6 +103,7 @@ const SETTINGS_SECTIONS = [
     group: "Segurança & Sistema",
     items: [
       { id: "users", label: "Usuários & Permissões", icon: UserCheck },
+      { id: "notifications", label: "Histórico de Notificações", icon: Send },
       { id: "general", label: "Parâmetros Gerais", icon: SettingsIcon },
     ]
   }
@@ -111,6 +113,28 @@ export default function Settings() {
   const { user, canChangePassword } = useAuth();
   const [activeTab, setActiveTab] = useState("locations");
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+
+  // Notifications Audit States
+  const [notificationLogs, setNotificationLogs] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [notifFilterChannel, setNotifFilterChannel] = useState("ALL");
+  const [notifFilterStatus, setNotifFilterStatus] = useState("ALL");
+  const [notifSearch, setNotifSearch] = useState("");
+  const [notifStats, setNotifStats] = useState({ total: 0, sent: 0, failed: 0, email_count: 0, whatsapp_count: 0 });
+  const [resendingNotifId, setResendingNotifId] = useState(null);
+  const [viewingNotifBody, setViewingNotifBody] = useState(null);
+
+  // User Management Extension States
+  const [userFormData, setUserFormData] = useState({
+    display_name: "",
+    ad_username: "",
+    email: "",
+    phone: "",
+    is_active: true,
+  });
+  const [selectedModules, setSelectedModules] = useState([
+    "tickets", "assets", "monitoring", "topology", "qrcodes", "reports"
+  ]);
 
   // Asset Types States
   const [assetTypes, setAssetTypes] = useState([]);
@@ -499,8 +523,24 @@ export default function Settings() {
     is_active: true,
     is_public: true,
     order_index: 0,
+    department_ids: [],
   });
   const [savingLocation, setSavingLocation] = useState(false);
+
+  const toggleLocationDept = (deptId) => {
+    const current = locationFormData.department_ids || [];
+    if (current.includes(deptId)) {
+      setLocationFormData({
+        ...locationFormData,
+        department_ids: current.filter(id => id !== deptId)
+      });
+    } else {
+      setLocationFormData({
+        ...locationFormData,
+        department_ids: [...current, deptId]
+      });
+    }
+  };
 
   // Apartamentos / UHs States
   const [roomsList, setRoomsList] = useState([]);
@@ -746,6 +786,7 @@ export default function Settings() {
         is_active: loc.is_active !== undefined ? loc.is_active : true,
         is_public: loc.is_public !== undefined ? loc.is_public : true,
         order_index: loc.order_index !== undefined ? loc.order_index : 0,
+        department_ids: loc.department_ids || [],
       });
     } else {
       setEditingLocation(null);
@@ -759,6 +800,7 @@ export default function Settings() {
         is_active: true,
         is_public: true,
         order_index: nextOrder,
+        department_ids: [],
       });
     }
     setLocationModalOpen(true);
@@ -848,12 +890,48 @@ export default function Settings() {
     }
   };
 
+  const fetchNotificationLogs = async () => {
+    setLoadingNotifications(true);
+    try {
+      let url = `/notifications/logs?channel=${notifFilterChannel}&status=${notifFilterStatus}`;
+      if (notifSearch.trim()) {
+        url += `&search=${encodeURIComponent(notifSearch.trim())}`;
+      }
+      const [logsRes, statsRes] = await Promise.all([
+        api.get(url),
+        api.get("/notifications/logs/stats"),
+      ]);
+      setNotificationLogs(logsRes.data?.items || []);
+      setNotifStats(statsRes.data || { total: 0, sent: 0, failed: 0, email_count: 0, whatsapp_count: 0 });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  const handleResendNotification = async (log) => {
+    if (!confirm(`Deseja reenviar esta notificação para '${log.recipient}'?`)) return;
+    setResendingNotifId(log.id);
+    try {
+      const res = await api.post(`/notifications/logs/${log.id}/resend`);
+      alert(res.data.message || "Notificação reenviada com sucesso!");
+      fetchNotificationLogs();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao reenviar notificação.");
+    } finally {
+      setResendingNotifId(null);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "users" || activeTab === "departments") {
       fetchSystemUsers();
     } else if (activeTab === "locations") {
       fetchLocations();
       fetchFloors();
+      api.get("/departments/").then(r => setDepartmentsList(r.data)).catch(()=>{});
     } else if (activeTab === "rooms") {
       fetchRooms();
       fetchFloors();
@@ -863,10 +941,18 @@ export default function Settings() {
       fetchCategoriesWithProblems();
     } else if (activeTab === "asset_types") {
       fetchAssetTypes();
+    } else if (activeTab === "notifications") {
+      fetchNotificationLogs();
     } else if (activeTab === "general") {
       fetchGeneralSettings();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "notifications") {
+      fetchNotificationLogs();
+    }
+  }, [notifFilterChannel, notifFilterStatus]);
 
   const fetchAssetTypes = () => {
     setLoadingAssetTypes(true);
@@ -1244,10 +1330,30 @@ export default function Settings() {
 
   const openPermissionModal = (u) => {
     setEditingUser(u);
+    setUserFormData({
+      display_name: u.display_name || "",
+      ad_username: u.ad_username || "",
+      email: u.email || "",
+      phone: u.phone || "",
+      is_active: u.is_active !== undefined ? u.is_active : true,
+    });
     const rList = u.roles && u.roles.length > 0 ? u.roles : [u.role || "user"];
     setSelectedRoles(rList);
     setSelectedUserDept(u.department_id ? String(u.department_id) : "");
     setSelectedManagedDepts(u.managed_department_ids || []);
+    setSelectedModules(
+      u.allowed_modules && u.allowed_modules.length > 0
+        ? u.allowed_modules
+        : ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports"]
+    );
+  };
+
+  const toggleModule = (modId) => {
+    if (selectedModules.includes(modId)) {
+      setSelectedModules(selectedModules.filter(m => m !== modId));
+    } else {
+      setSelectedModules([...selectedModules, modId]);
+    }
   };
 
   const toggleRole = (roleId) => {
@@ -1271,13 +1377,24 @@ export default function Settings() {
 
   const handleSavePermissions = async () => {
     if (!editingUser) return;
+    if (!userFormData.display_name.trim()) {
+      return alert("O nome completo do colaborador é obrigatório.");
+    }
     setSavingUserPermissions(true);
     try {
-      const { data } = await api.patch(`/users/${editingUser.id}`, {
+      const payload = {
+        display_name: userFormData.display_name.trim(),
+        email: userFormData.email ? userFormData.email.trim() : null,
+        phone: userFormData.phone ? userFormData.phone.trim() : null,
+        is_active: userFormData.is_active,
         roles: selectedRoles,
         department_id: selectedUserDept ? Number(selectedUserDept) : null,
-        managed_department_ids: selectedRoles.includes("manager") ? selectedManagedDepts : []
-      });
+        managed_department_ids: selectedRoles.includes("manager") ? selectedManagedDepts : [],
+        allowed_modules: selectedRoles.includes("admin")
+          ? ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"]
+          : selectedModules,
+      };
+      const { data } = await api.patch(`/users/${editingUser.id}`, payload);
       alert(`Dados e permissões de ${data.display_name} atualizados com sucesso!`);
       setEditingUser(null);
       fetchSystemUsers();
@@ -1749,9 +1866,10 @@ export default function Settings() {
                           <td className="py-4 px-6 text-right">
                             <button
                               onClick={() => openPermissionModal(u)}
-                              className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                              className="inline-flex items-center gap-1.5 bg-blue-600 text-white hover:bg-blue-700 shadow-xs px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                              title="Editar dados cadastrais, setor e permissões de acesso do colaborador"
                             >
-                              <Edit3 size={14} /> Editar Permissões
+                              <Edit3 size={14} /> Editar Usuário
                             </button>
                           </td>
                         </tr>
@@ -2395,20 +2513,24 @@ export default function Settings() {
         </div>
       )}
 
-      {/* MODAL: Editar Permissões do Colaborador */}
+      {/* MODAL: Editar Usuário Completo */}
       {editingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full overflow-hidden animate-scale-up">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden animate-scale-up">
             
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div>
-                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
-                  <Shield className="text-blue-600" size={20} />
-                  Permissões de {editingUser.display_name}
-                </h3>
-                <p className="text-xs font-semibold text-slate-400 mt-0.5">
-                  Setor Pertencente: {editingUser.department_name || "Sem setor registrado"} • @{editingUser.ad_username || `user_${editingUser.id}`}
-                </p>
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+                  <User size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">
+                    Editar Usuário: {editingUser.display_name}
+                  </h3>
+                  <p className="text-xs font-semibold text-slate-400 mt-0.5">
+                    @{editingUser.ad_username || `user_${editingUser.id}`} • {editingUser.department_name || "Sem setor registrado"}
+                  </p>
+                </div>
               </div>
 
               <button
@@ -2421,48 +2543,119 @@ export default function Settings() {
 
             <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
               
-              {/* Setor Principal */}
-              <div>
-                <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-1.5">
-                  Setor / Departamento Principal
-                </label>
-                <select
-                  value={selectedUserDept}
-                  onChange={(e) => setSelectedUserDept(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="">Nenhum / Geral</option>
-                  {departmentsList.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                  Define o departamento oficial do colaborador exibido nos chamados e no cadastro de ativos.
-                </p>
+              {/* 1. DADOS CADASTRAIS & CONTATO */}
+              <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4.5 space-y-4">
+                <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <User size={14} className="text-blue-600" /> Dados Cadastrais & Contato
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      Nome Completo <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={userFormData.display_name}
+                      onChange={(e) => setUserFormData({ ...userFormData, display_name: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      Usuário de Login (AD / LDAP)
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={userFormData.ad_username || `user_${editingUser.id}`}
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-500 cursor-not-allowed"
+                      title="Sincronizado automaticamente com o Active Directory"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      E-mail Corporativo
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="usuario@fasano.com.br"
+                      value={userFormData.email}
+                      onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      Telefone / Ramal Interno
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 1100 ou (71) 99999-9999"
+                      value={userFormData.phone}
+                      onChange={(e) => setUserFormData({ ...userFormData, phone: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
+                    <div className="flex-1">
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                        Setor / Departamento Principal
+                      </label>
+                      <select
+                        value={selectedUserDept}
+                        onChange={(e) => setSelectedUserDept(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">Nenhum / Geral</option>
+                        {departmentsList.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2 pt-4 sm:pt-2">
+                      <label className="text-xs font-bold text-slate-700">Status da Conta:</label>
+                      <button
+                        type="button"
+                        onClick={() => setUserFormData({ ...userFormData, is_active: !userFormData.is_active })}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                          userFormData.is_active
+                            ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                            : "bg-red-100 text-red-800 border border-red-300"
+                        }`}
+                      >
+                        {userFormData.is_active ? "✅ Ativo" : "❌ Inativo / Bloqueado"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Role Selection (Multi-Role Checkboxes) */}
+              {/* 2. PAPÉIS E NÍVEIS DE ACESSO */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block">
-                    Papéis e Níveis de Acesso (Múltipla Seleção)
+                    Papéis e Níveis de Acesso
                   </label>
                   <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-100">
                     {selectedRoles.length} selecionado(s)
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 font-medium mb-3">
-                  Você pode atribuir múltiplos papéis para o mesmo colaborador (ex: Solicitante + Gerente de Setor).
-                </p>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
-                    { id: "user", label: "Solicitante", desc: "Abre e visualiza os próprios chamados", icon: "👤" },
-                    { id: "technician", label: "Atendente (TI)", desc: "Abre, atende, responde e finaliza chamados", icon: "🛠️" },
+                    { id: "user", label: "Solicitante", desc: "Abre e visualiza chamados", icon: "👤" },
+                    { id: "technician", label: "Técnico / Analista (TI)", desc: "Atende, responde e finaliza chamados", icon: "🛠️" },
                     { id: "manager", label: "Gerente de Setor", desc: "Acompanha chamados dos setores gerenciados", icon: "👔" },
-                    { id: "admin", label: "Administrador", desc: "Acesso total a relatórios, AD, Zabbix e configurações", icon: "🛡️" },
+                    { id: "admin", label: "Administrador Geral (Full)", desc: "Acesso total irrestrito a todos os módulos", icon: "🛡️" },
                   ].map((roleOpt) => {
                     const isChecked = selectedRoles.includes(roleOpt.id);
                     return (
@@ -2470,23 +2663,23 @@ export default function Settings() {
                         key={roleOpt.id}
                         type="button"
                         onClick={() => toggleRole(roleOpt.id)}
-                        className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
                           isChecked
-                            ? "border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/20 shadow-xs"
+                            ? "border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/20 shadow-xs"
                             : "border-slate-200 hover:border-slate-300 bg-white"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                             <span>{roleOpt.icon}</span> {roleOpt.label}
                           </span>
                           {isChecked ? (
-                            <CheckSquare size={18} className="text-blue-600 shrink-0" />
+                            <CheckSquare size={16} className="text-blue-600 shrink-0" />
                           ) : (
-                            <Square size={18} className="text-slate-300 shrink-0" />
+                            <Square size={16} className="text-slate-300 shrink-0" />
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                        <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
                           {roleOpt.desc}
                         </p>
                       </button>
@@ -2495,19 +2688,107 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* Managed Departments Selection (Visible when role 'manager' is checked) */}
+              {/* 3. PARAMETRIZAÇÃO GRANULAR DE MÓDULOS (PARA TÉCNICOS / ANALISTAS) */}
+              <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-2xl p-4.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck size={16} className="text-blue-600" />
+                    Permissões de Acesso aos Módulos do Sistema
+                  </label>
+
+                  {selectedRoles.includes("admin") ? (
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 bg-purple-100 text-purple-700 rounded-lg border border-purple-200">
+                      Acesso Full (Admin)
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedModules(["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"])}
+                        className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                      >
+                        Marcar Todos
+                      </button>
+                      <span className="text-slate-300">•</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedModules(["tickets"])}
+                        className="text-[10px] font-bold text-slate-500 hover:underline cursor-pointer"
+                      >
+                        Apenas Chamados
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {selectedRoles.includes("admin") ? (
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-900 text-xs font-semibold flex items-center gap-2">
+                    <span>👑</span>
+                    <span>Como Administrador Geral (Full), este colaborador possui acesso irrestrito a todos os 8 módulos do sistema automaticamente.</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Defina individualmente os módulos aos quais este técnico ou analista terá acesso liberado:
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                      {[
+                        { id: "tickets", name: "Chamados & Atendimento", icon: "🎫", desc: "Abertura, respostas, SLA e conclusão" },
+                        { id: "assets", name: "Ativos & CMDB", icon: "💻", desc: "Cadastro e inventário de equipamentos" },
+                        { id: "monitoring", name: "NOC & Zabbix", icon: "🚨", desc: "Alertas de infraestrutura e Painel TV" },
+                        { id: "topology", name: "Fluxogramas de Rede", icon: "🗺️", desc: "Visualização e montagem de topologias" },
+                        { id: "qrcodes", name: "Gestor de QR Codes", icon: "📱", desc: "Etiquetas e links para eventos e ativos" },
+                        { id: "ad_import", name: "Sincronização AD / LDAP", icon: "👥", desc: "Importação de colaboradores do domínio" },
+                        { id: "settings", name: "Configurações do Sistema", icon: "⚙️", desc: "Parâmetros, locais, setores e regras" },
+                        { id: "reports", name: "Relatórios & Indicadores CSAT", icon: "📊", desc: "Métricas de atendimento e satisfação" },
+                      ].map((mod) => {
+                        const isModActive = selectedModules.includes(mod.id);
+                        return (
+                          <button
+                            key={mod.id}
+                            type="button"
+                            onClick={() => toggleModule(mod.id)}
+                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              isModActive
+                                ? "bg-white border-blue-600 ring-1 ring-blue-500/30 shadow-xs"
+                                : "bg-white/60 border-slate-200 hover:border-slate-300 opacity-60"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <span>{mod.icon}</span> {mod.name}
+                              </span>
+                              {isModActive ? (
+                                <CheckSquare size={15} className="text-blue-600 shrink-0" />
+                              ) : (
+                                <Square size={15} className="text-slate-300 shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              {mod.desc}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* 4. SETORES SOB GERÊNCIA (QUANDO ROLE MANAGER ATIVO) */}
               {selectedRoles.includes("manager") && (
-                <div className="space-y-3 bg-amber-50/50 border border-amber-200/80 rounded-2xl p-5 animate-fade-in">
+                <div className="space-y-3 bg-amber-50/50 border border-amber-200/80 rounded-2xl p-4.5 animate-fade-in">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-extrabold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
                       <Briefcase size={15} /> Setores Sob Gerência ({selectedManagedDepts.length} selecionados)
                     </label>
                   </div>
                   <p className="text-xs text-amber-700 font-medium">
-                    Marque os setores que este gerente poderá visualizar e acompanhar no portal.
+                    Marque os setores que este gestor poderá visualizar e acompanhar no portal.
                   </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                     {departmentsList.map((d) => {
                       const isChecked = selectedManagedDepts.includes(d.id);
                       return (
@@ -2515,7 +2796,7 @@ export default function Settings() {
                           key={d.id}
                           type="button"
                           onClick={() => toggleManagedDept(d.id)}
-                          className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                          className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
                             isChecked
                               ? "bg-amber-100/80 border-amber-400 text-amber-950 font-bold shadow-xs"
                               : "bg-white border-slate-200 text-slate-700 hover:border-amber-300 font-semibold"
@@ -2523,9 +2804,9 @@ export default function Settings() {
                         >
                           <span className="text-xs truncate">{d.name}</span>
                           {isChecked ? (
-                            <CheckSquare size={16} className="text-amber-700 shrink-0" />
+                            <CheckSquare size={15} className="text-amber-700 shrink-0" />
                           ) : (
-                            <Square size={16} className="text-slate-300 shrink-0" />
+                            <Square size={15} className="text-slate-300 shrink-0" />
                           )}
                         </button>
                       );
@@ -2540,7 +2821,7 @@ export default function Settings() {
               <button
                 type="button"
                 onClick={() => setEditingUser(null)}
-                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
@@ -2548,10 +2829,10 @@ export default function Settings() {
                 type="button"
                 onClick={handleSavePermissions}
                 disabled={savingUserPermissions}
-                className="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
               >
                 {savingUserPermissions ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
-                Salvar Permissões
+                Salvar Alterações do Usuário
               </button>
             </div>
 
@@ -2622,6 +2903,7 @@ export default function Settings() {
                       <th className="py-4 px-3 text-center w-16">Ordem</th>
                       <th className="py-4 px-4">Nome da Localização</th>
                       <th className="py-4 px-3 whitespace-nowrap">Andar / Nível</th>
+                      <th className="py-4 px-3 whitespace-nowrap">Setores Vinculados</th>
                       <th className="py-4 px-3 whitespace-nowrap">Ativos Vinculados</th>
                       <th className="py-4 px-3 whitespace-nowrap">Visibilidade</th>
                       <th className="py-4 px-3 whitespace-nowrap">Status</th>
@@ -2636,7 +2918,8 @@ export default function Settings() {
                         return (
                           loc.name.toLowerCase().includes(term) ||
                           (loc.floor && loc.floor.toLowerCase().includes(term)) ||
-                          (loc.description && loc.description.toLowerCase().includes(term))
+                          (loc.description && loc.description.toLowerCase().includes(term)) ||
+                          (loc.department_names && loc.department_names.some(d => d.toLowerCase().includes(term)))
                         );
                       })
                       .map((loc, idx) => (
@@ -2688,6 +2971,22 @@ export default function Settings() {
                               <span className="font-bold text-slate-800">{loc.floor}</span>
                             ) : (
                               <span className="text-slate-300 italic">—</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-3">
+                            {loc.department_names && loc.department_names.length > 0 ? (
+                              <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                {loc.department_names.map((deptName, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-100"
+                                  >
+                                    {deptName}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">Geral / Todos</span>
                             )}
                           </td>
                           <td className="py-4 px-3 whitespace-nowrap">
@@ -2831,12 +3130,51 @@ export default function Settings() {
                   Descrição / Observações
                 </label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   placeholder="Detalhes adicionais sobre os equipamentos ou acesso a esta área..."
                   value={locationFormData.description}
                   onChange={(e) => setLocationFormData({ ...locationFormData, description: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"
                 />
+              </div>
+
+              {/* Setores Vinculados */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block">
+                    Setores Vinculados a este Local
+                  </label>
+                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                    {locationFormData.department_ids?.length || 0} selecionado(s)
+                  </span>
+                </div>
+                <p className="text-[10.5px] text-slate-400 font-medium mb-2 leading-relaxed">
+                  Vincule os setores/departamentos que operam nesta área física para direcionamento automático de chamados e equipamentos. Deixe sem seleção caso o local seja de uso geral de todo o hotel.
+                </p>
+                <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                  {departmentsList.map((d) => {
+                    const isChecked = (locationFormData.department_ids || []).includes(d.id);
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => toggleLocationDept(d.id)}
+                        className={`p-2 rounded-lg border text-left flex items-center justify-between transition-all cursor-pointer ${
+                          isChecked
+                            ? "bg-blue-50/80 border-blue-400 text-blue-900 font-bold shadow-2xs"
+                            : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 font-medium"
+                        }`}
+                      >
+                        <span className="text-[11px] truncate">{d.name}</span>
+                        {isChecked ? (
+                          <CheckSquare size={13} className="text-blue-600 shrink-0" />
+                        ) : (
+                          <Square size={13} className="text-slate-300 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="pt-2 space-y-2 border-t border-slate-100">
@@ -4562,6 +4900,273 @@ export default function Settings() {
       {activeTab === "sla" && (
         <SLASettingsSection />
       )}
+
+      {/* TAB CONTENT: Histórico e Auditoria de Notificações */}
+      {activeTab === "notifications" && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Header */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                  <Send size={20} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">Histórico & Auditoria de Notificações</h2>
+                  <p className="text-xs font-semibold text-slate-500">
+                    Acompanhe em tempo real os disparos de E-mail e WhatsApp, audite falhas e reenvie mensagens com 1 clique.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={fetchNotificationLogs}
+              disabled={loadingNotifications}
+              className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              <RefreshCw size={14} className={loadingNotifications ? "animate-spin text-blue-600" : ""} />
+              Atualizar Registros
+            </button>
+          </div>
+
+          {/* Cards de Métricas */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Total Disparos</p>
+              <p className="text-2xl font-black text-slate-800 mt-1">{notifStats.total || 0}</p>
+            </div>
+            <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200/80 shadow-2xs">
+              <p className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider">Entregues</p>
+              <p className="text-2xl font-black text-emerald-800 mt-1">{notifStats.sent || 0}</p>
+            </div>
+            <div className="bg-rose-50/60 p-4 rounded-2xl border border-rose-200/80 shadow-2xs">
+              <p className="text-[10px] font-extrabold text-rose-700 uppercase tracking-wider">Falhas / Erros</p>
+              <p className="text-2xl font-black text-rose-800 mt-1">{notifStats.failed || 0}</p>
+            </div>
+            <div className="bg-blue-50/60 p-4 rounded-2xl border border-blue-200/80 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-extrabold text-blue-700 uppercase tracking-wider">E-mails</p>
+                <Mail size={14} className="text-blue-500" />
+              </div>
+              <p className="text-2xl font-black text-blue-900 mt-1">{notifStats.email_count || 0}</p>
+            </div>
+            <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200/80 shadow-2xs col-span-2 sm:col-span-1">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider">WhatsApp</p>
+                <MessageSquare size={14} className="text-emerald-500" />
+              </div>
+              <p className="text-2xl font-black text-emerald-900 mt-1">{notifStats.whatsapp_count || 0}</p>
+            </div>
+          </div>
+
+          {/* Filtros e Barra de Pesquisa */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1">
+                <Filter size={13} /> Canal:
+              </span>
+              {["ALL", "EMAIL", "WHATSAPP"].map((ch) => (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => setNotifFilterChannel(ch)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    notifFilterChannel === ch
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {ch === "ALL" ? "Todos" : ch === "EMAIL" ? "E-mail" : "WhatsApp"}
+                </button>
+              ))}
+
+              <div className="h-4 w-px bg-slate-200 mx-1 hidden sm:block" />
+
+              <span className="text-xs font-bold text-slate-500 mr-1">Status:</span>
+              {[
+                { val: "ALL", label: "Todos" },
+                { val: "SENT", label: "Entregues" },
+                { val: "FAILED", label: "Falhas" },
+              ].map((st) => (
+                <button
+                  key={st.val}
+                  type="button"
+                  onClick={() => setNotifFilterStatus(st.val)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    notifFilterStatus === st.val
+                      ? "bg-slate-800 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <input
+                  type="text"
+                  placeholder="Buscar destinatário, assunto..."
+                  value={notifSearch}
+                  onChange={(e) => setNotifSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && fetchNotificationLogs()}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={fetchNotificationLogs}
+                className="px-3 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors cursor-pointer"
+              >
+                Buscar
+              </button>
+            </div>
+          </div>
+
+          {/* Tabela de Notificações */}
+          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
+            {loadingNotifications ? (
+              <div className="p-16 text-center text-slate-400 font-semibold space-y-3">
+                <RefreshCw size={24} className="animate-spin mx-auto text-blue-600" />
+                <p className="text-xs">Carregando auditoria de notificações...</p>
+              </div>
+            ) : notificationLogs.length === 0 ? (
+              <div className="p-16 text-center text-slate-400 font-semibold space-y-3">
+                <Bell size={36} className="mx-auto text-slate-300" />
+                <p className="text-sm font-bold text-slate-600">Nenhum registro de notificação encontrado.</p>
+                <p className="text-xs text-slate-400">As mensagens enviadas pelo sistema (abertura de chamado, alertas e atualizações) aparecerão aqui.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                      <th className="py-4 px-4 w-28">Status</th>
+                      <th className="py-4 px-3 w-28">Canal</th>
+                      <th className="py-4 px-3 whitespace-nowrap">Chamado / Tipo</th>
+                      <th className="py-4 px-4">Destinatário</th>
+                      <th className="py-4 px-4">Assunto / Conteúdo</th>
+                      <th className="py-4 px-3 text-center w-20">Tentativas</th>
+                      <th className="py-4 px-3 whitespace-nowrap">Data / Hora</th>
+                      <th className="py-4 px-4 text-right whitespace-nowrap w-28">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                    {notificationLogs.map((log) => {
+                      const isSuccess = log.status === "SENT";
+                      const isEmail = (log.channel || "").toLowerCase() === "email";
+                      return (
+                        <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            {isSuccess ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Entregue
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                Falha
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-4 px-3 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${
+                              isEmail
+                                ? "bg-blue-50 text-blue-700 border border-blue-100"
+                                : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                            }`}>
+                              {isEmail ? <Mail size={12} /> : <MessageSquare size={12} />}
+                              {isEmail ? "E-mail" : "WhatsApp"}
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              {log.ticket_id ? (
+                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-extrabold text-[11px]">
+                                  #{log.ticket_id}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-[11px]">—</span>
+                              )}
+                              <span className="text-slate-500 text-[11px] capitalize">
+                                {log.notification_type || "Sistema"}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="py-4 px-4 font-bold text-slate-800 max-w-[220px]">
+                            <p className="truncate text-slate-900 font-extrabold" title={log.recipient_name || log.recipient}>
+                              {log.recipient_name || log.recipient}
+                            </p>
+                            {log.recipient_name && (
+                              <p className="text-[11px] text-slate-400 font-medium truncate" title={log.recipient}>
+                                {log.recipient}
+                              </p>
+                            )}
+                          </td>
+
+                          <td className="py-4 px-4 text-slate-600 max-w-[260px]">
+                            <p className="font-bold text-slate-800 truncate" title={log.subject || log.body}>
+                              {log.subject || "Sem assunto"}
+                            </p>
+                            {log.error_message && (
+                              <p className="text-[10.5px] text-rose-600 font-semibold truncate mt-0.5" title={log.error_message}>
+                                ⚠️ {log.error_message}
+                              </p>
+                            )}
+                          </td>
+
+                          <td className="py-4 px-3 text-center whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 font-bold text-slate-600 text-[11px]">
+                              {log.resend_count + 1}x
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-3 whitespace-nowrap text-[11px] text-slate-500 font-semibold">
+                            {log.created_at ? new Date(log.created_at).toLocaleString("pt-BR") : "—"}
+                          </td>
+
+                          <td className="py-4 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setViewingNotifBody(log)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                title="Ver conteúdo da mensagem"
+                              >
+                                <Eye size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={resendingNotifId === log.id}
+                                onClick={() => handleResendNotification(log)}
+                                className="p-2 rounded-xl text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition-colors cursor-pointer disabled:opacity-50"
+                                title="Reenviar agora"
+                              >
+                                {resendingNotifId === log.id ? (
+                                  <RefreshCw size={15} className="animate-spin" />
+                                ) : (
+                                  <RefreshCw size={15} />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
         </main>
       </div>
 
@@ -4973,6 +5578,122 @@ export default function Settings() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Visualizar Notificação Completa */}
+      {viewingNotifBody && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                  (viewingNotifBody.channel || "").toLowerCase() === "email"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-emerald-100 text-emerald-700"
+                }`}>
+                  {(viewingNotifBody.channel || "").toLowerCase() === "email" ? (
+                    <Mail size={16} />
+                  ) : (
+                    <MessageSquare size={16} />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">
+                    Detalhes do Envio de Notificação
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    ID #{viewingNotifBody.id} • {viewingNotifBody.channel} • {new Date(viewingNotifBody.created_at).toLocaleString("pt-BR")}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingNotifBody(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Destinatário</span>
+                  <p className="text-xs font-extrabold text-slate-800">{viewingNotifBody.recipient_name || "—"}</p>
+                  <p className="text-[11px] text-slate-600 font-semibold">{viewingNotifBody.recipient}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Status da Entrega</span>
+                  <div className="mt-1">
+                    {viewingNotifBody.status === "SENT" ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-700">
+                        <CheckCircle size={12} /> Enviado com Sucesso
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-100 text-rose-700">
+                        <AlertCircle size={12} /> Falha no Envio
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {viewingNotifBody.error_message && (
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900">
+                    <AlertCircle size={14} /> Relatório de Erro / Motivo da Falha
+                  </div>
+                  <p className="text-xs font-mono bg-white/80 p-2.5 rounded-xl border border-rose-200/60 break-all">
+                    {viewingNotifBody.error_message}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                  Assunto da Mensagem
+                </span>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                  {viewingNotifBody.subject || "Sem assunto"}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                  Corpo / Conteúdo Enviado
+                </span>
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium text-slate-700 max-h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                  {viewingNotifBody.body}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => setViewingNotifBody(null)}
+                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                disabled={resendingNotifId === viewingNotifBody.id}
+                onClick={async () => {
+                  await handleResendNotification(viewingNotifBody);
+                  setViewingNotifBody(null);
+                }}
+                className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                {resendingNotifId === viewingNotifBody.id ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Send size={14} />
+                )}
+                Reenviar Esta Mensagem
+              </button>
+            </div>
           </div>
         </div>
       )}

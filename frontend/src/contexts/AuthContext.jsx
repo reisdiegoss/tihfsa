@@ -18,19 +18,18 @@ export function AuthProvider({ children }) {
       const parsed = JSON.parse(storedUser);
       setUser(parsed);
       
-      // Sincronizar permissões caso canChangePassword não esteja no cache
-      if (parsed.canChangePassword === undefined) {
-        api.get("/auth/me")
-          .then((res) => {
-            const updated = {
-              ...parsed,
-              canChangePassword: Boolean(res.data?.can_change_password),
-            };
-            setUser(updated);
-            localStorage.setItem("tihfsa_user", JSON.stringify(updated));
-          })
-          .catch(() => {});
-      }
+      // Sincronizar permissões e módulos com /auth/me
+      api.get("/auth/me")
+        .then((res) => {
+          const updated = {
+            ...parsed,
+            canChangePassword: Boolean(res.data?.can_change_password),
+            allowed_modules: res.data?.allowed_modules || parsed.allowed_modules || [],
+          };
+          setUser(updated);
+          localStorage.setItem("tihfsa_user", JSON.stringify(updated));
+        })
+        .catch(() => {});
     }
     setLoading(false);
   }, []);
@@ -49,6 +48,7 @@ export function AuthProvider({ children }) {
       displayName: data.display_name,
       role: data.role,
       roles: data.roles || [data.role],
+      allowed_modules: data.allowed_modules || [],
       canChangePassword: Boolean(data.can_change_password),
     };
 

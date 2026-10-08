@@ -108,3 +108,27 @@ def require_staff(current_user: User = Depends(get_current_user)) -> User:
     if not (roles & {"admin", "technician", "manager"}):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito à equipe interna")
     return current_user
+
+
+def check_user_module_access(user: User, module: str) -> bool:
+    """Verifica se o usuário possui acesso liberado a um módulo específico."""
+    roles = _get_user_roles(user)
+    if "admin" in roles:
+        return True
+    if user.allowed_modules is None:
+        if "technician" in roles:
+            return module in {"tickets", "assets", "monitoring", "topology", "qrcodes", "reports"}
+        return module == "tickets"
+    return module in (user.allowed_modules or [])
+
+
+def require_module(module: str):
+    """Dependência para verificar se o usuário ou técnico possui permissão para o módulo."""
+    def _dependency(current_user: User = Depends(get_current_user)) -> User:
+        if not check_user_module_access(current_user, module):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Seu perfil não possui permissão de acesso ao módulo '{module}'. Solicite ao administrador.",
+            )
+        return current_user
+    return _dependency

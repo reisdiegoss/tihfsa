@@ -74,6 +74,8 @@ class PublicLocationResponse(BaseModel):
     name: str
     building: str | None = None
     floor: str | None = None
+    department_ids: list[int] = []
+    department_names: list[str] = []
 
 
 class PublicRoomResponse(BaseModel):
@@ -305,6 +307,8 @@ def list_public_locations(db: Session = Depends(get_db)):
             name=l.name,
             building=l.building,
             floor=l.floor,
+            department_ids=[d.id for d in l.departments] if hasattr(l, "departments") and l.departments else [],
+            department_names=[d.name for d in l.departments] if hasattr(l, "departments") and l.departments else [],
         )
         for l in locs
     ]

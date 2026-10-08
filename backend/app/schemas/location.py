@@ -11,6 +11,7 @@ class LocationCreate(BaseModel):
     description: str | None = None
     is_public: bool = True
     order_index: int | None = 0
+    department_ids: list[int] | None = None
 
 
 class LocationUpdate(BaseModel):
@@ -20,6 +21,7 @@ class LocationUpdate(BaseModel):
     is_active: bool | None = None
     is_public: bool | None = None
     order_index: int | None = None
+    department_ids: list[int] | None = None
 
 
 class LocationResponse(BaseModel):
@@ -33,4 +35,6 @@ class LocationResponse(BaseModel):
     is_public: bool = True
     order_index: int = 0
     asset_count: int = 0
+    department_ids: list[int] = []
+    department_names: list[str] = []
     created_at: datetime

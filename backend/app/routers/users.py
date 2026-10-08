@@ -16,6 +16,17 @@ router = APIRouter(prefix="/api/v1/users", tags=["Usuários"])
 def _format_user_response(user: User) -> dict:
     role_str = user.role.value if isinstance(user.role, UserRole) else str(user.role)
     user_roles = user.roles if (user.roles and isinstance(user.roles, list)) else [role_str]
+    is_admin = role_str == "admin" or "admin" in user_roles
+    
+    if is_admin:
+        user_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"]
+    elif user.allowed_modules is not None:
+        user_modules = list(user.allowed_modules)
+    elif "technician" in user_roles or role_str == "technician" or "tecnico" in user_roles:
+        user_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports"]
+    else:
+        user_modules = ["tickets"]
+
     return {
         "id": user.id,
         "ad_username": user.ad_username,
@@ -26,6 +37,7 @@ def _format_user_response(user: User) -> dict:
         "phone": user.phone,
         "role": role_str,
         "roles": user_roles,
+        "allowed_modules": user_modules,
         "is_active": user.is_active,
         "department_id": user.department_id,
         "department_name": user.department.name if user.department else None,
@@ -152,6 +164,9 @@ def update_user(
 
     if "role" in update_data and update_data["role"]:
         user.role = UserRole(update_data["role"])
+
+    if "allowed_modules" in update_data:
+        user.allowed_modules = update_data.pop("allowed_modules")
 
     for field, value in update_data.items():
         setattr(user, field, value)

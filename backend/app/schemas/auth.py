@@ -14,6 +14,7 @@ class TokenResponse(BaseModel):
     display_name: str
     role: str
     roles: list[str] = ["user"]
+    allowed_modules: list[str] = []
     can_change_password: bool = False
 
 
