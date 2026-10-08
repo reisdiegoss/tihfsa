@@ -4,7 +4,7 @@ import {
   Search, Monitor, HardDrive, Wifi, Phone, Plus, Server, 
   CheckCircle, AlertTriangle, AlertCircle, RefreshCw, CloudDownload, 
   X, Edit3, Trash2, Tag, Cpu, MapPin, Hash, ShieldAlert, Layers, Activity, Bell, Volume2,
-  User, Building, ChevronDown, Check, Key, Package
+  User, Building, ChevronDown, Check, Key, Package, RotateCcw
 } from "lucide-react";
 import api from "../../api/client";
 import ZabbixItemsConfigModal from "../../components/ZabbixItemsConfigModal";
@@ -1933,6 +1933,23 @@ export default function Assets() {
               <option key={loc.id} value={loc.id}>📍 {loc.name}</option>
             ))}
           </select>
+
+          {/* Botão Limpar Filtros */}
+          {(searchTerm !== "" || selectedStatus !== "Todos" || selectedType !== "Todos" || selectedLocation !== "Todas") && (
+            <button
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedStatus("Todos");
+                setSelectedType("Todos");
+                setSelectedLocation("Todas");
+              }}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+              title="Redefinir todos os filtros de busca"
+            >
+              <RotateCcw size={13} className="text-slate-500" />
+              <span>Limpar Filtros</span>
+            </button>
+          )}
 
           <span className="text-xs font-bold text-slate-400 ml-2">
             Exibindo: <span className="text-slate-900 font-black">{filteredAssets.length}</span> ativos

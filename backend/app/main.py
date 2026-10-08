@@ -271,6 +271,20 @@ async def lifespan(app: FastAPI):
                     last_attempt_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS agent_metrics_history (
+                    id SERIAL PRIMARY KEY,
+                    hostname VARCHAR(150) NOT NULL,
+                    cpu_usage_pct INTEGER,
+                    ram_used_mb INTEGER,
+                    ram_total_mb INTEGER,
+                    ram_usage_pct NUMERIC(5,2),
+                    disk_metrics JSONB,
+                    uptime_hours NUMERIC(8,1),
+                    status VARCHAR(20) DEFAULT 'online' NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_hostname ON agent_metrics_history(hostname);
+                CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_created_at ON agent_metrics_history(created_at);
             """))
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS system_settings (

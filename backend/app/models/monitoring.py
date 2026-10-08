@@ -45,9 +45,34 @@ class AgentCheckin(Base):
 
     @property
     def is_online(self) -> bool:
-        """Considera online se enviou sinal nos últimos 180 segundos (3 minutos)."""
+        """Considera online se enviou sinal nos últimos 1200 segundos (20 minutos), cobrindo o ciclo de 15 minutos da tarefa agendada."""
         if not self.last_seen_at:
             return False
         now = datetime.now(timezone.utc)
         diff_seconds = (now - self.last_seen_at).total_seconds()
-        return diff_seconds <= 180
+        return diff_seconds <= 1200
+
+
+class AgentMetricsHistory(Base):
+    """
+    Armazena amostras periódicas de telemetria enviadas pelo agente para histórico de
+    desempenho (evolução temporal de CPU, RAM e Disco) e emissão de relatórios de upgrade.
+    """
+    __tablename__ = "agent_metrics_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    hostname = Column(String(150), index=True, nullable=False)
+    cpu_usage_pct = Column(Integer, nullable=True)
+    ram_used_mb = Column(Integer, nullable=True)
+    ram_total_mb = Column(Integer, nullable=True)
+    ram_usage_pct = Column(Float, nullable=True)
+    disk_metrics = Column(JSON, nullable=True)
+    uptime_hours = Column(Float, nullable=True)
+    status = Column(String(20), default="online", nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+        nullable=False,
+    )
+

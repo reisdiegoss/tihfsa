@@ -15,7 +15,8 @@ from app.auth.dependencies import get_current_user, require_technician
 from app.config import settings
 from app.database import get_db
 from app.models.asset import Asset
-from app.models.monitoring import AgentCheckin
+from app.models.monitoring import AgentCheckin, AgentMetricsHistory
+from app.models.ticket import Ticket
 from app.models.user import User
 from app.services.sla_service import get_helpdesk_monitoring_summary
 
@@ -78,6 +79,65 @@ class AgentMachineResponse(BaseModel):
     device_type: Optional[str] = None
     assigned_user_id: Optional[int] = None
     assigned_user_name: Optional[str] = None
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+
+
+class AgentAssignPayload(BaseModel):
+    assigned_user_id: Optional[int] = None
+    device_type: Optional[str] = None
+    asset_name: Optional[str] = None
+
+
+class MachineTicketHistoryItem(BaseModel):
+    id: int
+    title: str
+    status: str
+    priority: str
+    technician_name: Optional[str] = None
+    requester_name: Optional[str] = None
+    created_at: datetime
+    solved_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    closure_reason: Optional[str] = None
+
+
+class MachineMetricsHistoryItem(BaseModel):
+    id: int
+    cpu_usage_pct: Optional[int] = None
+    ram_used_mb: Optional[int] = None
+    ram_total_mb: Optional[int] = None
+    ram_usage_pct: Optional[float] = None
+    disk_metrics: Optional[list[dict]] = None
+    uptime_hours: Optional[float] = None
+    status: str
+    created_at: datetime
+
+
+class MachineHardwareRecommendation(BaseModel):
+    type: str  # "warning" | "danger" | "success" | "info"
+    title: str
+    description: str
+
+
+class MachineHistoryResponse(BaseModel):
+    machine_id: int
+    hostname: str
+    asset_id: Optional[int] = None
+    asset_tag: Optional[str] = None
+    device_type: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    assigned_user_name: Optional[str] = None
+    department_name: Optional[str] = None
+    is_online: bool
+    last_seen_at: datetime
+    tickets_count: int
+    tickets: list[MachineTicketHistoryItem]
+    metrics_count: int
+    metrics_history: list[MachineMetricsHistoryItem]
+    hardware_recommendations: list[MachineHardwareRecommendation]
 
 
 class AgentSummaryResponse(BaseModel):
@@ -402,6 +462,24 @@ def agent_checkin(
     db.commit()
     db.refresh(checkin)
 
+    # 5. Salva amostra no histórico temporal de telemetria
+    try:
+        metrics_entry = AgentMetricsHistory(
+            hostname=hostname_clean,
+            cpu_usage_pct=data.cpu_usage_pct,
+            ram_used_mb=data.ram_used_mb,
+            ram_total_mb=data.ram_total_mb,
+            ram_usage_pct=data.ram_usage_pct,
+            disk_metrics=disks_normalized,
+            uptime_hours=data.uptime_hours,
+            status=calculated_status,
+            created_at=now,
+        )
+        db.add(metrics_entry)
+        db.commit()
+    except Exception:
+        db.rollback()
+
     return {
         "status": "ok",
         "hostname": checkin.hostname,
@@ -418,7 +496,7 @@ def list_agent_machines(
 ):
     """
     Retorna a lista de todas as estações com o agente instalado,
-    indicando status Online/Offline (limiar de 3 minutos), recursos de hardware e usuário ativo.
+    indicando status Online/Offline (limiar de 20 minutos), recursos de hardware e usuário ativo.
     """
     now = datetime.now(timezone.utc)
     records = db.query(AgentCheckin).order_by(AgentCheckin.last_seen_at.desc()).all()
@@ -430,7 +508,8 @@ def list_agent_machines(
 
     for r in records:
         diff_seconds = max(0, int((now - r.last_seen_at).total_seconds()))
-        is_online = diff_seconds <= 180
+        # Tolerância de 20 minutos (1200s) para o ciclo de 15 minutos do agendador do Windows
+        is_online = diff_seconds <= 1200
 
         if not is_online:
             item_status = "offline"
@@ -442,6 +521,13 @@ def list_agent_machines(
         else:
             item_status = "online"
             online_count += 1
+
+        dept_id = None
+        dept_name = None
+        if r.asset and r.asset.assigned_user:
+            dept_id = r.asset.assigned_user.department_id
+            if r.asset.assigned_user.department:
+                dept_name = r.asset.assigned_user.department.name
 
         machine_list.append(
             AgentMachineResponse(
@@ -470,6 +556,8 @@ def list_agent_machines(
                 device_type=r.asset.type if r.asset else None,
                 assigned_user_id=r.asset.assigned_user_id if r.asset else None,
                 assigned_user_name=r.asset.assigned_user.display_name if (r.asset and r.asset.assigned_user) else None,
+                department_id=dept_id,
+                department_name=dept_name,
             )
         )
 
@@ -479,6 +567,271 @@ def list_agent_machines(
         warning_count=warning_count,
         offline_count=offline_count,
         machines=machine_list,
+    )
+
+
+@router.patch("/agent/machines/{machine_id}/assign", summary="Atribuir colaborador, tipo ou nome da máquina")
+def assign_agent_machine(
+    machine_id: int,
+    payload: AgentAssignPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    checkin = db.query(AgentCheckin).filter(AgentCheckin.id == machine_id).first()
+    if not checkin:
+        raise HTTPException(status_code=404, detail="Estação não encontrada.")
+
+    asset = checkin.asset
+    if not asset:
+        asset = db.query(Asset).filter(Asset.name.ilike(checkin.hostname)).first()
+        if not asset:
+            asset = Asset(
+                name=checkin.hostname,
+                type=payload.device_type or "Desktop",
+                category_id=1,
+                is_active=True,
+            )
+            db.add(asset)
+            db.flush()
+        checkin.asset_id = asset.id
+
+    if payload.device_type:
+        asset.type = payload.device_type
+    if payload.asset_name:
+        asset.name = payload.asset_name
+    if payload.assigned_user_id is not None:
+        if payload.assigned_user_id == 0:
+            asset.assigned_user_id = None
+        else:
+            user = db.query(User).filter(User.id == payload.assigned_user_id).first()
+            if not user:
+                raise HTTPException(status_code=400, detail="Usuário informado não existe.")
+            asset.assigned_user_id = user.id
+            checkin.logged_user = f"{user.display_name} ({user.ad_username or ''})"
+
+    db.commit()
+    return {"status": "ok", "message": "Atribuição atualizada com sucesso."}
+
+
+@router.get("/agent/machines/{machine_id}/history", response_model=MachineHistoryResponse, summary="Histórico de chamados, métricas e diagnóstico do equipamento")
+def get_agent_machine_history(
+    machine_id: int,
+    limit_metrics: int = Query(60, ge=5, le=300),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    checkin = db.query(AgentCheckin).filter(AgentCheckin.id == machine_id).first()
+    if not checkin:
+        raise HTTPException(status_code=404, detail="Estação não encontrada.")
+
+    now = datetime.now(timezone.utc)
+    diff_seconds = max(0, int((now - checkin.last_seen_at).total_seconds()))
+    is_online = diff_seconds <= 1200
+
+    asset = checkin.asset
+    assigned_user = asset.assigned_user if (asset and asset.assigned_user) else None
+    dept_name = None
+    if assigned_user and assigned_user.department:
+        dept_name = assigned_user.department.name
+
+    # 1. Busca chamados vinculados ao ativo ou pelo hostname
+    tickets_filter_conditions = [
+        Ticket.title.ilike(f"%{checkin.hostname}%"),
+        Ticket.description.ilike(f"%{checkin.hostname}%"),
+    ]
+    if asset:
+        tickets_filter_conditions.append(Ticket.asset_id == asset.id)
+
+    tickets_query = (
+        db.query(Ticket)
+        .filter(or_(*tickets_filter_conditions))
+        .order_by(Ticket.created_at.desc())
+        .limit(50)
+    )
+
+    tickets_list = []
+    for t in tickets_query.all():
+        tickets_list.append(
+            MachineTicketHistoryItem(
+                id=t.id,
+                title=t.title,
+                status=t.status.value if hasattr(t.status, "value") else str(t.status),
+                priority=t.priority.value if hasattr(t.priority, "value") else str(t.priority),
+                technician_name=t.technician.display_name if t.technician else None,
+                requester_name=t.requester.display_name if t.requester else None,
+                created_at=t.created_at,
+                solved_at=t.solved_at,
+                closed_at=t.closed_at,
+                closure_reason=t.closure_reason,
+            )
+        )
+
+    # 2. Busca histórico de métricas de telemetria
+    metrics_query = (
+        db.query(AgentMetricsHistory)
+        .filter(AgentMetricsHistory.hostname.ilike(checkin.hostname))
+        .order_by(AgentMetricsHistory.created_at.desc())
+        .limit(limit_metrics)
+        .all()
+    )
+
+    metrics_list = []
+    # Inverte para ficar cronológico (do mais antigo para o mais recente)
+    for m in reversed(metrics_query):
+        metrics_list.append(
+            MachineMetricsHistoryItem(
+                id=m.id,
+                cpu_usage_pct=m.cpu_usage_pct,
+                ram_used_mb=m.ram_used_mb,
+                ram_total_mb=m.ram_total_mb,
+                ram_usage_pct=m.ram_usage_pct,
+                disk_metrics=m.disk_metrics,
+                uptime_hours=m.uptime_hours,
+                status=m.status,
+                created_at=m.created_at,
+            )
+        )
+
+    # Se a tabela de histórico ainda não tem amostras gravadas, inclui o snapshot atual
+    if not metrics_list:
+        metrics_list.append(
+            MachineMetricsHistoryItem(
+                id=checkin.id,
+                cpu_usage_pct=checkin.cpu_usage_pct,
+                ram_used_mb=checkin.ram_used_mb,
+                ram_total_mb=checkin.ram_total_mb,
+                ram_usage_pct=checkin.ram_usage_pct,
+                disk_metrics=checkin.disk_metrics,
+                uptime_hours=checkin.uptime_hours,
+                status=checkin.status,
+                created_at=checkin.last_seen_at,
+            )
+        )
+
+    # 3. Diagnóstico Inteligente & Recomendações de Upgrade
+    recommendations = []
+
+    # Avaliação de RAM
+    curr_ram_pct = checkin.ram_usage_pct or 0
+    curr_ram_total_mb = checkin.ram_total_mb or 0
+    curr_ram_gb = round(curr_ram_total_mb / 1024) if curr_ram_total_mb else 0
+
+    if curr_ram_pct >= 85 or (curr_ram_gb <= 8 and curr_ram_pct >= 75):
+        suggested_gb = max(16, curr_ram_gb * 2) if curr_ram_gb else 16
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="danger",
+                title="Gargalo Crítico de Memória RAM",
+                description=f"A estação opera com {curr_ram_pct}% de uso de RAM (capacidade total: {curr_ram_gb} GB). Indicado upgrade para no mínimo {suggested_gb} GB para eliminar congelamentos e lentidões operacionais.",
+            )
+        )
+    elif curr_ram_pct >= 75:
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="warning",
+                title="Atenção ao Uso de Memória RAM",
+                description=f"Consumo de memória em {curr_ram_pct}%. Avaliar expansão de módulos RAM para evitar gargalos em multitarefas.",
+            )
+        )
+    else:
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="success",
+                title="Memória RAM Adequada",
+                description=f"Capacidade de {curr_ram_gb} GB com uso confortável de {curr_ram_pct}%.",
+            )
+        )
+
+    # Avaliação de Armazenamento / Disco
+    disks = checkin.disk_metrics or []
+    has_critical_disk = False
+    for d in disks:
+        if isinstance(d, dict):
+            drive = d.get("drive", "C:")
+            used_pct = d.get("used_pct", 0)
+            free_gb = d.get("free_gb", 0)
+            if used_pct >= 88:
+                has_critical_disk = True
+                recommendations.append(
+                    MachineHardwareRecommendation(
+                        type="danger",
+                        title=f"Espaço Insuficiente na Unidade {drive}",
+                        description=f"A unidade {drive} está com {used_pct}% de ocupação e apenas {free_gb} GB livres. Recomenda-se aquisição imediata de SSD de maior capacidade ou expansão de volume.",
+                    )
+                )
+            elif used_pct >= 75:
+                recommendations.append(
+                    MachineHardwareRecommendation(
+                        type="warning",
+                        title=f"Atenção ao Espaço na Unidade {drive}",
+                        description=f"A unidade {drive} atingiu {used_pct}% de ocupação ({free_gb} GB livres). Planejar limpeza de arquivos temporários ou aquisição de storage.",
+                    )
+                )
+
+    if not has_critical_disk and disks:
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="success",
+                title="Armazenamento Saudável",
+                description="Todas as unidades de disco operam dentro das margens seguras de espaço livre.",
+            )
+        )
+
+    # Avaliação de CPU
+    cpu_pct = checkin.cpu_usage_pct or 0
+    if cpu_pct >= 85:
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="warning",
+                title="Sobrecarga de Processamento (CPU)",
+                description=f"Carga de CPU elevada ({cpu_pct}%). Se os picos forem persistentes, avaliar upgrade de processador ou auditoria de processos em segundo plano.",
+            )
+        )
+    else:
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="success",
+                title="Processador Estável",
+                description=f"Carga de CPU em {cpu_pct}%, dentro dos parâmetros normais de operação.",
+            )
+        )
+
+    # Avaliação de Incidentes / Chamados
+    if len(tickets_list) >= 3:
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="danger",
+                title=f"Alta Frequência de Incidentes ({len(tickets_list)} chamados)",
+                description="Equipamento com múltiplos chamados registrados no Helpdesk. Recomendada auditoria física preventiva ou substituição do equipamento por obsolescência.",
+            )
+        )
+    elif len(tickets_list) > 0:
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="info",
+                title=f"Chamados de Suporte Registrados ({len(tickets_list)})",
+                description="Equipamento possui histórico de atendimentos registrado na base de dados.",
+            )
+        )
+
+    return MachineHistoryResponse(
+        machine_id=checkin.id,
+        hostname=checkin.hostname,
+        asset_id=asset.id if asset else None,
+        asset_tag=asset.asset_tag if asset else None,
+        device_type=asset.type if asset else None,
+        brand=asset.brand if asset else None,
+        model=asset.model if asset else None,
+        serial_number=asset.serial_number if asset else None,
+        assigned_user_name=assigned_user.display_name if assigned_user else None,
+        department_name=dept_name,
+        is_online=is_online,
+        last_seen_at=checkin.last_seen_at,
+        tickets_count=len(tickets_list),
+        tickets=tickets_list,
+        metrics_count=len(metrics_list),
+        metrics_history=metrics_list,
+        hardware_recommendations=recommendations,
     )
 
 

@@ -878,3 +878,29 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Reenvio com 1 Clique (`/api/v1/notifications/logs/{id}/resend`)**:
         - Botão de reenvio manual na tabela e dentro do modal de detalhes. Permite reenviar instantaneamente qualquer mensagem caso o destinatário não tenha recebido ou em caso de instabilidade transitória de rede.
       - **Visualizador Completo da Mensagem**: Modal com exibição detalhada do destinatário, data, assunto, corpo completo e mensagem técnica de erro retornada pelo servidor de SMTP caso tenha havido falha.
+
+    - **Monitoramento de Estações (Sentinel Agent), Filtros e Relatório de Hardware**:
+      - **Correção do Status Offline Indevido**:
+        - Ajustado o limiar de avaliação de presença online de 180 segundos (3 min) para 1200 segundos (20 min).
+        - Elimina falsos-positivos de estações marcadas como offline durante o intervalo de 15 minutos do Agendador de Tarefas do Windows (`schtasks`).
+        - Atualização no KPI de contadores e cards com indicação de sinal nos últimos 20 minutos.
+      - **Botão "Limpar Filtros" nas Grids (`/admin/monitoring?tab=stations` e `/admin/assets`)**:
+        - Inclusão do botão de reset com ícone `RotateCcw` tanto na aba de Estações de Trabalho quanto na grade principal do CMDB/Ativos.
+        - Reseta simultaneamente busca textual, status, tipos e setores/localizações com um único clique.
+      - **Filtros por Tipo e por Setor no Monitoramento de Estações**:
+        - Dropdown dinâmico de tipos de máquina (Servidor, Desktop, Notebook, Máquina Virtual).
+        - Dropdown de setores corporativos integrado com a tabela de departamentos.
+        - Identificação visual imediata do setor (`🏢 Setor`) no card de cada equipamento.
+      - **Atribuição Direta de Colaborador e Tipo no Card (`AssignMachineModal`)**:
+        - Endpoint `PATCH /api/v1/monitoring/agent/machines/{machine_id}/assign`.
+        - Permite vincular o colaborador e atualizar o tipo do ativo diretamente pelo card da máquina sem precisar sair do monitoramento.
+        - Sincronização automática com a conta do usuário no Active Directory e com o CMDB (`Asset.assigned_user_id`).
+      - **Histórico do Equipamento & Laudo Técnico de Desempenho (`MachineHistoryModal`)**:
+        - Endpoint `GET /api/v1/monitoring/agent/machines/{machine_id}/history`.
+        - **Persistência de Telemetria Temporal**: Criação da tabela `agent_metrics_history` armazenando CPU, RAM, discos, uptime e status cronologicamente a cada check-in.
+        - **Aba 1 — Manutenção & Chamados**: Tabela completa com histórico de chamados do helpdesk vinculados ao ativo ou ao hostname da máquina, exibindo prioridades, técnicos responsáveis, datas e desfechos/motivos de fechamento.
+        - **Aba 2 — Consumo de Hardware**: Histórico detalhado de telemetria com médias, picos de consumo e tabela cronológica de amostras de CPU, memória RAM e armazenamento.
+        - **Aba 3 — Relatório Técnico & Diagnósticos de Upgrade**: Painel oficial planejado para apresentação e aprovação de investimentos em peças:
+          - Diagnósticos automatizados com alerta visual para gargalos de RAM (> 80%), espaço crítico em disco (> 85%), picos de CPU e frequência elevada de incidentes.
+          - Parecer técnico estruturado com recomendações de compra (ex: módulo adicional de 16GB RAM, troca preventiva por SSD de 1TB).
+          - Botão de **Imprimir / Salvar PDF** integrado ao navegador com formatação limpa e profissional para a diretoria.

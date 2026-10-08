@@ -2,9 +2,12 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Monitor, RefreshCw, Search, CheckCircle2, AlertTriangle,
   Clock, HardDrive, Cpu, Terminal, Copy, Check, Trash2,
-  ExternalLink, User, Shield, Info, X, Zap, Download, Laptop, Tag
+  ExternalLink, User, Shield, Info, X, Zap, Download, Laptop, Tag,
+  RotateCcw, FileText, Building, UserCheck, Server
 } from "lucide-react";
 import api from "../../api/client";
+import AssignMachineModal from "./AssignMachineModal";
+import MachineHistoryModal from "./MachineHistoryModal";
 
 export default function StationMonitoringTab() {
   const [data, setData] = useState({
@@ -17,7 +20,19 @@ export default function StationMonitoringTab() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // 'all', 'online', 'warning', 'offline'
+  const [typeFilter, setTypeFilter] = useState("all"); // 'all', 'Servidor', 'Desktop', 'Notebook', etc.
+  const [departmentFilter, setDepartmentFilter] = useState("all"); // 'all' ou department_id
+
+  const [departmentsList, setDepartmentsList] = useState([]);
+  const [usersList, setUsersList] = useState([]);
+
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [machineToAssign, setMachineToAssign] = useState(null);
+
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [machineForHistory, setMachineForHistory] = useState(null);
+
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
@@ -37,6 +52,11 @@ export default function StationMonitoringTab() {
   useEffect(() => {
     fetchMachines();
     const interval = setInterval(fetchMachines, 15000); // Auto-refresh a cada 15s
+
+    // Carrega departamentos e colaboradores para filtros e modal de atribuição
+    api.get("/departments/").then((r) => setDepartmentsList(r.data || [])).catch(() => {});
+    api.get("/users/?is_room=false").then((r) => setUsersList(r.data || [])).catch(() => {});
+
     return () => clearInterval(interval);
   }, []);
 
@@ -56,13 +76,23 @@ export default function StationMonitoringTab() {
     setTimeout(() => setCopiedCmd(false), 3000);
   };
 
-  // Filtros
+  // Obter tipos únicos presentes na base
+  const availableTypes = useMemo(() => {
+    const types = new Set(["Servidor", "Desktop", "Notebook"]);
+    (data.machines || []).forEach((m) => {
+      if (m.device_type) types.add(m.device_type);
+    });
+    return Array.from(types);
+  }, [data.machines]);
+
+  // Filtros combinados
   const filteredMachines = useMemo(() => {
     return (data.machines || []).filter((m) => {
       const matchSearch =
         (m.hostname || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.logged_user || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.assigned_user_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.department_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.ip_address || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.brand || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.model || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -71,13 +101,34 @@ export default function StationMonitoringTab() {
 
       if (!matchSearch) return false;
 
-      if (statusFilter === "online") return m.is_online && m.status !== "warning";
-      if (statusFilter === "warning") return m.status === "warning";
-      if (statusFilter === "offline") return !m.is_online;
+      if (statusFilter === "online") {
+        if (!m.is_online || m.status === "warning") return false;
+      } else if (statusFilter === "warning") {
+        if (m.status !== "warning") return false;
+      } else if (statusFilter === "offline") {
+        if (m.is_online) return false;
+      }
+
+      if (typeFilter !== "all") {
+        if ((m.device_type || "").toLowerCase() !== typeFilter.toLowerCase()) return false;
+      }
+
+      if (departmentFilter !== "all") {
+        if (String(m.department_id) !== String(departmentFilter)) return false;
+      }
 
       return true;
     });
-  }, [data.machines, searchTerm, statusFilter]);
+  }, [data.machines, searchTerm, statusFilter, typeFilter, departmentFilter]);
+
+  const hasActiveFilters = searchTerm !== "" || statusFilter !== "all" || typeFilter !== "all" || departmentFilter !== "all";
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("all");
+    setTypeFilter("all");
+    setDepartmentFilter("all");
+  };
 
   const [selectedOs, setSelectedOs] = useState("windows"); // 'windows' | 'linux'
 
@@ -229,7 +280,7 @@ export default function StationMonitoringTab() {
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
           </div>
           <p className="text-2xl font-black text-emerald-700 mt-2">{data.online_count - data.warning_count}</p>
-          <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Sinal nos últimos 3 min</p>
+          <p className="text-[11px] font-semibold text-slate-400 mt-0.5">Sinal nos últimos 20 min</p>
         </div>
 
         {/* Alerta / Atenção */}
@@ -267,16 +318,16 @@ export default function StationMonitoringTab() {
         </div>
       </div>
 
-      {/* ─── TOOLBAR & AÇÕES ─── */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+      {/* ─── TOOLBAR & FILTROS ─── */}
+      <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2 flex-1 max-w-md relative">
           <Search size={16} className="absolute left-3 text-slate-400 pointer-events-none" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por Hostname, Usuário do Windows, IP..."
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500"
+            placeholder="Buscar por Hostname, Usuário, Setor, IP..."
+            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500"
           />
           {searchTerm && (
             <button onClick={() => setSearchTerm("")} className="absolute right-2.5 text-slate-400 hover:text-slate-600">
@@ -285,13 +336,56 @@ export default function StationMonitoringTab() {
           )}
         </div>
 
-        <div className="flex items-center gap-2.5">
+        {/* Filtros por Status, Tipo e Setor */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Filtro por Tipo */}
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
+            title="Filtrar por tipo de equipamento"
+          >
+            <option value="all">Todos os Tipos</option>
+            {availableTypes.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+
+          {/* Filtro por Setor */}
+          <select
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer max-w-[160px] truncate"
+            title="Filtrar por setor/departamento"
+          >
+            <option value="all">Todos os Setores</option>
+            {departmentsList.map((d) => (
+              <option key={d.id} value={d.id}>🏢 {d.name}</option>
+            ))}
+          </select>
+
+          {/* Botão Limpar Filtros */}
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+              title="Redefinir filtros de busca"
+            >
+              <RotateCcw size={13} className="text-slate-500" />
+              <span>Limpar Filtros</span>
+            </button>
+          )}
+
+          <span className="text-xs font-bold text-slate-400 hidden lg:inline px-1">
+            Exibindo <strong className="text-slate-800 font-black">{filteredMachines.length}</strong> de {data.total_machines}
+          </span>
+
           <button
             onClick={() => setShowInstallModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs hover:from-blue-700 hover:to-indigo-700 transition-all shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs hover:from-blue-700 hover:to-indigo-700 transition-all shadow-xs cursor-pointer ml-auto xl:ml-0"
           >
-            <Terminal size={15} />
-            <span>Instalar Agente</span>
+            <Terminal size={14} />
+            <span className="hidden sm:inline">Instalar Agente</span>
           </button>
 
           <button
@@ -410,15 +504,23 @@ export default function StationMonitoringTab() {
                         </p>
                       </div>
                     </div>
-                    {m.assigned_user_name ? (
-                      <span className="text-[10px] font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md truncate shrink-0 max-w-[140px]" title={`Vinculado a: ${m.assigned_user_name}`}>
-                        👤 {m.assigned_user_name}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold bg-slate-200/60 text-slate-500 px-1.5 py-0.5 rounded text-center shrink-0">
-                        Não atribuído
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {m.department_name && (
+                        <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md truncate max-w-[140px] flex items-center gap-1 shrink-0" title={`Setor: ${m.department_name}`}>
+                          <Building size={10} className="text-blue-500 shrink-0" />
+                          <span className="truncate">{m.department_name}</span>
+                        </span>
+                      )}
+                      {m.assigned_user_name ? (
+                        <span className="text-[10px] font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md truncate shrink-0 max-w-[140px]" title={`Vinculado a: ${m.assigned_user_name}`}>
+                          👤 {m.assigned_user_name}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold bg-slate-200/60 text-slate-500 px-1.5 py-0.5 rounded text-center shrink-0">
+                          Não atribuído
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Informações de Hardware & CMDB */}
@@ -507,6 +609,35 @@ export default function StationMonitoringTab() {
                   <span>
                     {m.seconds_ago < 60 ? "Visto agora" : `Visto há ${Math.round(m.seconds_ago / 60)} min`}
                   </span>
+                </div>
+
+                {/* Botões de Ação do Card: Atribuir Colaborador e Histórico/Relatório */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMachineToAssign(m);
+                      setShowAssignModal(true);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 text-xs font-bold transition-all cursor-pointer"
+                    title="Atribuir colaborador responsável e tipo de equipamento"
+                  >
+                    <UserCheck size={13} className="text-blue-600" />
+                    <span>Atribuir</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMachineForHistory(m);
+                      setShowHistoryModal(true);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-black transition-all cursor-pointer shadow-2xs"
+                    title="Ver histórico de chamados, telemetria de hardware e emitir laudo de upgrade"
+                  >
+                    <FileText size={13} className="text-indigo-600" />
+                    <span>Histórico & Relatório</span>
+                  </button>
                 </div>
               </div>
             );
@@ -708,6 +839,28 @@ sudo /usr/local/bin/tihfsa-agent.sh`}</pre>
           </div>
         </div>
       )}
+
+      {/* ─── MODAL DE ATRIBUIÇÃO DE COLABORADOR & TIPO ─── */}
+      <AssignMachineModal
+        isOpen={showAssignModal}
+        onClose={() => {
+          setShowAssignModal(false);
+          setMachineToAssign(null);
+        }}
+        machine={machineToAssign}
+        onSaved={fetchMachines}
+        usersList={usersList}
+      />
+
+      {/* ─── MODAL DE HISTÓRICO & RELATÓRIO DO EQUIPAMENTO ─── */}
+      <MachineHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => {
+          setShowHistoryModal(false);
+          setMachineForHistory(null);
+        }}
+        machine={machineForHistory}
+      />
     </div>
   );
 }
