@@ -14,6 +14,7 @@ import ZabbixPanel from "./pages/admin/ZabbixPanel";
 import MonitoringHub from "./pages/admin/MonitoringHub";
 import PublicHelpdeskTv from "./pages/public/PublicHelpdeskTv";
 import PublicTicketForm from "./pages/public/PublicTicketForm";
+import CSATDashboard from "./pages/admin/CSATDashboard";
 
 // Client App Pages (Colaboradores / Vistorias)
 import ClientHome from "./pages/client/ClientHome";
@@ -97,6 +98,8 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="tickets" element={<TicketList />} />
             <Route path="tickets/new" element={<NewTicket />} />
+            <Route path="csat" element={<CSATDashboard />} />
+            <Route path="avaliacoes" element={<CSATDashboard />} />
             <Route path="assets" element={<Assets />} />
             <Route path="qrcodes" element={<QRCodeManager />} />
             <Route path="qrcodes/scan" element={<QRCodeScannerPage />} />

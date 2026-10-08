@@ -827,10 +827,24 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Layout de E-mail Corporativo "Bulletproof MSO"**:
         - **Compatibilidade Absoluta com Microsoft Outlook**: Estruturado com tabelas aninhadas e condicionais MSO (`<!--[if mso]>`), eliminando quebras visuais causadas pelo motor de renderização Word do Outlook Desktop.
         - **Suporte a Dark Mode**: Meta tags `color-scheme: light dark` e atributos de cor de fundo sólidos para visualização uniforme em clientes mobile (iOS/Android) e webmail.
-      - **Pesquisa de Satisfação CSAT (1 a 5 Estrelas)**:
+      - **Pesquisa de Satisfação CSAT (1 a 5 Estrelas) & Dashboard de Desempenho**:
         - **Fluxo sem Senha via Magic Token**: Ao solucionar ou fechar um chamado, o solicitante recebe um e-mail com 5 estrelas clicáveis (Péssimo a Excelente) geradas com token exclusivo (`uuid.uuid4().hex`).
-        - **Página Pública Dedicada (`/avaliacao/:token`)**: Permite votar e opcionalmente deixar um comentário com elogio ou sugestão.
-        - **Dashboard e Relatórios**: Indicadores consolidados disponíveis em `GET /api/v1/reports/csat` para acompanhamento do percentual de satisfação do suporte.
+        - **Página Pública Dedicada (`/avaliacao/:token` e `/csat/:token`)**: Permite votar em 1 clique e opcionalmente deixar um comentário com elogio, crítica ou sugestão de melhoria.
+        - **Módulo e Dashboard Administrativo de Avaliações (`/admin/csat` e `/admin/avaliacoes`)**:
+          - **Cards de Métricas Executivas**: Média Geral de Satisfação (★ 1 a 5), Taxa de Aprovação (% de notas 4 e 5), Total de Avaliações Recebidas e Taxa de Adesão/Resposta sobre chamados encerrados.
+          - **Gráfico de Distribuição das Notas**: Barras de 5★ (Excelente) a 1★ (Insatisfeito) com contagem e percentual, atuando como filtro interativo de 1 clique.
+          - **Ranking e Análise de Desempenho da Equipe Técnica**: Tabela consolidada com posição no ranking, nome do atendente, total de atendimentos avaliados, nota média individual, taxa de aprovação (%) e filtro rápido para auditar os chamados daquele técnico.
+          - **Histórico e Feed Detalhado de Avaliações**: Cards elegantes com nota em estrelas, número do chamado com link clicável para abertura imediata (`/admin/tickets?ticketId={id}`), solicitante, departamento, atendente responsável, tempo decorrido e caixa de citação para comentários/elogios.
+          - **Filtros Avançados**: Filtro simultâneo por Estrelas (Todas a 1★), Técnico Responsável, Toggle "Apenas com comentários" e Busca Textual em tempo real por solicitante, título do chamado ou palavra-chave no comentário.
+          - **Permissões de Acesso**: Vinculado ao módulo de `tickets` e `all`, garantindo que técnicos autorizados e administradores gerenciem e visualizem a qualidade sem restrições indevidas.
+        - **Rate de Atendimento em Tempo Real no NOC de Chamados (`/tv/helpdesk`)**:
+          - **Card de Destaque no Grid de KPIs**: Card dedicado no topo do painel da TV NOC (`PublicHelpdeskTv.jsx`) exibindo a nota média em destaque (ex: `★ 5.0 / 5.0`), total de avaliações recebidas e % de aprovação em tempo real.
+          - **Coloração Dinâmica de Alerta**: Verde esmeralda para médias >= 4.5 (Excelente), azul/âmbar para médias regulares e vermelho para médias baixas.
+          - **Rodapé Operacional**: Indicador de CSAT em tempo real incorporado no rodapé da TV ao lado do MTTR (Tempo Médio de Resolução).
+        - **APIs de Relatórios e Métricas**:
+          - `GET /api/v1/reports/csat`: Retorna indicadores agregados, taxa de resposta, distribuição 1-5 e ranking individual de desempenho dos técnicos (`technicians_performance`).
+          - `GET /api/v1/reports/csat/surveys`: Endpoint de listagem paginada com parâmetros `rating`, `technician_id`, `has_comment`, `search`, `limit` e `offset`.
+          - `GET /api/v1/monitoring/helpdesk/summary`: Inclui `csat_average_rating`, `csat_satisfaction_pct` e `csat_answered_count` dentro dos `kpis` consumidos pelo NOC e TV.
       - **Garantia de Atendimento & Reabertura de Chamado (X Dias)**:
         - **Prazo Configurável**: Definido em `ticket_warranty_days` (1 a 90 dias, padrão 7 dias).
         - **Mecânica de Garantia**: Dentro da janela de garantia após o fechamento, o colaborador pode reabrir o chamado clicando em *"O problema voltou? Reabrir"* informando a justificativa.

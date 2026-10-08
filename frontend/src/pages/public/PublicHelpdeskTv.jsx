@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Tv, Clock, AlertTriangle, CheckCircle2, Volume2, VolumeX, Maximize2, Minimize2, 
   RefreshCw, UserCheck, UserX, Flame, Users, Layers, Activity, ArrowUpRight, 
-  ShieldAlert, Sparkles, Building2, HelpCircle, BellRing, MessageSquare, X
+  ShieldAlert, Sparkles, Building2, HelpCircle, BellRing, MessageSquare, X, Star
 } from "lucide-react";
 import api from "../../api/client";
 
@@ -759,7 +759,7 @@ export default function PublicHelpdeskTv() {
       {/* ========================================================
           KPI CARDS GRID (HIGH CONTRAST & VISIBILITY FOR TV)
           ======================================================== */}
-      <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
+      <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-4">
         
         {/* Total Abertos */}
         <div className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
@@ -860,6 +860,32 @@ export default function PublicHelpdeskTv() {
             {kpis.sla_estourado_count ?? 0}
           </div>
           <div className="text-[11px] font-semibold text-red-400 mt-1">Prazo vencido</div>
+        </div>
+
+        {/* Rate CSAT / Satisfação dos Chamados */}
+        <div className={`rounded-2xl p-4 flex flex-col justify-between shadow-lg border relative overflow-hidden transition-all ${
+          (kpis.csat_average_rating ?? 5.0) >= 4.5
+            ? "bg-amber-950/20 border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.15)]"
+            : (kpis.csat_average_rating ?? 5.0) >= 3.5
+            ? "bg-blue-950/20 border-blue-500/40"
+            : "bg-red-950/30 border-red-500/50"
+        }`}>
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider">Rate CSAT</span>
+            <Star size={18} className="text-amber-400 fill-amber-400" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-3xl xl:text-4xl font-black font-mono ${
+              (kpis.csat_average_rating ?? 5.0) >= 4.5 ? "text-amber-400" : (kpis.csat_average_rating ?? 5.0) >= 3.5 ? "text-blue-400" : "text-red-400"
+            }`}>
+              {kpis.csat_average_rating ? Number(kpis.csat_average_rating).toFixed(1) : "5.0"}
+            </span>
+            <span className="text-xs font-bold text-slate-400">★ / 5.0</span>
+          </div>
+          <div className="text-[11px] font-semibold text-slate-400 mt-1 flex items-center justify-between">
+            <span>{kpis.csat_answered_count ?? 0} {Number(kpis.csat_answered_count) === 1 ? "aval." : "avaliações"}</span>
+            <span className="text-emerald-400 font-bold">{kpis.csat_satisfaction_pct ?? 100}% sat.</span>
+          </div>
         </div>
 
       </section>
@@ -1078,7 +1104,12 @@ export default function PublicHelpdeskTv() {
             {/* SLA ITIL Note */}
             <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
               <span>SLA Operacional Padrão TIHFSA</span>
-              <span className="text-blue-400 font-semibold">MTTR: {kpis.tempo_medio_resolucao_horas || 0}h</span>
+              <div className="flex items-center gap-4">
+                <span className="text-amber-400 font-semibold flex items-center gap-1">
+                  <Star size={12} className="fill-amber-400" /> CSAT: {kpis.csat_average_rating ? Number(kpis.csat_average_rating).toFixed(1) : "5.0"} ({kpis.csat_satisfaction_pct ?? 100}%)
+                </span>
+                <span className="text-blue-400 font-semibold">MTTR: {kpis.tempo_medio_resolucao_horas || 0}h</span>
+              </div>
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, QrCode, LogOut, Settings } from "lucide-react";
+import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, QrCode, LogOut, Settings, Star } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function Sidebar() {
@@ -13,6 +13,7 @@ export default function Sidebar() {
     { name: "Dashboard", path: "/admin", icon: LayoutDashboard, module: "all" },
     { name: "Chamados", path: "/admin/tickets", icon: Ticket, module: "tickets" },
     { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle, module: "tickets" },
+    { name: "Avaliações & CSAT", path: "/admin/csat", icon: Star, module: "tickets" },
     { name: "Ativos", path: "/admin/assets", icon: Monitor, module: "assets" },
     { name: "QR Codes", path: "/admin/qrcodes", icon: QrCode, module: "qrcodes" },
     { name: "Monitoramento", path: "/admin/monitoring", icon: Activity, module: "monitoring" },

@@ -12,6 +12,8 @@ from app.models.sla import SLAConfig, SLACategoryRule
 from app.models.user import User, UserRole
 from app.models.department import Department
 from app.models.category import Category
+from app.models.satisfaction_survey import TicketSatisfactionSurvey
+
 
 
 DAY_NAME_MAP = {
@@ -312,6 +314,18 @@ def get_helpdesk_monitoring_summary(db: Session, period_days: int = 7) -> dict:
 
     mttr_minutes = round(total_resolution_minutes / resolved_count) if resolved_count > 0 else 0
 
+    # 2.1 Avaliações de Satisfação CSAT (Rate de Atendimento)
+    answered_surveys = db.query(TicketSatisfactionSurvey).filter(TicketSatisfactionSurvey.answered_at != None).all()
+    csat_answered_count = len(answered_surveys)
+    if csat_answered_count > 0:
+        csat_ratings = [s.rating for s in answered_surveys if s.rating is not None]
+        csat_average_rating = round(sum(csat_ratings) / len(csat_ratings), 1) if csat_ratings else 5.0
+        csat_satisfied_count = sum(1 for r in csat_ratings if r >= 4)
+        csat_satisfaction_pct = round((csat_satisfied_count / len(csat_ratings)) * 100, 1) if csat_ratings else 100.0
+    else:
+        csat_average_rating = 5.0
+        csat_satisfaction_pct = 100.0
+
     # 3. Carga por Técnico
     technicians = db.query(User).filter(
         (User.role.in_([UserRole.TECHNICIAN, UserRole.ADMIN])) |
@@ -445,6 +459,16 @@ def get_helpdesk_monitoring_summary(db: Session, period_days: int = 7) -> dict:
             "mttr_minutes": mttr_minutes,
             "tempo_medio_resolucao_horas": round(mttr_minutes / 60, 1),
             "period_days": period_days,
+            "csat_average_rating": csat_average_rating,
+            "csat_satisfaction_pct": csat_satisfaction_pct,
+            "csat_answered_count": csat_answered_count,
+            "taxa_satisfacao_pct": csat_satisfaction_pct,
+            "media_estrelas_csat": csat_average_rating,
+        },
+        "csat": {
+            "average_rating": csat_average_rating,
+            "satisfaction_pct": csat_satisfaction_pct,
+            "answered_count": csat_answered_count,
         },
         "urgent_queue": urgent_queue,
         "technicians_load": tech_stats,
