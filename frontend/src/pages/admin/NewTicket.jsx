@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, ArrowLeft, MapPin, UploadCloud, X, File as FileIcon } from "lucide-react";
+import { Send, ArrowLeft, MapPin, UploadCloud, X, File as FileIcon, Building2, Hotel, ChevronDown } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -31,6 +31,59 @@ export default function NewTicket() {
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("Média");
   
+  // Localização UH vs Local Físico / Setor (igual ao /suporte)
+  const [locationType, setLocationType] = useState("LOCAL"); // "LOCAL" ou "UH"
+  const [selectedRoom, setSelectedRoom] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const [locationComplement, setLocationComplement] = useState("");
+  const [customLocation, setCustomLocation] = useState("");
+
+  const handleSwitchLocationType = (type) => {
+    setLocationType(type);
+    if (type === "UH") {
+      setLocation(selectedRoom ? `UH ${selectedRoom}` : "");
+    } else {
+      if (selectedLocation === "OUTRO") {
+        setLocation(customLocation.trim().toUpperCase());
+      } else if (selectedLocation) {
+        const finalLoc = locationComplement.trim() ? `${selectedLocation} - ${locationComplement.trim()}` : selectedLocation;
+        setLocation(finalLoc.toUpperCase());
+      } else {
+        setLocation("");
+      }
+    }
+  };
+
+  const handleSelectRoom = (roomNum) => {
+    setSelectedRoom(roomNum);
+    setLocation(roomNum ? `UH ${roomNum}` : "");
+  };
+
+  const handleSelectLocation = (locName) => {
+    setSelectedLocation(locName);
+    if (locName === "OUTRO") {
+      setLocation(customLocation.trim().toUpperCase());
+    } else if (locName) {
+      const finalLoc = locationComplement.trim() ? `${locName} - ${locationComplement.trim()}` : locName;
+      setLocation(finalLoc.toUpperCase());
+    } else {
+      setLocation("");
+    }
+  };
+
+  const handleComplementChange = (comp) => {
+    setLocationComplement(comp);
+    if (selectedLocation && selectedLocation !== "OUTRO") {
+      const finalLoc = comp.trim() ? `${selectedLocation} - ${comp.trim()}` : selectedLocation;
+      setLocation(finalLoc.toUpperCase());
+    }
+  };
+
+  const handleCustomLocationChange = (text) => {
+    setCustomLocation(text);
+    setLocation(text.trim().toUpperCase());
+  };
+  
   // Attachments
   const [files, setFiles] = useState([]);
   
@@ -49,10 +102,15 @@ export default function NewTicket() {
     if (assetId) {
       const selectedAsset = assets.find(a => a.id === Number(assetId));
       if (selectedAsset && selectedAsset.location_id) {
-        setLocation(selectedAsset.location_id.toString());
+        const locObj = locations.find(l => l.id === selectedAsset.location_id);
+        if (locObj) {
+          setLocationType("LOCAL");
+          setSelectedLocation(locObj.name);
+          setLocation(locObj.name.toUpperCase());
+        }
       }
     }
-  }, [assetId, assets]);
+  }, [assetId, assets, locations]);
 
   // Load users when department changes
   useEffect(() => {
@@ -77,7 +135,12 @@ export default function NewTicket() {
         if (userAssets.length === 1) {
           setAssetId(String(userAssets[0].id));
           if (userAssets[0].location_id) {
-            setLocation(String(userAssets[0].location_id));
+            const locObj = locations.find(l => l.id === userAssets[0].location_id);
+            if (locObj) {
+              setLocationType("LOCAL");
+              setSelectedLocation(locObj.name);
+              setLocation(locObj.name.toUpperCase());
+            }
           }
         } else {
           setAssetId("");
@@ -86,14 +149,36 @@ export default function NewTicket() {
 
       const reqUser = users.find(u => u.id === Number(requesterId));
       if (reqUser && reqUser.is_room && reqUser.room_number) {
+        setLocationType("UH");
+        setSelectedRoom(reqUser.room_number);
         setLocation(`UH ${reqUser.room_number}`);
+      } else if (reqUser) {
+        const dept = (departments.find(d => d.id === Number(departmentId))?.name || "").toLowerCase();
+        if (dept.includes("govern") || dept.includes("camareira") || dept.includes("hospedag")) {
+          setLocationType("UH");
+        } else {
+          setLocationType("LOCAL");
+          if (dept.includes("a&b") || dept.includes("alimento") || dept.includes("bar") || dept.includes("restaurante")) {
+            const geroLoc = locations.find(l => l.name.toLowerCase().includes("gero"));
+            if (geroLoc) {
+              setSelectedLocation(geroLoc.name);
+              setLocation(geroLoc.name.toUpperCase());
+            }
+          } else if (dept.includes("recep") || dept.includes("front") || dept.includes("portaria")) {
+            const recepLoc = locations.find(l => l.name.toLowerCase().includes("recep"));
+            if (recepLoc) {
+              setSelectedLocation(recepLoc.name);
+              setLocation(recepLoc.name.toUpperCase());
+            }
+          }
+        }
       }
     } else {
       setRequesterAssets([]);
       setAssets([]);
       setAssetId("");
     }
-  }, [requesterId, users]);
+  }, [requesterId, users, departmentId, departments, locations]);
 
   // Exibe todas as categorias cadastradas (Hardware, Sistemas, Redes, Aplicações, etc.)
   const displayedCategories = categories;
@@ -123,6 +208,7 @@ export default function NewTicket() {
     e.preventDefault();
     if (!requesterId) return alert("Selecione o solicitante.");
     if (!categoryId) return alert("Selecione a categoria.");
+    if (!location || !location.trim()) return alert("Selecione ou informe o Local ou UH onde o problema ocorre.");
     
     // Determine the title
     let finalTitle = "";
@@ -137,9 +223,7 @@ export default function NewTicket() {
     }
 
     if (location) {
-      const locObj = locations.find(l => l.id === Number(location));
-      const locName = locObj ? locObj.name : location;
-      finalTitle = `[${locName.toUpperCase()}] ${finalTitle}`;
+      finalTitle = `[${location}] ${finalTitle}`;
     }
 
     setLoading(true);
@@ -350,31 +434,132 @@ export default function NewTicket() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <MapPin size={12} /> Local / UH Onde o problema ocorre
-              </label>
-              <select
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              >
-                <option value="">Selecione o local ou UH...</option>
-                <optgroup label="Locais Físicos / Setores">
-                  {locations.map((loc) => (
-                    <option key={`loc-${loc.id}`} value={loc.name}>
-                      🏢 {loc.name} {loc.floor ? `(${loc.floor})` : ""} {loc.department_names?.length ? `• [${loc.department_names.join(", ")}]` : ""}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Apartamentos / UHs">
-                  {rooms.map((rm) => (
-                    <option key={`rm-${rm.id}`} value={`UH ${rm.number}`}>
-                      🛏️ {rm.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+            {/* Localização Inteligente (Igual ao /suporte: Local Físico/Setor vs Apartamento/UH) */}
+            <div className="space-y-3 bg-slate-50/80 border border-slate-200 rounded-2xl p-4 sm:p-5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <MapPin size={14} className="text-blue-600" />
+                  Local / UH Onde o problema ocorre <span className="text-red-500">*</span>
+                </label>
+                {location && (
+                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg text-blue-700 bg-blue-100 border border-blue-200">
+                    {location}
+                  </span>
+                )}
+              </div>
+
+              {/* Toggle Pills: Local Físico vs UH */}
+              <div className="grid grid-cols-2 p-1 bg-slate-200/70 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handleSwitchLocationType("LOCAL")}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    locationType === "LOCAL"
+                      ? "bg-white text-blue-700 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Building2 size={14} />
+                  <span>Local Físico / Setor</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchLocationType("UH")}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    locationType === "UH"
+                      ? "bg-white text-blue-700 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Hotel size={14} />
+                  <span>Apartamento / UH</span>
+                </button>
+              </div>
+
+              {/* MODO 1: Apartamento / UH */}
+              {locationType === "UH" && (
+                <div className="space-y-2 animate-fade-in">
+                  <div className="relative">
+                    <select
+                      value={selectedRoom}
+                      onChange={(e) => handleSelectRoom(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer appearance-none"
+                    >
+                      <option value="">Selecione a UH (Apartamento)...</option>
+                      {(() => {
+                        const floorsGrouped = {};
+                        rooms.forEach((r) => {
+                          const f = r.floor || "Outros Andares";
+                          if (!floorsGrouped[f]) floorsGrouped[f] = [];
+                          floorsGrouped[f].push(r);
+                        });
+                        return Object.entries(floorsGrouped).map(([floorName, floorRooms]) => (
+                          <optgroup key={floorName} label={floorName}>
+                            {floorRooms.map((r) => (
+                              <option key={r.id} value={r.number}>
+                                🛏️ {r.name} ({floorName})
+                              </option>
+                            ))}
+                          </optgroup>
+                        ));
+                      })()}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                  </div>
+                  <p className="text-[11px] text-slate-500">Selecione o quarto onde o hóspede ou equipamento necessita de atendimento.</p>
+                </div>
+              )}
+
+              {/* MODO 2: Local Físico / Setor */}
+              {locationType === "LOCAL" && (
+                <div className="space-y-3 animate-fade-in">
+                  <div className="relative">
+                    <select
+                      value={selectedLocation}
+                      onChange={(e) => handleSelectLocation(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer appearance-none"
+                    >
+                      <option value="">Selecione o Local Físico...</option>
+                      {locations.map((loc) => {
+                        const selectedDeptObj = departments.find(d => d.id === Number(departmentId));
+                        const isMatchDept = Boolean(
+                          (departmentId && loc.department_ids && loc.department_ids.includes(Number(departmentId))) ||
+                          (selectedDeptObj && loc.department_names && loc.department_names.some(dn => dn.toLowerCase() === selectedDeptObj.name.toLowerCase()))
+                        );
+                        return (
+                          <option key={loc.id} value={loc.name}>
+                            🏢 {loc.name} {loc.floor ? `(${loc.floor})` : ""} {isMatchDept ? "⭐ [Setor do Solicitante]" : (loc.department_names?.length ? `• [${loc.department_names.join(", ")}]` : "")}
+                          </option>
+                        );
+                      })}
+                      <option value="OUTRO">Outro Local (Digitar Manualmente)...</option>
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                  </div>
+
+                  {/* Campo livre se for OUTRO */}
+                  {selectedLocation === "OUTRO" ? (
+                    <input
+                      type="text"
+                      required
+                      value={customLocation}
+                      onChange={(e) => handleCustomLocationChange(e.target.value)}
+                      placeholder="Digite o local (Ex: Sala de Reunião, Garagem, Almoxarifado)..."
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 animate-fade-in"
+                      autoFocus
+                    />
+                  ) : selectedLocation && (
+                    <input
+                      type="text"
+                      value={locationComplement}
+                      onChange={(e) => handleComplementChange(e.target.value)}
+                      placeholder="Ponto de referência opcional (Ex: Mesa 4, Balcão, Próximo ao elevador)..."
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 animate-fade-in"
+                    />
+                  )}
+                  <p className="text-[11px] text-slate-500">Locais físicos e áreas comuns cadastradas do hotel.</p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

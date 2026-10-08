@@ -1016,3 +1016,21 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Removida a restrição que limitava a listagem de categorias à do hardware do colaborador. Todas as categorias ativas (Sistemas, Aplicações, Redes, E-mail, etc.) permanecem disponíveis para seleção.
       - A seleção de categoria preserva o equipamento já atribuído ao colaborador sem desselecioná-lo.
 
+31. **Padronização da Seleção de Localização (UH vs Local Físico/Setor) no Cadastro Técnico (`NewTicket.jsx`)**:
+    - **Interface Unificada Idêntica ao Portal Público (`/suporte`)**:
+      - Implementado seletor contextual em abas estilo *toggle pills*: **Local Físico / Setor** (🏢 `Building2`) e **Apartamento / UH** (🛏️ `Hotel`).
+      - Badge dinâmico no topo exibindo a localização formatada em tempo real (ex: `UH 101` ou `GERO - SALÃO`).
+    - **Modo Apartamento / UH**:
+      - Listagem dinâmica agrupada por andares do hotel (`optgroup` por andar), facilitando a seleção rápida do quarto.
+      - Salva a localização padronizada como `UH {número}`.
+    - **Modo Local Físico / Setor**:
+      - Lista todos os pontos e setores cadastrados do hotel com destaque inteligente caso coincida com o setor do solicitante (`⭐ [Setor do Solicitante]`).
+      - Campo opcional de complemento / ponto de referência (ex: `Mesa 4`, `Balcão`, `Próximo ao elevador`).
+      - Opção *"Outro Local (Digitar Manualmente)..."* com input de texto aberto para áreas atípicas ou externas.
+    - **Auto-Detecção e Contextualização Inteligente**:
+      - Se o colaborador for de setores como Governança, Camareira ou Hospedagem, o seletor abre automaticamente focado em **Apartamento / UH**.
+      - Se possuir quarto/UH vinculado no AD ou equipamento fixado em determinada localização, a seleção é pré-carregada automaticamente.
+    - **Validação de Formulário**:
+      - O campo de Localização/UH torna-se obrigatório no envio, garantindo que nenhum chamado seja aberto sem o local do incidente.
+
+
