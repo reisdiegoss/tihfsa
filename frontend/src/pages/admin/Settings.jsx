@@ -1438,7 +1438,7 @@ export default function Settings() {
   );
 
   return (
-    <div className="space-y-6 pb-12 animate-fade-in w-full max-w-[1600px] mx-auto">
+    <div className="space-y-6 pb-12 animate-fade-in w-full">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1788,11 +1788,11 @@ export default function Settings() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                      <th className="py-3.5 px-6 whitespace-nowrap">Colaborador / Usuário</th>
-                      <th className="py-3.5 px-6 whitespace-nowrap">Setor Pertencente</th>
-                      <th className="py-3.5 px-6 whitespace-nowrap">Papel / Nível de Acesso</th>
-                      <th className="py-3.5 px-6 whitespace-nowrap">Setores Sob Gerência</th>
-                      <th className="py-3.5 px-6 text-right whitespace-nowrap">Ação</th>
+                      <th className="py-3.5 px-4 sm:px-6 whitespace-nowrap">Colaborador / Usuário</th>
+                      <th className="py-3.5 px-3 sm:px-4 whitespace-nowrap">Setor Pertencente</th>
+                      <th className="py-3.5 px-3 sm:px-4 whitespace-nowrap">Papel / Nível de Acesso</th>
+                      <th className="py-3.5 px-3 sm:px-4 whitespace-nowrap">Setores Sob Gerência</th>
+                      <th className="py-3.5 px-4 sm:px-6 text-right whitespace-nowrap">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
@@ -1802,21 +1802,23 @@ export default function Settings() {
 
                       return (
                         <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-4 px-6">
-                            <div>
-                              <p className="font-bold text-slate-900 text-sm whitespace-nowrap">{u.display_name}</p>
-                              <p className="text-[11px] text-slate-400 font-mono mt-0.5 whitespace-nowrap">
+                          <td className="py-4 px-4 sm:px-6 min-w-[200px] max-w-[320px]">
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-900 text-sm truncate" title={u.display_name}>
+                                {u.display_name}
+                              </p>
+                              <p className="text-[11px] text-slate-400 font-mono mt-0.5 truncate" title={`@${u.ad_username || `user_${u.id}`} ${u.email ? `• ${u.email}` : ""}`}>
                                 @{u.ad_username || `user_${u.id}`} {u.email && `• ${u.email}`}
                               </p>
                             </div>
                           </td>
-                          <td className="py-4 px-6 whitespace-nowrap">
-                            <span className="inline-block bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-slate-200 whitespace-nowrap">
+                          <td className="py-4 px-3 sm:px-4 whitespace-nowrap">
+                            <span className="inline-block bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-slate-200">
                               {u.department_name || "Geral / Não atribuído"}
                             </span>
                           </td>
-                          <td className="py-4 px-6">
-                            <div className="flex flex-wrap gap-1">
+                          <td className="py-4 px-3 sm:px-4">
+                            <div className="flex flex-wrap gap-1 max-w-[220px]">
                               {uRoles.map((r, rIdx) => {
                                 const rLower = r.toLowerCase();
                                 if (rLower === "admin") {
@@ -1846,10 +1848,10 @@ export default function Settings() {
                               })}
                             </div>
                           </td>
-                          <td className="py-4 px-6">
+                          <td className="py-4 px-3 sm:px-4">
                             {isManager ? (
                               u.managed_department_names && u.managed_department_names.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
+                                <div className="flex flex-wrap gap-1 max-w-[260px]">
                                   {u.managed_department_names.map((name, idx) => (
                                     <span key={idx} className="bg-amber-100/70 text-amber-900 border border-amber-200 text-[10px] font-extrabold px-2 py-0.5 rounded-md">
                                       {name}
@@ -1863,7 +1865,7 @@ export default function Settings() {
                               <span className="text-slate-300 text-[11px]">—</span>
                             )}
                           </td>
-                          <td className="py-4 px-6 text-right">
+                          <td className="py-4 px-4 sm:px-6 text-right whitespace-nowrap">
                             <button
                               onClick={() => openPermissionModal(u)}
                               className="inline-flex items-center gap-1.5 bg-blue-600 text-white hover:bg-blue-700 shadow-xs px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"

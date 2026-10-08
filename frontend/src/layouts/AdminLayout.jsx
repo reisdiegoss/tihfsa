@@ -19,8 +19,8 @@ export default function AdminLayout() {
         <Header />
         
         {/* Scrollable Content Area - Added pb-20 on mobile for BottomNav */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8 pb-24 md:pb-8">
-          <div className="max-w-7xl mx-auto space-y-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
+          <div className="w-full max-w-[1920px] mx-auto space-y-6 sm:space-y-8">
             <Outlet />
           </div>
         </main>
