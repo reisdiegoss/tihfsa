@@ -124,6 +124,37 @@ def apply_migrations():
         ("locations.is_public", "ALTER TABLE locations ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"),
         ("locations.order_index", "ALTER TABLE locations ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 0 NOT NULL;"),
         ("users.floor", "ALTER TABLE users ADD COLUMN IF NOT EXISTS floor VARCHAR(100);"),
+        ("users.allowed_modules", "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_modules JSON;"),
+
+        # Vínculo N:N Localizações Físicas x Setores
+        ("location_departments", """
+            CREATE TABLE IF NOT EXISTS location_departments (
+                location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+                department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+                PRIMARY KEY (location_id, department_id)
+            );
+        """),
+
+        # Log e Auditoria de Notificações
+        ("notification_logs", """
+            CREATE TABLE IF NOT EXISTS notification_logs (
+                id SERIAL PRIMARY KEY,
+                channel VARCHAR(20) NOT NULL DEFAULT 'EMAIL',
+                notification_type VARCHAR(50) DEFAULT 'GENERAL',
+                recipient VARCHAR(255) NOT NULL,
+                recipient_name VARCHAR(255),
+                subject VARCHAR(255),
+                body TEXT NOT NULL,
+                ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                error_message TEXT,
+                resend_count INTEGER DEFAULT 0,
+                last_attempt_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_notif_logs_status ON notification_logs(status);
+            CREATE INDEX IF NOT EXISTS idx_notif_logs_created_at ON notification_logs(created_at);
+        """),
 
         # Andares e Pavimentos
         ("floors", """

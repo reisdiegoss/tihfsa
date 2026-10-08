@@ -191,7 +191,7 @@ def update_location(
 @router.patch("/{location_id}/move", response_model=list[LocationResponse])
 def move_location_order(
     location_id: int,
-    direction: str = Query(..., regex="^(up|down)$"),
+    direction: str = Query(..., pattern="^(up|down)$"),
     db: Session = Depends(get_db),
     _: User = Depends(require_technician),
 ):
