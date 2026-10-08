@@ -248,6 +248,36 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_times VARCHAR DEFAULT '09:00,14:00,18:00';"))
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_whatsapp BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE evolution_config ADD COLUMN IF NOT EXISTS summary_reminder_email BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMP WITH TIME ZONE;"))
+            conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS reopen_count INTEGER DEFAULT 0 NOT NULL;"))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    id SERIAL PRIMARY KEY,
+                    support_notification_email VARCHAR(255) DEFAULT 'ti-hfsa@fasano.com.br' NOT NULL,
+                    email_header_title VARCHAR(255) DEFAULT 'TIHFSA — Hotel Fasano Salvador' NOT NULL,
+                    email_header_subtitle VARCHAR(255) DEFAULT 'Central de Serviços & Suporte de TI' NOT NULL,
+                    email_body_title VARCHAR(255) DEFAULT 'Notificação de Atendimento' NOT NULL,
+                    ticket_warranty_days INTEGER DEFAULT 7 NOT NULL,
+                    csat_enabled BOOLEAN DEFAULT TRUE NOT NULL,
+                    notify_requester_on_create BOOLEAN DEFAULT TRUE NOT NULL,
+                    notify_requester_on_assign BOOLEAN DEFAULT TRUE NOT NULL,
+                    notify_requester_on_solve BOOLEAN DEFAULT TRUE NOT NULL,
+                    notify_technician_on_assign BOOLEAN DEFAULT TRUE NOT NULL
+                );
+                ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS email_body_title VARCHAR(255) DEFAULT 'Notificação de Atendimento' NOT NULL;
+                CREATE TABLE IF NOT EXISTS ticket_satisfaction_surveys (
+                    id SERIAL PRIMARY KEY,
+                    ticket_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE UNIQUE NOT NULL,
+                    rating INTEGER,
+                    comment TEXT,
+                    token VARCHAR(64) UNIQUE NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                    answered_at TIMESTAMP WITH TIME ZONE
+                );
+                INSERT INTO system_settings (id, support_notification_email, email_header_title, email_header_subtitle, email_body_title, ticket_warranty_days, csat_enabled)
+                SELECT 1, 'ti-hfsa@fasano.com.br', 'TIHFSA — Hotel Fasano Salvador', 'Central de Serviços & Suporte de TI', 'Notificação de Atendimento', 7, TRUE
+                WHERE NOT EXISTS (SELECT 1 FROM system_settings);
+            """))
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS zabbix_config (
                     id SERIAL PRIMARY KEY,

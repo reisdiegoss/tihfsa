@@ -16,6 +16,7 @@ from app.models.sla import SLAConfig, SLACategoryRule
 from app.models.monitoring import AgentCheckin
 from app.models.system_setting import SystemSetting
 from app.models.satisfaction_survey import TicketSatisfactionSurvey
+from app.models.qrcode import QRCodeItem, QRCodeConfig
 
 __all__ = [
     "User",
