@@ -904,3 +904,25 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
           - Diagnósticos automatizados com alerta visual para gargalos de RAM (> 80%), espaço crítico em disco (> 85%), picos de CPU e frequência elevada de incidentes.
           - Parecer técnico estruturado com recomendações de compra (ex: módulo adicional de 16GB RAM, troca preventiva por SSD de 1TB).
           - Botão de **Imprimir / Salvar PDF** integrado ao navegador com formatação limpa e profissional para a diretoria.
+
+    - **Telemetria Contínua (15 em 15 min), Gráficos Temporais & Detecção de Degradação**:
+      - **Armazenamento Contínuo e Sem Perdas**:
+        - Cada check-in de 15 minutos do agente persiste uma amostra na tabela `agent_metrics_history` com `hostname`, `cpu_usage_pct`, `ram_used_mb`, `ram_total_mb`, `ram_usage_pct`, `disk_metrics` (JSON), `disk_usage_pct`, `disk_free_gb`, `uptime_hours` e `created_at`.
+        - Índices de performance em `hostname` e `created_at DESC` para garantir consultas instantâneas ao longo de meses e anos.
+      - **Endpoint de Agregação Temporal (`GET /api/v1/monitoring/agent/machines/{machine_id}/metrics-chart`)**:
+        - Suporte aos filtros de período: `24h` (últimas 24 horas), `7d` (última semana), `30d` (último mês), `90d` (últimos 3 meses), `1y` (último ano) e `all` (todo o histórico).
+        - Agrupamento inteligente em buckets:
+          - **24h**: Amostras a cada 15 minutos (até 96 pontos).
+          - **7d**: Médias e picos agrupados de 1 em 1 hora (168 pontos).
+          - **30d**: Médias e picos agrupados a cada 4 horas ou diários (180 pontos).
+          - **90d / 1y**: Médias e picos diários e semanais.
+      - **Algoritmo de Identificação de Degradação ("Quando Começou a Ficar Ruim")**:
+        - O backend analisa a evolução cronológica dos dados e identifica o exato momento de virada operacional (ponto de inflexão):
+          - **Degradação de RAM**: Detecta quando a máquina rompeu o patamar de 80% de forma sustentada e calcula a variação percentual (ex: *"Consumo de RAM aumentou significativamente de 42% para 88% a partir de 28/09"*).
+          - **Saturação de Disco**: Detecta quando a unidade C: ultrapassou 85% de uso ou quando o espaço livre caiu para níveis de risco.
+          - **Sobrecargas de Processador (CPU)**: Detecta o momento inicial em que a CPU passou a apresentar picos persistentes (> 90%).
+      - **Visualização Gráfica Interativa com Recharts**:
+        - Gráfico de áreas em alta resolução exibindo simultaneamente as curvas de CPU (azul), Memória RAM (roxo) e Disco C: (rosa).
+        - Linhas de referência operacional destacadas em **80% (Atenção)** e **90% (Crítico)**.
+        - Tooltip flutuante com dados pontuais e picos máximos.
+        - Cards com métricas consolidadas (Média, Pico e Valor Atual) e tabela cronológica de todas as medições do período.

@@ -67,6 +67,8 @@ class AgentMetricsHistory(Base):
     ram_total_mb = Column(Integer, nullable=True)
     ram_usage_pct = Column(Float, nullable=True)
     disk_metrics = Column(JSON, nullable=True)
+    disk_usage_pct = Column(Float, nullable=True)  # Percentual de uso do disco principal (ex: C:)
+    disk_free_gb = Column(Float, nullable=True)    # Espaço livre do disco principal em GB
     uptime_hours = Column(Float, nullable=True)
     status = Column(String(20), default="online", nullable=False)
     created_at = Column(

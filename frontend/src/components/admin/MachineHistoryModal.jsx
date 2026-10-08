@@ -2,14 +2,24 @@ import { useState, useEffect } from "react";
 import {
   FileText, Cpu, HardDrive, Wrench, Clock, CheckCircle2,
   AlertTriangle, AlertCircle, Info, Printer, X, RefreshCw,
-  User, Building, Tag, ExternalLink, Activity, ArrowUpRight
+  User, Building, Tag, ExternalLink, Activity, ArrowUpRight,
+  TrendingUp, Calendar, Zap, Layers, BarChart2
 } from "lucide-react";
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend, ReferenceLine
+} from "recharts";
 import api from "../../api/client";
 
 export default function MachineHistoryModal({ isOpen, onClose, machine }) {
-  const [activeTab, setActiveTab] = useState("report"); // 'report' | 'tickets' | 'metrics'
+  const [activeTab, setActiveTab] = useState("metrics"); // 'metrics' | 'report' | 'tickets'
   const [loading, setLoading] = useState(true);
   const [historyData, setHistoryData] = useState(null);
+
+  // Estados do Gráfico Temporal & Degradação
+  const [chartRange, setChartRange] = useState("24h"); // '24h', '7d', '30d', '90d', '1y', 'all'
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartData, setChartData] = useState(null);
 
   const fetchHistory = () => {
     if (!machine) return;
@@ -24,11 +34,30 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
       .finally(() => setLoading(false));
   };
 
+  const fetchChartData = (range) => {
+    if (!machine) return;
+    setChartLoading(true);
+    api.get(`/monitoring/agent/machines/${machine.id}/metrics-chart?time_range=${range}`)
+      .then((res) => {
+        setChartData(res.data);
+      })
+      .catch((err) => {
+        console.error("Erro ao carregar gráfico temporal:", err);
+      })
+      .finally(() => setChartLoading(false));
+  };
+
   useEffect(() => {
     if (isOpen && machine) {
       fetchHistory();
+      fetchChartData(chartRange);
     }
   }, [isOpen, machine]);
+
+  const handleRangeChange = (range) => {
+    setChartRange(range);
+    fetchChartData(range);
+  };
 
   if (!isOpen || !machine) return null;
 
@@ -39,14 +68,43 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
   const tickets = historyData?.tickets || [];
   const metrics = historyData?.metrics_history || [];
   const recommendations = historyData?.hardware_recommendations || [];
+  const degradationEvents = chartData?.degradation_events || [];
+  const chartPoints = chartData?.data_points || [];
+  const summary = chartData?.summary || {};
 
-  // Cálculos de picos e médias na telemetria
-  const cpuVals = metrics.map((m) => m.cpu_usage_pct).filter((v) => v !== null && v !== undefined);
-  const ramVals = metrics.map((m) => m.ram_usage_pct).filter((v) => v !== null && v !== undefined);
-  const maxCpu = cpuVals.length > 0 ? Math.max(...cpuVals) : (machine.cpu_usage_pct || 0);
-  const avgCpu = cpuVals.length > 0 ? Math.round(cpuVals.reduce((a, b) => a + b, 0) / cpuVals.length) : (machine.cpu_usage_pct || 0);
-  const maxRam = ramVals.length > 0 ? Math.max(...ramVals) : (machine.ram_usage_pct || 0);
-  const avgRam = ramVals.length > 0 ? Math.round(ramVals.reduce((a, b) => a + b, 0) / ramVals.length) : (machine.ram_usage_pct || 0);
+  // Custom Tooltip para o Recharts
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-slate-900/95 text-white p-3 rounded-xl shadow-xl border border-slate-700 text-xs space-y-1.5 backdrop-blur-xs">
+          <p className="font-black text-slate-300 border-b border-slate-700 pb-1 flex items-center justify-between gap-4">
+            <span>Momento: {label}</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
+              data.status === "warning" ? "bg-amber-500/20 text-amber-400" : "bg-emerald-500/20 text-emerald-400"
+            }`}>
+              {data.status}
+            </span>
+          </p>
+          <div className="space-y-1 font-mono text-[11px]">
+            <p className="text-blue-400 flex items-center justify-between gap-4">
+              <span>CPU Média: <strong>{data.cpu_pct}%</strong></span>
+              <span className="text-[10px] text-slate-400">(Pico: {data.cpu_peak}%)</span>
+            </p>
+            <p className="text-purple-400 flex items-center justify-between gap-4">
+              <span>RAM Média: <strong>{data.ram_pct}%</strong></span>
+              <span className="text-[10px] text-slate-400">(Pico: {data.ram_peak}%)</span>
+            </p>
+            <p className="text-pink-400 flex items-center justify-between gap-4">
+              <span>Disco C: <strong>{data.disk_pct}%</strong></span>
+              {data.disk_free_gb && <span className="text-[10px] text-slate-400">({data.disk_free_gb} GB livres)</span>}
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:p-0 print:bg-white print:fixed print:inset-0 overflow-y-auto">
@@ -56,7 +114,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
         <div className="flex items-start justify-between pb-4 border-b border-slate-100 shrink-0 gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 shadow-xs">
-              <FileText size={24} />
+              <Activity size={24} />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -80,6 +138,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                 {machine.model && machine.model !== "Desconhecido" ? `${machine.model} • ` : ""}
                 IP: <strong className="text-slate-700 font-mono">{machine.ip_address}</strong>
                 {machine.serial_number && machine.serial_number !== "Desconhecido" ? ` • S/N: ${machine.serial_number}` : ""}
+                {historyData?.department_name ? ` • 🏢 ${historyData.department_name}` : ""}
               </p>
             </div>
           </div>
@@ -106,6 +165,19 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
         <div className="flex items-center gap-2 border-b border-slate-100 py-3 shrink-0 print:hidden">
           <button
             type="button"
+            onClick={() => setActiveTab("metrics")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === "metrics"
+                ? "bg-indigo-600 text-white shadow-xs font-black"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <BarChart2 size={15} />
+            <span>Gráficos de Consumo & Degradação</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab("report")}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === "report"
@@ -114,7 +186,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
             }`}
           >
             <FileText size={15} />
-            <span>Relatório & Diagnóstico de Upgrade</span>
+            <span>Laudo & Diagnóstico de Upgrade</span>
           </button>
 
           <button
@@ -129,19 +201,6 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
             <Wrench size={15} />
             <span>Manutenções & Chamados ({tickets.length})</span>
           </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("metrics")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "metrics"
-                ? "bg-indigo-600 text-white shadow-xs font-black"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            <Activity size={15} />
-            <span>Consumo de Hardware ({metrics.length})</span>
-          </button>
         </div>
 
         {/* ─── CONTEÚDO SCROLLÁVEL ─── */}
@@ -149,12 +208,251 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
           {loading ? (
             <div className="p-16 text-center text-slate-400 font-semibold space-y-3">
               <RefreshCw size={24} className="animate-spin mx-auto text-indigo-600" />
-              <p className="text-xs">Processando telemetria e histórico do equipamento...</p>
+              <p className="text-xs">Processando histórico e telemetria temporal do equipamento...</p>
             </div>
           ) : (
             <>
               {/* ──────────────────────────────────────────────────────────
-                  ABA 1: RELATÓRIO TÉCNICO & DIAGNÓSTICO DE UPGRADE
+                  ABA 1: GRÁFICOS DE CONSUMO & ANÁLISE DE DEGRADAÇÃO
+                  ────────────────────────────────────────────────────────── */}
+              {activeTab === "metrics" && (
+                <div className="space-y-5">
+                  {/* Barra de Filtro de Período (24h, 7d, 30d, 90d, 1y, all) */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-500 uppercase tracking-wider pl-1">
+                        Intervalo Temporal:
+                      </span>
+                    </div>
+
+                    <div className="inline-flex p-1 bg-slate-200/70 rounded-xl gap-1 flex-wrap">
+                      {[
+                        { key: "24h", label: "24 Horas" },
+                        { key: "7d", label: "7 Dias" },
+                        { key: "30d", label: "30 Dias (Mês)" },
+                        { key: "90d", label: "3 Meses" },
+                        { key: "1y", label: "1 Ano" },
+                        { key: "all", label: "Tudo" },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => handleRangeChange(item.key)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            chartRange === item.key
+                              ? "bg-white text-indigo-700 font-black shadow-xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ─── BANNER DE DETECÇÃO DE DEGRADAÇÃO ("QUANDO COMEÇOU A FICAR RUIM") ─── */}
+                  {degradationEvents.length > 0 ? (
+                    <div className="p-4 bg-gradient-to-r from-red-50 via-amber-50 to-red-50 border border-red-200 rounded-2xl space-y-2 shadow-2xs">
+                      <div className="flex items-center gap-2 text-red-800">
+                        <AlertTriangle size={18} className="text-red-600 shrink-0 animate-bounce" />
+                        <h4 className="font-black text-xs uppercase tracking-wide">
+                          Identificação de Degradação de Desempenho no Período
+                        </h4>
+                      </div>
+                      <div className="space-y-1.5">
+                        {degradationEvents.map((evt, idx) => (
+                          <div key={idx} className="p-3 bg-white/90 rounded-xl border border-red-100 flex items-start gap-3 text-xs">
+                            <span className="px-2 py-0.5 rounded font-black text-[10px] bg-red-100 text-red-800 shrink-0">
+                              {evt.metric}
+                            </span>
+                            <div className="flex-1">
+                              <p className="font-bold text-slate-800 leading-relaxed">{evt.message}</p>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Início do declínio observado em: <strong className="text-slate-900 font-mono">{evt.detected_at}</strong> • Variação: {evt.initial_value} ➔ <strong className="text-red-700">{evt.current_value}</strong>
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-900 font-semibold">
+                      <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                      <span>
+                        <strong>Comportamento Saudável:</strong> Não foram detectadas quedas anômalas ou rompimento persistente dos limiares de segurança no período de {chartRange}.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* ─── GRÁFICO INTERATIVO (RECHARTS) ─── */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp size={16} className="text-indigo-600" />
+                        <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                          Evolução Temporal de CPU, Memória RAM e Disco (Check-in a cada 15 min)
+                        </h4>
+                      </div>
+                      {chartLoading && (
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-600">
+                          <RefreshCw size={12} className="animate-spin" /> Atualizando gráfico...
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="h-72 w-full pt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={chartPoints} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
+                            </linearGradient>
+                            <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.0} />
+                            </linearGradient>
+                            <linearGradient id="colorDisk" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#ec4899" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#ec4899" stopOpacity={0.0} />
+                            </linearGradient>
+                          </defs>
+
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                          <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                          <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={10} unit="%" tickLine={false} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+
+                          {/* Linhas de Corte Operacional */}
+                          <ReferenceLine
+                            y={80}
+                            stroke="#f59e0b"
+                            strokeDasharray="4 4"
+                            strokeWidth={1.5}
+                            label={{ value: "Alerta 80%", position: "insideTopRight", fill: "#f59e0b", fontSize: 10, fontWeight: "bold" }}
+                          />
+                          <ReferenceLine
+                            y={90}
+                            stroke="#ef4444"
+                            strokeDasharray="4 4"
+                            strokeWidth={1.5}
+                            label={{ value: "Crítico 90%", position: "insideTopRight", fill: "#ef4444", fontSize: 10, fontWeight: "bold" }}
+                          />
+
+                          <Area
+                            type="monotone"
+                            dataKey="cpu_pct"
+                            name="Processador CPU (%)"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            fillOpacity={1}
+                            fill="url(#colorCpu)"
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="ram_pct"
+                            name="Memória RAM (%)"
+                            stroke="#8b5cf6"
+                            strokeWidth={2}
+                            fillOpacity={1}
+                            fill="url(#colorRam)"
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="disk_pct"
+                            name="Disco Principal C: (%)"
+                            stroke="#ec4899"
+                            strokeWidth={2}
+                            fillOpacity={1}
+                            fill="url(#colorDisk)"
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* ─── CARDS DE KPI E RESUMO ESTATÍSTICO DO PERÍODO ─── */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-3.5 bg-blue-50/60 border border-blue-200/80 rounded-2xl space-y-1">
+                      <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider">CPU (Processador)</span>
+                      <p className="text-2xl font-black text-blue-950">{summary.current_cpu ?? 0}%</p>
+                      <div className="flex justify-between text-[10px] text-blue-800 font-mono">
+                        <span>Média: {summary.avg_cpu ?? 0}%</span>
+                        <span className="font-bold text-red-600">Pico: {summary.peak_cpu ?? 0}%</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 bg-purple-50/60 border border-purple-200/80 rounded-2xl space-y-1">
+                      <span className="text-[10px] font-black uppercase text-purple-700 tracking-wider">Memória RAM</span>
+                      <p className="text-2xl font-black text-purple-950">{summary.current_ram ?? 0}%</p>
+                      <div className="flex justify-between text-[10px] text-purple-800 font-mono">
+                        <span>Média: {summary.avg_ram ?? 0}%</span>
+                        <span className="font-bold text-red-600">Pico: {summary.peak_ram ?? 0}%</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 bg-pink-50/60 border border-pink-200/80 rounded-2xl space-y-1">
+                      <span className="text-[10px] font-black uppercase text-pink-700 tracking-wider">Disco C:</span>
+                      <p className="text-2xl font-black text-pink-950">{summary.current_disk ?? 0}%</p>
+                      <div className="flex justify-between text-[10px] text-pink-800 font-mono">
+                        <span>Média: {summary.avg_disk ?? 0}%</span>
+                        <span>Pico: {summary.peak_disk ?? 0}%</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Telemetria Auditada</span>
+                      <p className="text-2xl font-black text-slate-800">{summary.total_samples ?? metrics.length}</p>
+                      <p className="text-[10px] text-slate-400">Medições de 15 em 15 min</p>
+                    </div>
+                  </div>
+
+                  {/* ─── TABELA CRONOLÓGICA DE AMOSTRAS ─── */}
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-black uppercase text-slate-500 tracking-wider">
+                      Registros de Telemetria no Período ({chartPoints.length} medições agregadas)
+                    </h5>
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden max-h-56 overflow-y-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-200">
+                          <tr>
+                            <th className="px-3.5 py-2">Data & Horário</th>
+                            <th className="px-3 py-2">CPU Média</th>
+                            <th className="px-3 py-2">Pico CPU</th>
+                            <th className="px-3 py-2">RAM Média</th>
+                            <th className="px-3 py-2">Pico RAM</th>
+                            <th className="px-3 py-2">Disco C:</th>
+                            <th className="px-3 py-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-700 font-mono text-[11px]">
+                          {chartPoints.map((pt, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="px-3.5 py-2 font-bold text-slate-900">{pt.label}</td>
+                              <td className="px-3 py-2 text-blue-700">{pt.cpu_pct}%</td>
+                              <td className={`px-3 py-2 ${pt.cpu_peak >= 90 ? "text-red-600 font-black" : "text-slate-500"}`}>{pt.cpu_peak}%</td>
+                              <td className="px-3 py-2 text-purple-700">{pt.ram_pct}%</td>
+                              <td className={`px-3 py-2 ${pt.ram_peak >= 85 ? "text-red-600 font-black" : "text-slate-500"}`}>{pt.ram_peak}%</td>
+                              <td className="px-3 py-2 text-pink-700">{pt.disk_pct}%</td>
+                              <td className="px-3 py-2 font-sans">
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                                  pt.status === "warning" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+                                }`}>
+                                  {pt.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ──────────────────────────────────────────────────────────
+                  ABA 2: RELATÓRIO TÉCNICO & DIAGNÓSTICO DE UPGRADE
                   ────────────────────────────────────────────────────────── */}
               {(activeTab === "report" || window.matchMedia("print").matches) && (
                 <div className="space-y-6 print:space-y-4">
@@ -168,7 +466,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                         Laudo de Avaliação de Desempenho & Planejamento de Upgrade
                       </h2>
                       <p className="text-xs text-slate-500">
-                        Documento oficial de telemetria emitido em {new Date().toLocaleString("pt-BR")}.
+                        Documento oficial emitido em {new Date().toLocaleString("pt-BR")}.
                       </p>
                     </div>
                     <div className="text-right text-xs">
@@ -180,6 +478,23 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                       </p>
                     </div>
                   </div>
+
+                  {/* Resumo da Degradação Identificada no Laudo */}
+                  {degradationEvents.length > 0 && (
+                    <div className="p-4 bg-red-50/70 border border-red-300 rounded-2xl space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-red-800">
+                        <AlertTriangle size={15} />
+                        <h5 className="font-black text-xs uppercase tracking-wider">
+                          Ponto de Inflexão e Degradação Histórica Identificada
+                        </h5>
+                      </div>
+                      {degradationEvents.map((evt, idx) => (
+                        <p key={idx} className="text-xs text-red-950 font-medium">
+                          • <strong>{evt.metric}:</strong> {evt.message} (Início detectado: <strong>{evt.detected_at}</strong>).
+                        </p>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Diagnósticos Automatizados & Recomendações de Peças */}
                   <div className="space-y-3">
@@ -225,41 +540,6 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                     </div>
                   </div>
 
-                  {/* Resumo de Recursos & Telemetria Atual */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <span className="text-[10px] font-black text-slate-400 uppercase">Processador (CPU)</span>
-                      <p className="text-xl font-black text-slate-800 mt-1">{machine.cpu_usage_pct ?? 0}%</p>
-                      <p className="text-[10px] text-slate-500 truncate" title={machine.cpu_model || "CPU"}>
-                        {machine.cpu_model || "Pico: " + maxCpu + "%"}
-                      </p>
-                    </div>
-
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <span className="text-[10px] font-black text-slate-400 uppercase">Memória RAM</span>
-                      <p className="text-xl font-black text-slate-800 mt-1">{machine.ram_usage_pct ?? 0}%</p>
-                      <p className="text-[10px] text-slate-500">
-                        {machine.ram_total_mb ? `${Math.round(machine.ram_total_mb / 1024)} GB Total` : "Pico: " + maxRam + "%"}
-                      </p>
-                    </div>
-
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <span className="text-[10px] font-black text-slate-400 uppercase">Armazenamento</span>
-                      <p className="text-xl font-black text-slate-800 mt-1">
-                        {machine.disk_metrics && machine.disk_metrics[0] ? `${machine.disk_metrics[0].used_pct}%` : "—"}
-                      </p>
-                      <p className="text-[10px] text-slate-500 truncate">
-                        {machine.disk_metrics && machine.disk_metrics[0] ? `${machine.disk_metrics[0].free_gb} GB livres` : "Sem dados"}
-                      </p>
-                    </div>
-
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <span className="text-[10px] font-black text-slate-400 uppercase">Histórico de Incidentes</span>
-                      <p className="text-xl font-black text-slate-800 mt-1">{tickets.length}</p>
-                      <p className="text-[10px] text-slate-500">Chamados registrados</p>
-                    </div>
-                  </div>
-
                   {/* Plano de Ação & Sugestão de Aquisição */}
                   <div className="p-5 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl space-y-3 shadow-md print:bg-white print:text-slate-900 print:border print:border-slate-300">
                     <div className="flex items-center gap-2">
@@ -269,29 +549,29 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                       </h4>
                     </div>
                     <div className="text-xs text-slate-300 print:text-slate-700 space-y-2 leading-relaxed">
-                      {avgRam >= 80 || (machine.ram_total_mb && machine.ram_total_mb <= 8192 && avgRam >= 70) ? (
+                      {(summary.avg_ram >= 80 || (machine.ram_total_mb && machine.ram_total_mb <= 8192 && summary.avg_ram >= 70)) ? (
                         <p>
-                          • <strong>Upgrade de Memória RAM Prioritário:</strong> O consumo operacional de RAM se mantém em níveis críticos ({avgRam}% médio, atingindo pico de {maxRam}%). Recomenda-se a aquisição de módulo adicional para totalizar 16 GB ou 32 GB, evitando lentidão no sistema operacional.
+                          • <strong>Upgrade de Memória RAM Prioritário:</strong> O consumo de RAM mantém-se em patamares elevados ({summary.avg_ram ?? 0}% médio, com pico de {summary.peak_ram ?? 0}%). Recomenda-se a aquisição de módulo adicional para totalizar 16 GB ou 32 GB, eliminando lentidões operacionais.
                         </p>
                       ) : (
                         <p>
-                          • <strong>Memória RAM Estável:</strong> A capacidade de {machine.ram_total_mb ? Math.round(machine.ram_total_mb / 1024) : 8} GB atende atualmente as atividades corporativas deste equipamento.
+                          • <strong>Memória RAM Estável:</strong> A capacidade de {machine.ram_total_mb ? Math.round(machine.ram_total_mb / 1024) : 8} GB atende satisfatoriamente a demanda atual.
                         </p>
                       )}
 
                       {machine.disk_metrics && machine.disk_metrics.some((d) => d.used_pct >= 85) ? (
                         <p>
-                          • <strong>Armazenamento em Alerta:</strong> Disco principal opera com espaço residual reduzido (&gt;85% de uso). Recomendada aquisição de SSD de 512 GB ou 1 TB para prevenção de perda de dados.
+                          • <strong>Armazenamento em Alerta:</strong> A unidade de disco principal opera com espaço residual reduzido (&gt;85% de uso). Recomendada aquisição de SSD de 512 GB ou 1 TB para prevenção de travamentos e integridade de dados.
                         </p>
                       ) : (
                         <p>
-                          • <strong>Armazenamento Adequado:</strong> Capacidade de disco suficiente para as rotinas atuais.
+                          • <strong>Armazenamento Adequado:</strong> Capacidade de disco suficiente para as rotinas corporativas.
                         </p>
                       )}
 
                       {tickets.length >= 3 && (
                         <p>
-                          • <strong>Atenção à Recorrência:</strong> Equipamento acumula {tickets.length} chamados de suporte técnico. Caso o custo de manutenção continue elevado, sugerir substituição programada.
+                          • <strong>Atenção à Recorrência de Incidentes:</strong> Equipamento acumula {tickets.length} chamados de suporte técnico. Caso o custo de manutenção continue elevado, sugerir substituição programada.
                         </p>
                       )}
                     </div>
@@ -300,7 +580,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
               )}
 
               {/* ──────────────────────────────────────────────────────────
-                  ABA 2: MANUTENÇÕES & CHAMADOS DO EQUIPAMENTO
+                  ABA 3: MANUTENÇÕES & CHAMADOS DO EQUIPAMENTO
                   ────────────────────────────────────────────────────────── */}
               {activeTab === "tickets" && (
                 <div className="space-y-4">
@@ -381,95 +661,6 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                                 </td>
                                 <td className="px-3 py-3 text-slate-500 text-[11px] truncate max-w-[150px]">
                                   {t.closed_at ? new Date(t.closed_at).toLocaleDateString("pt-BR") : (t.closure_reason || "Em aberto")}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ──────────────────────────────────────────────────────────
-                  ABA 3: CONSUMO DE HARDWARE (MÉTRICAS TEMPORAIS)
-                  ────────────────────────────────────────────────────────── */}
-              {activeTab === "metrics" && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-black text-slate-900">Histórico de Consumo de Hardware</h4>
-                      <p className="text-xs text-slate-500">Últimas medições de telemetria coletadas pelo agente</p>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs font-bold text-slate-500">
-                      <span>Média CPU: <strong className="text-slate-900">{avgCpu}%</strong></span>
-                      <span>Média RAM: <strong className="text-slate-900">{avgRam}%</strong></span>
-                    </div>
-                  </div>
-
-                  {metrics.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400 text-xs">
-                      Nenhuma amostra de telemetria histórica gravada ainda.
-                    </div>
-                  ) : (
-                    <div className="border border-slate-200 rounded-2xl overflow-hidden max-h-[460px] overflow-y-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-200">
-                          <tr>
-                            <th className="px-4 py-2.5">Data & Hora</th>
-                            <th className="px-3 py-2.5">CPU (%)</th>
-                            <th className="px-3 py-2.5">Memória RAM (%)</th>
-                            <th className="px-3 py-2.5">Disco Principal</th>
-                            <th className="px-3 py-2.5">Uptime</th>
-                            <th className="px-3 py-2.5">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                          {metrics.map((m) => {
-                            const cpu = m.cpu_usage_pct ?? 0;
-                            const ram = m.ram_usage_pct ?? 0;
-                            const pDisk = m.disk_metrics && m.disk_metrics[0] ? m.disk_metrics[0] : null;
-
-                            return (
-                              <tr key={m.id} className="hover:bg-slate-50/70 transition-colors">
-                                <td className="px-4 py-2.5 font-mono text-[11px] text-slate-500">
-                                  {new Date(m.created_at).toLocaleString("pt-BR")}
-                                </td>
-                                <td className="px-3 py-2.5">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                      <div
-                                        className={`h-full rounded-full ${cpu >= 90 ? "bg-red-500" : cpu >= 75 ? "bg-amber-500" : "bg-emerald-500"}`}
-                                        style={{ width: `${Math.min(100, cpu)}%` }}
-                                      />
-                                    </div>
-                                    <span className="font-mono text-xs">{cpu}%</span>
-                                  </div>
-                                </td>
-                                <td className="px-3 py-2.5">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                      <div
-                                        className={`h-full rounded-full ${ram >= 90 ? "bg-red-500" : ram >= 80 ? "bg-amber-500" : "bg-blue-500"}`}
-                                        style={{ width: `${Math.min(100, ram)}%` }}
-                                      />
-                                    </div>
-                                    <span className="font-mono text-xs">{ram}%</span>
-                                  </div>
-                                </td>
-                                <td className="px-3 py-2.5 font-mono text-[11px] text-slate-600">
-                                  {pDisk ? `${pDisk.free_gb} GB livres (${pDisk.used_pct}%)` : "—"}
-                                </td>
-                                <td className="px-3 py-2.5 text-slate-500 text-[11px]">
-                                  {m.uptime_hours ? `${Math.round(m.uptime_hours)}h` : "—"}
-                                </td>
-                                <td className="px-3 py-2.5">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    m.status === "warning" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
-                                  }`}>
-                                    {m.status}
-                                  </span>
                                 </td>
                               </tr>
                             );

@@ -405,6 +405,26 @@ async def lifespan(app: FastAPI):
                 );
                 CREATE INDEX IF NOT EXISTS idx_agent_checkins_hostname ON agent_checkins(hostname);
                 CREATE INDEX IF NOT EXISTS idx_agent_checkins_ip ON agent_checkins(ip_address);
+
+                CREATE TABLE IF NOT EXISTS agent_metrics_history (
+                    id SERIAL PRIMARY KEY,
+                    hostname VARCHAR(150) NOT NULL,
+                    cpu_usage_pct INTEGER,
+                    ram_used_mb INTEGER,
+                    ram_total_mb INTEGER,
+                    ram_usage_pct NUMERIC(5,2),
+                    disk_metrics JSONB,
+                    disk_usage_pct NUMERIC(5,2),
+                    disk_free_gb NUMERIC(8,2),
+                    uptime_hours NUMERIC(8,1),
+                    status VARCHAR(20) DEFAULT 'online' NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+                );
+                ALTER TABLE agent_metrics_history ADD COLUMN IF NOT EXISTS disk_usage_pct NUMERIC(5,2);
+                ALTER TABLE agent_metrics_history ADD COLUMN IF NOT EXISTS disk_free_gb NUMERIC(8,2);
+                CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_hostname ON agent_metrics_history(hostname);
+                CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_created_at ON agent_metrics_history(created_at);
+                CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_host_created ON agent_metrics_history(hostname, created_at DESC);
             """))
             # Seed SLA config default se tabela estiver vazia
             conn.execute(text("""

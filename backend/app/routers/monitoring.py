@@ -3,7 +3,7 @@ Router Monitoring — Central unificada de dados de monitoramento (Helpdesk & NO
 """
 import re
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -138,6 +138,38 @@ class MachineHistoryResponse(BaseModel):
     metrics_count: int
     metrics_history: list[MachineMetricsHistoryItem]
     hardware_recommendations: list[MachineHardwareRecommendation]
+
+
+class MetricPoint(BaseModel):
+    timestamp: str
+    label: str
+    cpu_pct: float
+    cpu_peak: float
+    ram_pct: float
+    ram_peak: float
+    ram_used_mb: Optional[int] = None
+    disk_pct: float
+    disk_free_gb: Optional[float] = None
+    status: str
+
+
+class DegradationEvent(BaseModel):
+    metric: str
+    detected_at: str
+    initial_value: str
+    current_value: str
+    severity: str
+    message: str
+
+
+class MachineMetricsChartResponse(BaseModel):
+    machine_id: int
+    hostname: str
+    time_range: str
+    samples_count: int
+    data_points: list[MetricPoint]
+    summary: dict
+    degradation_events: list[DegradationEvent]
 
 
 class AgentSummaryResponse(BaseModel):
@@ -464,6 +496,12 @@ def agent_checkin(
 
     # 5. Salva amostra no histórico temporal de telemetria
     try:
+        primary_disk_pct = None
+        primary_disk_free = None
+        if disks_normalized and len(disks_normalized) > 0 and isinstance(disks_normalized[0], dict):
+            primary_disk_pct = float(disks_normalized[0].get("used_pct", 0))
+            primary_disk_free = float(disks_normalized[0].get("free_gb", 0))
+
         metrics_entry = AgentMetricsHistory(
             hostname=hostname_clean,
             cpu_usage_pct=data.cpu_usage_pct,
@@ -471,6 +509,8 @@ def agent_checkin(
             ram_total_mb=data.ram_total_mb,
             ram_usage_pct=data.ram_usage_pct,
             disk_metrics=disks_normalized,
+            disk_usage_pct=primary_disk_pct,
+            disk_free_gb=primary_disk_free,
             uptime_hours=data.uptime_hours,
             status=calculated_status,
             created_at=now,
@@ -832,6 +872,289 @@ def get_agent_machine_history(
         metrics_count=len(metrics_list),
         metrics_history=metrics_list,
         hardware_recommendations=recommendations,
+    )
+
+
+@router.get("/agent/machines/{machine_id}/metrics-chart", response_model=MachineMetricsChartResponse, summary="Evolução temporal de CPU, RAM e Disco e análise de degradação")
+def get_agent_machine_metrics_chart(
+    machine_id: int,
+    time_range: str = Query("24h", regex="^(24h|7d|30d|90d|1y|all)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Retorna os dados agregados de telemetria (CPU, RAM, Disco) por hora, dia, semana, mês ou ano,
+    calculando médias, picos e identificando pontos de degradação ("quando começou a ficar ruim").
+    """
+    checkin = db.query(AgentCheckin).filter(AgentCheckin.id == machine_id).first()
+    if not checkin:
+        raise HTTPException(status_code=404, detail="Estação não encontrada.")
+
+    now = datetime.now(timezone.utc)
+    delta_map = {
+        "24h": timedelta(hours=24),
+        "7d": timedelta(days=7),
+        "30d": timedelta(days=30),
+        "90d": timedelta(days=90),
+        "1y": timedelta(days=365),
+        "all": timedelta(days=3650),
+    }
+    since = now - delta_map.get(time_range, timedelta(hours=24))
+
+    records = (
+        db.query(AgentMetricsHistory)
+        .filter(
+            AgentMetricsHistory.hostname.ilike(checkin.hostname),
+            AgentMetricsHistory.created_at >= since,
+        )
+        .order_by(AgentMetricsHistory.created_at.asc())
+        .all()
+    )
+
+    # Se não houver amostras salvas na tabela de histórico ainda, gera o ponto do checkin atual
+    if not records:
+        primary_disk_pct = None
+        primary_disk_free = None
+        if checkin.disk_metrics and len(checkin.disk_metrics) > 0 and isinstance(checkin.disk_metrics[0], dict):
+            primary_disk_pct = float(checkin.disk_metrics[0].get("used_pct", 0))
+            primary_disk_free = float(checkin.disk_metrics[0].get("free_gb", 0))
+
+        synthetic_point = MetricPoint(
+            timestamp=checkin.last_seen_at.isoformat(),
+            label=checkin.last_seen_at.strftime("%H:%M" if time_range == "24h" else "%d/%m %H:%M"),
+            cpu_pct=float(checkin.cpu_usage_pct or 0),
+            cpu_peak=float(checkin.cpu_usage_pct or 0),
+            ram_pct=float(checkin.ram_usage_pct or 0),
+            ram_peak=float(checkin.ram_usage_pct or 0),
+            ram_used_mb=checkin.ram_used_mb,
+            disk_pct=primary_disk_pct or 0.0,
+            disk_free_gb=primary_disk_free,
+            status=checkin.status,
+        )
+        return MachineMetricsChartResponse(
+            machine_id=checkin.id,
+            hostname=checkin.hostname,
+            time_range=time_range,
+            samples_count=1,
+            data_points=[synthetic_point],
+            summary={
+                "current_cpu": checkin.cpu_usage_pct or 0,
+                "avg_cpu": checkin.cpu_usage_pct or 0,
+                "peak_cpu": checkin.cpu_usage_pct or 0,
+                "current_ram": checkin.ram_usage_pct or 0,
+                "avg_ram": checkin.ram_usage_pct or 0,
+                "peak_ram": checkin.ram_usage_pct or 0,
+                "current_disk": primary_disk_pct or 0,
+                "avg_disk": primary_disk_pct or 0,
+                "peak_disk": primary_disk_pct or 0,
+                "total_samples": 1,
+            },
+            degradation_events=[],
+        )
+
+    def get_bucket_key(dt: datetime, period: str) -> str:
+        if period == "24h":
+            minute_15 = (dt.minute // 15) * 15
+            return dt.strftime(f"%Y-%m-%d %H:{minute_15:02d}")
+        elif period == "7d":
+            return dt.strftime("%Y-%m-%d %H:00")
+        elif period == "30d":
+            hour_4 = (dt.hour // 4) * 4
+            return dt.strftime(f"%Y-%m-%d {hour_4:02d}:00")
+        elif period in ("90d", "1y", "all"):
+            return dt.strftime("%Y-%m-%d")
+        return dt.strftime("%Y-%m-%d %H:%M")
+
+    def format_label(dt: datetime, period: str) -> str:
+        if period == "24h":
+            return dt.strftime("%H:%M")
+        elif period in ("7d", "30d"):
+            return dt.strftime("%d/%m %Hh")
+        else:
+            return dt.strftime("%d/%m")
+
+    buckets = {}
+    for r in records:
+        b_key = get_bucket_key(r.created_at, time_range)
+        if b_key not in buckets:
+            buckets[b_key] = {
+                "dt": r.created_at,
+                "cpus": [],
+                "rams": [],
+                "ram_mbs": [],
+                "disks": [],
+                "frees": [],
+                "statuses": [],
+            }
+
+        cpu_val = float(r.cpu_usage_pct) if r.cpu_usage_pct is not None else 0.0
+        ram_val = float(r.ram_usage_pct) if r.ram_usage_pct is not None else 0.0
+
+        disk_val = None
+        disk_free = None
+        if r.disk_usage_pct is not None:
+            disk_val = float(r.disk_usage_pct)
+            disk_free = float(r.disk_free_gb) if r.disk_free_gb is not None else None
+        elif r.disk_metrics and len(r.disk_metrics) > 0 and isinstance(r.disk_metrics[0], dict):
+            disk_val = float(r.disk_metrics[0].get("used_pct", 0))
+            disk_free = float(r.disk_metrics[0].get("free_gb", 0))
+
+        buckets[b_key]["cpus"].append(cpu_val)
+        buckets[b_key]["rams"].append(ram_val)
+        if r.ram_used_mb:
+            buckets[b_key]["ram_mbs"].append(r.ram_used_mb)
+        if disk_val is not None:
+            buckets[b_key]["disks"].append(disk_val)
+        if disk_free is not None:
+            buckets[b_key]["frees"].append(disk_free)
+        buckets[b_key]["statuses"].append(r.status)
+
+    data_points = []
+    all_cpus = []
+    all_rams = []
+    all_disks = []
+
+    for b_key, b_data in buckets.items():
+        cpus = b_data["cpus"]
+        rams = b_data["rams"]
+        disks = b_data["disks"]
+        frees = b_data["frees"]
+        dt = b_data["dt"]
+
+        mean_cpu = round(sum(cpus) / len(cpus), 1) if cpus else 0.0
+        peak_cpu = round(max(cpus), 1) if cpus else 0.0
+        mean_ram = round(sum(rams) / len(rams), 1) if rams else 0.0
+        peak_ram = round(max(rams), 1) if rams else 0.0
+        mean_ram_mb = int(round(sum(b_data["ram_mbs"]) / len(b_data["ram_mbs"]))) if b_data["ram_mbs"] else None
+        mean_disk = round(sum(disks) / len(disks), 1) if disks else 0.0
+        mean_free = round(sum(frees) / len(frees), 1) if frees else None
+
+        item_status = "warning" if "warning" in b_data["statuses"] else "online"
+
+        all_cpus.extend(cpus)
+        all_rams.extend(rams)
+        all_disks.extend(disks)
+
+        data_points.append(
+            MetricPoint(
+                timestamp=dt.isoformat(),
+                label=format_label(dt, time_range),
+                cpu_pct=mean_cpu,
+                cpu_peak=peak_cpu,
+                ram_pct=mean_ram,
+                ram_peak=peak_ram,
+                ram_used_mb=mean_ram_mb,
+                disk_pct=mean_disk,
+                disk_free_gb=mean_free,
+                status=item_status,
+            )
+        )
+
+    # Detecção de Ponto de Inflexão e Degradação
+    degradation_events = []
+
+    baseline_ram = data_points[0].ram_pct if data_points else 0.0
+    latest_ram = data_points[-1].ram_pct if data_points else 0.0
+
+    if latest_ram >= 80 and baseline_ram < 75:
+        ram_breach_idx = None
+        for idx, pt in enumerate(data_points):
+            if pt.ram_pct >= 80:
+                ram_breach_idx = idx
+                break
+        if ram_breach_idx is not None:
+            breach_pt = data_points[ram_breach_idx]
+            degradation_events.append(
+                DegradationEvent(
+                    metric="Memória RAM",
+                    detected_at=breach_pt.label,
+                    initial_value=f"{baseline_ram}%",
+                    current_value=f"{latest_ram}%",
+                    severity="danger",
+                    message=f"Consumo de RAM aumentou significativamente de {baseline_ram}% para {latest_ram}%, rompendo o limiar de 80% a partir de {breach_pt.label}.",
+                )
+            )
+    elif latest_ram >= 88:
+        degradation_events.append(
+            DegradationEvent(
+                metric="Memória RAM",
+                detected_at="Período Recente",
+                initial_value=f"{baseline_ram}%",
+                current_value=f"{latest_ram}%",
+                severity="danger",
+                message=f"Memória RAM operando em nível crítico ({latest_ram}%). Recomendado upgrade de módulos.",
+            )
+        )
+
+    baseline_disk = data_points[0].disk_pct if data_points else 0.0
+    latest_disk = data_points[-1].disk_pct if data_points else 0.0
+    if latest_disk >= 85 and baseline_disk < 80:
+        disk_breach_idx = None
+        for idx, pt in enumerate(data_points):
+            if pt.disk_pct >= 85:
+                disk_breach_idx = idx
+                break
+        if disk_breach_idx is not None:
+            breach_pt = data_points[disk_breach_idx]
+            degradation_events.append(
+                DegradationEvent(
+                    metric="Armazenamento (Disco C:)",
+                    detected_at=breach_pt.label,
+                    initial_value=f"{baseline_disk}%",
+                    current_value=f"{latest_disk}%",
+                    severity="danger",
+                    message=f"Ocupação do disco subiu de {baseline_disk}% para {latest_disk}%, atingindo a faixa de risco (>85%) em {breach_pt.label}.",
+                )
+            )
+    elif latest_disk >= 90:
+        degradation_events.append(
+            DegradationEvent(
+                metric="Armazenamento (Disco C:)",
+                detected_at="Período Recente",
+                initial_value=f"{baseline_disk}%",
+                current_value=f"{latest_disk}%",
+                severity="danger",
+                message=f"Disco principal com {latest_disk}% de espaço ocupado. Risco iminente de travamentos.",
+            )
+        )
+
+    peak_cpu_overall = max(all_cpus) if all_cpus else 0.0
+    if peak_cpu_overall >= 90:
+        high_cpu_count = sum(1 for c in all_cpus if c >= 90)
+        first_cpu_high = next((pt for pt in data_points if pt.cpu_peak >= 90), None)
+        when_str = first_cpu_high.label if first_cpu_high else "recente"
+        degradation_events.append(
+            DegradationEvent(
+                metric="Processador (CPU)",
+                detected_at=when_str,
+                initial_value=f"{round(all_cpus[0])}%" if all_cpus else "0%",
+                current_value=f"Pico {peak_cpu_overall}%",
+                severity="warning",
+                message=f"Detectados {high_cpu_count} picos de CPU >= 90% a partir de {when_str}, apontando sobrecargas temporárias ou processos concorrentes.",
+            )
+        )
+
+    summary = {
+        "current_cpu": checkin.cpu_usage_pct or (data_points[-1].cpu_pct if data_points else 0),
+        "avg_cpu": round(sum(all_cpus) / len(all_cpus), 1) if all_cpus else 0,
+        "peak_cpu": max(all_cpus) if all_cpus else 0,
+        "current_ram": checkin.ram_usage_pct or (data_points[-1].ram_pct if data_points else 0),
+        "avg_ram": round(sum(all_rams) / len(all_rams), 1) if all_rams else 0,
+        "peak_ram": max(all_rams) if all_rams else 0,
+        "current_disk": latest_disk,
+        "avg_disk": round(sum(all_disks) / len(all_disks), 1) if all_disks else 0,
+        "peak_disk": max(all_disks) if all_disks else 0,
+        "total_samples": len(records),
+    }
+
+    return MachineMetricsChartResponse(
+        machine_id=checkin.id,
+        hostname=checkin.hostname,
+        time_range=time_range,
+        samples_count=len(data_points),
+        data_points=data_points,
+        summary=summary,
+        degradation_events=degradation_events,
     )
 
 
