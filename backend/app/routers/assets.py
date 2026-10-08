@@ -229,6 +229,7 @@ def list_assets(
     subcategory_id: int | None = None,
     category_id: int | None = None,
     location_id: int | None = None,
+    assigned_user_id: int | None = None,
     is_active: bool = True,
     search: str | None = None,
     db: Session = Depends(get_db),
@@ -244,6 +245,11 @@ def list_assets(
         query = query.filter(Asset.category_id == category_id)
     if location_id:
         query = query.filter(Asset.location_id == location_id)
+    if assigned_user_id is not None:
+        if assigned_user_id == 0:
+            query = query.filter(Asset.assigned_user_id.is_(None))
+        else:
+            query = query.filter(Asset.assigned_user_id == assigned_user_id)
     if search:
         query = query.filter(Asset.name.ilike(f"%{search}%"))
     

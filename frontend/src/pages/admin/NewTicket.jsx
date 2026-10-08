@@ -44,23 +44,6 @@ export default function NewTicket() {
     api.get("/public/rooms").then(r => setRooms(r.data)).catch(console.error);
   }, []);
 
-  // Fetch assets when category or requester changes
-  useEffect(() => {
-    if (categoryId) {
-      let url = `/assets/?category_id=${categoryId}`;
-      if (requesterId) {
-        url += `&assigned_user_id=${requesterId}`;
-      }
-      api.get(url)
-        .then(r => {
-          setAssets(r.data);
-        })
-        .catch(console.error);
-    } else {
-      setAssets([]);
-    }
-  }, [categoryId, requesterId]);
-
   // Handle location auto-population from asset
   useEffect(() => {
     if (assetId) {
@@ -88,7 +71,17 @@ export default function NewTicket() {
   useEffect(() => {
     if (requesterId) {
       api.get(`/assets/?assigned_user_id=${requesterId}`).then(r => {
-        setRequesterAssets(r.data);
+        const userAssets = r.data || [];
+        setRequesterAssets(userAssets);
+        setAssets(userAssets);
+        if (userAssets.length === 1) {
+          setAssetId(String(userAssets[0].id));
+          if (userAssets[0].location_id) {
+            setLocation(String(userAssets[0].location_id));
+          }
+        } else {
+          setAssetId("");
+        }
       }).catch(console.error);
 
       const reqUser = users.find(u => u.id === Number(requesterId));
@@ -97,6 +90,8 @@ export default function NewTicket() {
       }
     } else {
       setRequesterAssets([]);
+      setAssets([]);
+      setAssetId("");
     }
   }, [requesterId, users]);
 
@@ -283,18 +278,34 @@ export default function NewTicket() {
 
               {categoryId && (
                 <div className="space-y-2 animate-fade-in">
-                  <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Item / Ativo (CMDB)</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Item / Ativo (CMDB)</label>
+                    {requesterId && (
+                      <span className="text-[11px] font-bold text-slate-400">
+                        {assets.length === 0 ? "Nenhum ativo vinculado" : `${assets.length} ativo(s) do colaborador`}
+                      </span>
+                    )}
+                  </div>
                   <select
+                    disabled={!requesterId}
                     value={assetId}
                     onChange={(e) => setAssetId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <option value="">Nenhum / Não aplicável</option>
-                    {assets.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} {a.location_name ? `📍 ${a.location_name}` : ""} {a.ip_address ? `(${a.ip_address})` : ""}
-                      </option>
-                    ))}
+                    {!requesterId ? (
+                      <option value="">Selecione o solicitante primeiro...</option>
+                    ) : assets.length === 0 ? (
+                      <option value="">Nenhum ativo atribuído a este colaborador</option>
+                    ) : (
+                      <>
+                        <option value="">Nenhum / Não aplicável</option>
+                        {assets.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            💻 {a.name} ({a.type}) {a.location_name ? `📍 ${a.location_name}` : ""} {a.ip_address ? `(${a.ip_address})` : ""}
+                          </option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
               )}

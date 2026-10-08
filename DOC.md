@@ -945,3 +945,13 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Gerenciador de QR Codes (`QRCodeManager.jsx`)**: Botão de limpeza de filtros e botão `X` rápido no campo de busca para redefinir termo e tipo selecionado (Wi-Fi/Equipamentos).
     - **Importador Active Directory (`ADImport.jsx`)**: Botão `X` e botão "Limpar" para restaurar a lista completa de OUs do LDAP.
     - **Painel TV NOC (`PublicNocPanel.jsx`)**: Botão `X` para remoção rápida de filtros de pesquisa na visualização de mosaico.
+
+27. **Filtragem Estrita de Ativos por Usuário Atribuído no Formulário de Chamados**:
+    - **Suporte a `assigned_user_id` na API REST (`GET /api/v1/assets/`)**:
+      - A rota de listagem de ativos do backend foi atualizada para aceitar o parâmetro de consulta `assigned_user_id: int | None = None`.
+      - Quando informado, filtra rigorosamente `Asset.assigned_user_id == assigned_user_id` (ou `Asset.assigned_user_id.is_(None)` se 0), eliminando o vazamento de todos os computadores da empresa em consultas contextuais.
+    - **Experiência no Cadastro de Chamados (`NewTicket.jsx`)**:
+      - O seletor **Item / Ativo (CMDB)** passa a exibir exclusivamente os equipamentos atribuídos ao colaborador selecionado no campo **Solicitante**.
+      - Se nenhum solicitante estiver selecionado, o campo permanece desabilitado com a instrução *"Selecione o solicitante primeiro..."*.
+      - Caso o solicitante possua apenas 1 ativo vinculado (comum na grande maioria dos colaboradores), o sistema **auto-seleciona** o equipamento e preenche a localização física automaticamente.
+      - Se o colaborador não possuir ativos vinculados no CMDB, o select exibe claramente *"Nenhum ativo atribuído a este colaborador"*, sem listar máquinas aleatórias da rede.
