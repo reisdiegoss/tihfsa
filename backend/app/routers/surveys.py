@@ -12,6 +12,7 @@ from sqlalchemy import func
 from app.database import get_db
 from app.models.satisfaction_survey import TicketSatisfactionSurvey
 from app.models.ticket import Ticket
+from app.models.user import User
 from app.auth.dependencies import require_technician, get_current_user
 
 router = APIRouter(tags=["CSAT Surveys"])

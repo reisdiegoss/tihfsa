@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.system_setting import SystemSetting
+from app.models.user import User
 from app.auth.dependencies import require_admin, get_current_user
 
 router = APIRouter(prefix="/api/v1/settings/general", tags=["Settings"])
