@@ -250,6 +250,10 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMP WITH TIME ZONE;"))
             conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS reopen_count INTEGER DEFAULT 0 NOT NULL;"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_modules JSON;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_requester_on_update BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_ti_on_create BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_ti_on_close BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_ti_on_update BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS location_departments (
                     location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,

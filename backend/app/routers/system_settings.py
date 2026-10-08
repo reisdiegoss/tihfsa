@@ -24,6 +24,10 @@ class SystemSettingsSchema(BaseModel):
     notify_requester_on_create: bool = True
     notify_requester_on_assign: bool = True
     notify_requester_on_solve: bool = True
+    notify_requester_on_update: bool = True
+    notify_ti_on_create: bool = True
+    notify_ti_on_close: bool = True
+    notify_ti_on_update: bool = True
     notify_technician_on_assign: bool = True
 
 
@@ -49,6 +53,10 @@ def get_general_settings(
         notify_requester_on_create=setting.notify_requester_on_create if setting.notify_requester_on_create is not None else True,
         notify_requester_on_assign=setting.notify_requester_on_assign if setting.notify_requester_on_assign is not None else True,
         notify_requester_on_solve=setting.notify_requester_on_solve if setting.notify_requester_on_solve is not None else True,
+        notify_requester_on_update=setting.notify_requester_on_update if getattr(setting, 'notify_requester_on_update', None) is not None else True,
+        notify_ti_on_create=setting.notify_ti_on_create if getattr(setting, 'notify_ti_on_create', None) is not None else True,
+        notify_ti_on_close=setting.notify_ti_on_close if getattr(setting, 'notify_ti_on_close', None) is not None else True,
+        notify_ti_on_update=setting.notify_ti_on_update if getattr(setting, 'notify_ti_on_update', None) is not None else True,
         notify_technician_on_assign=setting.notify_technician_on_assign if setting.notify_technician_on_assign is not None else True,
     )
 
@@ -84,6 +92,10 @@ def update_general_settings(
     setting.notify_requester_on_create = payload.notify_requester_on_create
     setting.notify_requester_on_assign = payload.notify_requester_on_assign
     setting.notify_requester_on_solve = payload.notify_requester_on_solve
+    setting.notify_requester_on_update = payload.notify_requester_on_update
+    setting.notify_ti_on_create = payload.notify_ti_on_create
+    setting.notify_ti_on_close = payload.notify_ti_on_close
+    setting.notify_ti_on_update = payload.notify_ti_on_update
     setting.notify_technician_on_assign = payload.notify_technician_on_assign
 
     db.commit()
@@ -99,6 +111,10 @@ def update_general_settings(
         notify_requester_on_create=setting.notify_requester_on_create,
         notify_requester_on_assign=setting.notify_requester_on_assign,
         notify_requester_on_solve=setting.notify_requester_on_solve,
+        notify_requester_on_update=setting.notify_requester_on_update,
+        notify_ti_on_create=setting.notify_ti_on_create,
+        notify_ti_on_close=setting.notify_ti_on_close,
+        notify_ti_on_update=setting.notify_ti_on_update,
         notify_technician_on_assign=setting.notify_technician_on_assign,
     )
 

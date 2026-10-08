@@ -454,14 +454,20 @@ def create_public_ticket(
         f"• IP: {client_info['ip']}\n"
         f"• Hostname: {hostname_label}{asset_str}"
     )
-    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
 
-    # Notificação por E-mail ao Solicitante
+    # 7. Notificações por E-mail e WhatsApp ao Solicitante e à Equipe de TI
     try:
         from app.models.system_setting import SystemSetting
-        from app.services.email_service import send_ticket_created_notification
+        from app.services.email_service import (
+            send_ticket_created_notification,
+            send_ticket_created_staff_notification,
+        )
         setting = db.query(SystemSetting).first()
         notify_req = setting.notify_requester_on_create if setting else True
+        notify_ti = getattr(setting, "notify_ti_on_create", True) if setting else True
+
+        # Confirmação por E-mail ao Solicitante
         if notify_req and user.email:
             background_tasks.add_task(
                 send_ticket_created_notification,
@@ -469,8 +475,38 @@ def create_public_ticket(
                 requester_name=user.display_name,
                 requester_email=user.email,
             )
+
+        # Confirmação por WhatsApp ao Solicitante (se tiver telefone)
+        if user.phone:
+            user_wa = (
+                f"🎫 *[TIHFSA] Chamado #{ticket.id} Registrado!*\n\n"
+                f"Olá, *{user.display_name}*!\n"
+                f"Seu chamado foi registrado com sucesso em nosso sistema de TI.\n"
+                f"*Título:* {ticket.title}\n"
+                f"*Prioridade:* {ticket.priority.value}\n\n"
+                f"Nossa equipe técnica já foi notificada e em breve dará início ao atendimento."
+            )
+            background_tasks.add_task(
+                EvolutionService.send_whatsapp_message,
+                user_wa,
+                recipient=user.phone,
+                ticket_id=ticket.id,
+                recipient_name=user.display_name,
+            )
+
+        # E-mail à Equipe de TI / Suporte (support_notification_email)
+        if notify_ti:
+            loc_str = f"{data.location or ''} {asset_str}".strip()
+            background_tasks.add_task(
+                send_ticket_created_staff_notification,
+                ticket=ticket,
+                requester_name=user.display_name,
+                requester_dept=dept_name,
+                origin="Formulário Público / QR Code",
+                location_or_asset=loc_str,
+            )
     except Exception as e:
-        print(f"[WARN] Falha ao agendar e-mail de confirmação público: {e}")
+        print(f"[WARN] Falha ao agendar notificações do chamado público: {e}")
 
     return PublicTicketResponse(
         id=ticket.id,

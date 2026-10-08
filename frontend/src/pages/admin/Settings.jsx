@@ -237,6 +237,10 @@ export default function Settings() {
     notify_requester_on_create: true,
     notify_requester_on_assign: true,
     notify_requester_on_solve: true,
+    notify_requester_on_update: true,
+    notify_ti_on_create: true,
+    notify_ti_on_close: true,
+    notify_ti_on_update: true,
     notify_technician_on_assign: true,
   });
   const [loadingGeneralSettings, setLoadingGeneralSettings] = useState(false);
@@ -2239,45 +2243,123 @@ export default function Settings() {
                   </h3>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <span className="text-xs font-bold text-slate-700">Notificar Solicitante ao Registrar Chamado</span>
-                    <input
-                      type="checkbox"
-                      checked={generalSettings.notify_requester_on_create}
-                      onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_create: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
-                    />
+                <div className="space-y-4">
+                  {/* Bloco 1: Notificações ao Solicitante */}
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-extrabold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                      👤 Notificações ao Solicitante
+                    </p>
+                    
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/50 transition-colors">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Notificar Solicitante ao Registrar Chamado</span>
+                        <span className="text-[11px] text-slate-400 font-medium">E-mail com o número do protocolo e resumo do atendimento</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={generalSettings.notify_requester_on_create}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_create: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/50 transition-colors">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Notificar Solicitante ao Designar Técnico</span>
+                        <span className="text-[11px] text-slate-400 font-medium">Informa qual analista assumiu o atendimento</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={generalSettings.notify_requester_on_assign}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_assign: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/50 transition-colors">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Notificar Solicitante em Atualizações / Respostas da TI</span>
+                        <span className="text-[11px] text-slate-400 font-medium">Envia respostas e mudanças de status diretamente ao solicitante</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={generalSettings.notify_requester_on_update ?? true}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_update: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/50 transition-colors">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Notificar Solicitante ao Solucionar / Fechar Chamado</span>
+                        <span className="text-[11px] text-slate-400 font-medium">Envia a solução adotada e o link da pesquisa CSAT com 5 estrelas</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={generalSettings.notify_requester_on_solve}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_solve: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <span className="text-xs font-bold text-slate-700">Notificar Solicitante ao Designar Técnico</span>
-                    <input
-                      type="checkbox"
-                      checked={generalSettings.notify_requester_on_assign}
-                      onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_assign: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
-                    />
-                  </div>
+                  {/* Bloco 2: Notificações à Equipe de TI */}
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <p className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5">
+                      🛡️ Notificações à Equipe de TI & Suporte ({generalSettings.support_notification_email || "ti-hfsa@fasano.com.br"})
+                    </p>
 
-                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <span className="text-xs font-bold text-slate-700">Notificar Solicitante ao Solucionar Chamado (CSAT)</span>
-                    <input
-                      type="checkbox"
-                      checked={generalSettings.notify_requester_on_solve}
-                      onChange={(e) => setGeneralSettings({ ...generalSettings, notify_requester_on_solve: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
-                    />
-                  </div>
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/50 transition-colors">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Notificar Equipe de TI ao Abrir Novo Chamado</span>
+                        <span className="text-[11px] text-slate-400 font-medium">E-mail imediato com dados do chamado, solicitante e máquina</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={generalSettings.notify_ti_on_create ?? true}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, notify_ti_on_create: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                      />
+                    </div>
 
-                  <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <span className="text-xs font-bold text-slate-700">Notificar Técnico Responsável ao ser Atribuído</span>
-                    <input
-                      type="checkbox"
-                      checked={generalSettings.notify_technician_on_assign}
-                      onChange={(e) => setGeneralSettings({ ...generalSettings, notify_technician_on_assign: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
-                    />
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/50 transition-colors">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Notificar Equipe de TI quando Solicitante Interagir</span>
+                        <span className="text-[11px] text-slate-400 font-medium">Avisa por e-mail caso o solicitante responda ou comente no chamado</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={generalSettings.notify_ti_on_update ?? true}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, notify_ti_on_update: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/50 transition-colors">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Notificar Equipe de TI ao Fechar / Encerrar Chamado</span>
+                        <span className="text-[11px] text-slate-400 font-medium">E-mail com relatório de fechamento e solução aplicada</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={generalSettings.notify_ti_on_close ?? true}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, notify_ti_on_close: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/50 transition-colors">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Notificar Técnico Responsável ao ser Atribuído</span>
+                        <span className="text-[11px] text-slate-400 font-medium">Alerta nominal ao e-mail individual do analista designado</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={generalSettings.notify_technician_on_assign}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, notify_technician_on_assign: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 rounded-sm cursor-pointer"
+                      />
+                    </div>
                   </div>
                 </div>
 

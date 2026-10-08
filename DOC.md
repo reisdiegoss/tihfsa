@@ -955,3 +955,38 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Se nenhum solicitante estiver selecionado, o campo permanece desabilitado com a instrução *"Selecione o solicitante primeiro..."*.
       - Caso o solicitante possua apenas 1 ativo vinculado (comum na grande maioria dos colaboradores), o sistema **auto-seleciona** o equipamento e preenche a localização física automaticamente.
       - Se o colaborador não possuir ativos vinculados no CMDB, o select exibe claramente *"Nenhum ativo atribuído a este colaborador"*, sem listar máquinas aleatórias da rede.
+
+28. **Fluxo Unificado de Notificações por E-mail e WhatsApp (TI e Solicitante)**:
+    - **Abertura de Chamado (Portal Interno e Formulário Público)**:
+      - **Grupo da TI (WhatsApp)**: Notificação imediata no WhatsApp via Evolution API com o resumo do problema, prioridade, solicitante e dados anti-fraude (IP/Hostname).
+      - **E-mail de Notificação da TI (`support_notification_email`)**: Disparo automático via SMTP de e-mail formatado (estilo Bulletproof Outlook) para a equipe de TI (`ti-hfsa@fasano.com.br` ou e-mail configurado), com protocolo, solicitante, setor, ativo/local, descrição completa e botão de ação direta *"Atender Chamado no Painel"*.
+      - **Solicitante (E-mail & WhatsApp)**:
+        - Confirmação imediata por e-mail com protocolo e link para acompanhamento.
+        - Se o solicitante possuir telefone celular cadastrado no perfil/Active Directory (`user.phone`), envio direto de WhatsApp de confirmação com o número do chamado.
+    - **Atualizações no Chamado e Interações Técnicas**:
+      - **Quando a Equipe de TI responde ou adiciona nota**:
+        - O solicitante recebe e-mail formatado com o conteúdo da resposta e link para o portal `/app`.
+        - Se possuir telefone celular cadastrado, recebe mensagem via WhatsApp informando a resposta do analista.
+        - O grupo da TI no WhatsApp recebe registro da mensagem enviada.
+      - **Quando o Solicitante responde ou adiciona comentário**:
+        - O grupo da TI no WhatsApp é alertado imediatamente.
+        - A equipe de TI recebe e-mail corporativo (`support_notification_email`) informando que o solicitante respondeu ao chamado.
+      - **Mudança de Status do Chamado**:
+        - O solicitante é notificado por e-mail e WhatsApp sempre que o chamado mudar de status (ex: "Em Andamento", "Aguardando Terceiro/Peça").
+        - O grupo da TI no WhatsApp recebe a atualização de status com o responsável técnico.
+    - **Fechamento e Resolução do Chamado**:
+      - **E-mail para a Equipe de TI**: A equipe de suporte recebe e-mail corporativo de encerramento (`send_ticket_closed_staff_notification`), contendo quem encerrou o chamado e a solução/motivo registrado.
+      - **E-mail para o Solicitante com CSAT**: Disparo da pesquisa de satisfação CSAT de 1 a 5 estrelas clicáveis com a solução adotada e período de garantia de atendimento.
+      - **WhatsApp para o Solicitante**: Mensagem no WhatsApp confirmando o encerramento do chamado e orientando sobre a avaliação no e-mail.
+      - **Grupo da TI (WhatsApp)**: Notificação de encerramento do chamado com o motivo e responsável.
+    - **Configuração Granular no Painel Administrativo (`/admin/settings`)**:
+      - Nova seção no painel com toggles individuais em `SystemSettings`:
+        - *Notificar Solicitante ao Registrar Chamado* (`notify_requester_on_create`)
+        - *Notificar Solicitante ao Designar Técnico* (`notify_requester_on_assign`)
+        - *Notificar Solicitante em Atualizações / Respostas da TI* (`notify_requester_on_update`)
+        - *Notificar Solicitante ao Solucionar / Fechar Chamado* (`notify_requester_on_solve`)
+        - *Notificar Equipe de TI ao Abrir Novo Chamado* (`notify_ti_on_create`)
+        - *Notificar Equipe de TI quando Solicitante Interagir* (`notify_ti_on_update`)
+        - *Notificar Equipe de TI ao Fechar / Encerrar Chamado* (`notify_ti_on_close`)
+        - *Notificar Técnico Responsável ao ser Atribuído* (`notify_technician_on_assign`)
+      - Auditoria completa dos disparos de WhatsApp e E-mail gravados na tabela `notification_logs`.

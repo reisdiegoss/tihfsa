@@ -357,6 +357,295 @@ def send_ticket_created_notification(ticket, requester_name: str, requester_emai
         to_email=requester_email,
         subject=f"[TIHFSA] Chamado #{ticket.id} Registrado com Sucesso — {ticket.title}",
         html_body=html,
+        notification_type="TICKET_CREATED_REQ",
+        ticket_id=ticket.id,
+        recipient_name=requester_name,
+    )
+
+
+def send_ticket_created_staff_notification(
+    ticket,
+    requester_name: str,
+    requester_dept: str = "Geral",
+    origin: str = "Portal Interno",
+    location_or_asset: str = "",
+) -> bool:
+    """Envia notificação de abertura de novo chamado para o e-mail da equipe de TI/Suporte."""
+    base_url = settings.app_base_url or "https://fassa29"
+    target_email = get_support_email()
+    prio_val = ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)
+
+    loc_row = f"<tr><td style='padding: 6px 0; color: #64748b; font-size: 13px;'><strong>Local / Ativo:</strong></td><td style='padding: 6px 0; color: #1e293b; font-size: 13px;'>{location_or_asset}</td></tr>" if location_or_asset else ""
+
+    content = f"""
+    <p style="margin: 0 0 14px;">Olá <strong>Equipe de TI</strong>,</p>
+    <p style="margin: 0 0 16px;">Um novo chamado de atendimento foi aberto no sistema e aguarda ação técnica:</p>
+
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 20px; padding: 14px 18px;">
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px; width: 140px;"><strong>Protocolo:</strong></td>
+            <td style="padding: 6px 0; color: #1e293b; font-size: 13px; font-weight: 700;">#{ticket.id}</td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;"><strong>Título:</strong></td>
+            <td style="padding: 6px 0; color: #1e293b; font-size: 13px;">{ticket.title}</td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;"><strong>Solicitante:</strong></td>
+            <td style="padding: 6px 0; color: #1e293b; font-size: 13px;">{requester_name} ({requester_dept})</td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;"><strong>Prioridade:</strong></td>
+            <td style="padding: 6px 0; color: {'#b91c1c' if prio_val in ('Alta', 'Crítica') else '#1e293b'}; font-size: 13px; font-weight: 700;">{prio_val}</td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;"><strong>Origem:</strong></td>
+            <td style="padding: 6px 0; color: #1e293b; font-size: 13px;">{origin}</td>
+        </tr>
+        {loc_row}
+    </table>
+
+    <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 8px; font-weight: 700; color: #334155; font-size: 12px; text-transform: uppercase;">Descrição da Solicitação:</p>
+        <p style="margin: 0; color: #475569; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{ticket.description or 'Sem descrição adicional.'}</p>
+    </div>
+    """
+
+    action_btn = f"""
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
+        <tr>
+            <td align="center">
+                <a href="{base_url}/admin/tickets" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                    Atender Chamado #{ticket.id}
+                </a>
+            </td>
+        </tr>
+    </table>
+    """
+
+    badge_bg = "#fee2e2" if prio_val in ("Alta", "Crítica") else "#e0f2fe"
+    badge_color = "#991b1b" if prio_val in ("Alta", "Crítica") else "#0369a1"
+
+    html = render_bulletproof_email(
+        header_title=f"🎫 Novo Chamado Aberto #{ticket.id}",
+        header_subtitle="TIHFSA — Hotel Fasano Salvador",
+        badge_text="NOVO CHAMADO NA FILA",
+        badge_bg=badge_bg,
+        badge_color=badge_color,
+        content_html=content,
+        action_html=action_btn,
+    )
+
+    return send_system_email(
+        to_email=target_email,
+        subject=f"[TIHFSA] [NOVO CHAMADO #{ticket.id}] {ticket.title}",
+        html_body=html,
+        notification_type="TICKET_CREATED_STAFF",
+        ticket_id=ticket.id,
+        recipient_name="Equipe de TI",
+    )
+
+
+def send_ticket_interaction_notification(
+    ticket,
+    author_name: str,
+    message_text: str,
+    to_email: str,
+    recipient_name: str,
+    is_for_requester: bool = True,
+) -> bool:
+    """Envia notificação de nova interação/comentário no chamado (ao solicitante ou à equipe de TI)."""
+    base_url = settings.app_base_url or "https://fassa29"
+    link_url = f"{base_url}/app" if is_for_requester else f"{base_url}/admin/tickets"
+    btn_text = "Ver Chamado no Portal" if is_for_requester else f"Atender Chamado #{ticket.id}"
+    
+    header_title = f"💬 Nova Atualização no Chamado #{ticket.id}" if is_for_requester else f"💬 Solicitante Respondeu ao Chamado #{ticket.id}"
+    badge_text = "MENSAGEM DA EQUIPE DE TI" if is_for_requester else "RESPOSTA DO SOLICITANTE"
+    badge_bg = "#e0e7ff" if is_for_requester else "#fef3c7"
+    badge_color = "#3730a3" if is_for_requester else "#92400e"
+
+    content = f"""
+    <p style="margin: 0 0 14px;">Olá <strong>{recipient_name}</strong>,</p>
+    <p style="margin: 0 0 16px;">Houve uma nova mensagem/interação registrada no chamado:</p>
+
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 20px;">
+        <tr>
+            <td style="padding: 14px 18px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; line-height: 1.6;">
+                <strong>Protocolo:</strong> #{ticket.id} — {ticket.title}<br>
+                <strong>Autor da Mensagem:</strong> {author_name}<br>
+                <strong>Status Atual:</strong> {ticket.status.value if hasattr(ticket.status, 'value') else ticket.status}
+            </td>
+        </tr>
+    </table>
+
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f0f9ff; border-left: 4px solid #0284c7; border-radius: 0 8px 8px 0; margin-bottom: 22px;">
+        <tr>
+            <td style="padding: 14px 18px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #0369a1; line-height: 1.6;">
+                <strong style="color: #0284c7;">💬 Mensagem:</strong><br>
+                <span style="color: #1e293b; white-space: pre-wrap;">{message_text}</span>
+            </td>
+        </tr>
+    </table>
+    """
+
+    action_btn = f"""
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
+        <tr>
+            <td align="center">
+                <a href="{link_url}" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                    {btn_text}
+                </a>
+            </td>
+        </tr>
+    </table>
+    """
+
+    html = render_bulletproof_email(
+        header_title=header_title,
+        header_subtitle="TIHFSA — Hotel Fasano Salvador",
+        badge_text=badge_text,
+        badge_bg=badge_bg,
+        badge_color=badge_color,
+        content_html=content,
+        action_html=action_btn,
+    )
+
+    subject = f"[TIHFSA] Nova Atualização no Chamado #{ticket.id} — {ticket.title}" if is_for_requester else f"[TIHFSA] [RESPOSTA SOLICITANTE #{ticket.id}] {ticket.title}"
+
+    return send_system_email(
+        to_email=to_email,
+        subject=subject,
+        html_body=html,
+        notification_type="TICKET_INTERACTION",
+        ticket_id=ticket.id,
+        recipient_name=recipient_name,
+    )
+
+
+def send_ticket_closed_staff_notification(
+    ticket,
+    closed_by_name: str,
+    solution_or_reason: str,
+    requester_name: str = "",
+) -> bool:
+    """Envia notificação de fechamento do chamado para o e-mail de suporte da TI."""
+    base_url = settings.app_base_url or "https://fassa29"
+    target_email = get_support_email()
+    req_label = requester_name or (ticket.requester.display_name if ticket.requester else "Solicitante")
+
+    content = f"""
+    <p style="margin: 0 0 14px;">Olá <strong>Equipe de TI</strong>,</p>
+    <p style="margin: 0 0 16px;">O chamado abaixo foi <strong>encerrado</strong> no sistema:</p>
+
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 20px;">
+        <tr>
+            <td style="padding: 14px 18px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; line-height: 1.6;">
+                <strong>Protocolo:</strong> #{ticket.id} — {ticket.title}<br>
+                <strong>Solicitante:</strong> {req_label}<br>
+                <strong>Encerrado por:</strong> {closed_by_name}<br>
+                <strong>Status:</strong> Fechado
+            </td>
+        </tr>
+    </table>
+
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f0fdf4; border-left: 4px solid #16a34a; border-radius: 0 8px 8px 0; margin-bottom: 22px;">
+        <tr>
+            <td style="padding: 14px 18px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #166534; line-height: 1.6;">
+                <strong style="color: #15803d;">💡 Motivo / Solução de Encerramento:</strong><br>
+                <span style="color: #334155;">{solution_or_reason or 'Atendimento concluído com sucesso.'}</span>
+            </td>
+        </tr>
+    </table>
+    """
+
+    action_btn = f"""
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
+        <tr>
+            <td align="center">
+                <a href="{base_url}/admin/tickets" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                    Ver Chamado no Painel #{ticket.id}
+                </a>
+            </td>
+        </tr>
+    </table>
+    """
+
+    html = render_bulletproof_email(
+        header_title=f"🔒 Chamado Fechado #{ticket.id}",
+        header_subtitle="TIHFSA — Hotel Fasano Salvador",
+        badge_text="CHAMADO ENCERRADO",
+        badge_bg="#dcfce7",
+        badge_color="#15803d",
+        content_html=content,
+        action_html=action_btn,
+    )
+
+    return send_system_email(
+        to_email=target_email,
+        subject=f"[TIHFSA] [CHAMADO FECHADO #{ticket.id}] {ticket.title}",
+        html_body=html,
+        notification_type="TICKET_CLOSED_STAFF",
+        ticket_id=ticket.id,
+        recipient_name="Equipe de TI",
+    )
+
+
+def send_ticket_status_changed_notification(
+    ticket,
+    new_status: str,
+    changed_by_name: str,
+    requester_name: str,
+    requester_email: str,
+) -> bool:
+    """Envia notificação ao solicitante informando mudança no status do chamado."""
+    base_url = settings.app_base_url or "https://fassa29"
+    content = f"""
+    <p style="margin: 0 0 14px;">Olá <strong>{requester_name}</strong>,</p>
+    <p style="margin: 0 0 16px;">O status do seu chamado foi atualizado:</p>
+
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 20px;">
+        <tr>
+            <td style="padding: 14px 18px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; line-height: 1.6;">
+                <strong>Protocolo:</strong> #{ticket.id} — {ticket.title}<br>
+                <strong>Novo Status:</strong> <span style="color: #2563eb; font-weight: 700;">{new_status}</span><br>
+                <strong>Atualizado por:</strong> {changed_by_name}
+            </td>
+        </tr>
+    </table>
+    <p style="margin: 0; font-size: 13px; color: #64748b;">
+        Você pode acompanhar os detalhes e interagir com o analista diretamente pelo nosso portal.
+    </p>
+    """
+
+    action_btn = f"""
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
+        <tr>
+            <td align="center">
+                <a href="{base_url}/app" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
+                    Acompanhar Chamado no Portal
+                </a>
+            </td>
+        </tr>
+    </table>
+    """
+
+    html = render_bulletproof_email(
+        header_title=f"🔄 Status Atualizado #{ticket.id}",
+        header_subtitle="TIHFSA — Hotel Fasano Salvador",
+        badge_text=f"STATUS: {new_status.upper()}",
+        badge_bg="#e0f2fe",
+        badge_color="#0369a1",
+        content_html=content,
+        action_html=action_btn,
+    )
+
+    return send_system_email(
+        to_email=requester_email,
+        subject=f"[TIHFSA] Chamado #{ticket.id} — Status Atualizado para {new_status}",
+        html_body=html,
+        notification_type="TICKET_STATUS_CHANGED",
+        ticket_id=ticket.id,
+        recipient_name=requester_name,
     )
 
 

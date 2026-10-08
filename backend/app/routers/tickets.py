@@ -113,29 +113,67 @@ def create_ticket(
     db.commit()
     db.refresh(ticket)
     
-    # Notificação Evolution API
+    # Notificação Evolution API para o Grupo da TI
     icon = "🚨" if "NOC Auto-Alerta" in ticket.title else "🎫"
     msg_type = "ATENÇÃO: ATIVO OFFLINE" if "NOC Auto-Alerta" in ticket.title else "Novo Chamado Aberto"
-    msg_text = f"{icon} *[{msg_type}]*\n\n*Título:* {ticket.title}\n*Prioridade:* {ticket.priority.value}\n*Status:* {ticket.status.value}\n\n*Descrição:* {ticket.description}"
-    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+    msg_text = f"{icon} *[{msg_type}]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Prioridade:* {ticket.priority.value}\n*Status:* {ticket.status.value}\n\n*Descrição:* {ticket.description}"
+    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
 
-    # Notificação por E-mail ao Solicitante
+    # Notificações ao Solicitante e à Equipe de TI
     try:
         from app.models.system_setting import SystemSetting
-        from app.services.email_service import send_ticket_created_notification
+        from app.services.email_service import (
+            send_ticket_created_notification,
+            send_ticket_created_staff_notification,
+        )
         setting = db.query(SystemSetting).first()
         notify_req = setting.notify_requester_on_create if setting else True
-        if notify_req:
-            req_user = db.query(User).filter(User.id == ticket.requester_id).first()
-            if req_user and req_user.email:
-                background_tasks.add_task(
-                    send_ticket_created_notification,
-                    ticket=ticket,
-                    requester_name=req_user.display_name,
-                    requester_email=req_user.email,
-                )
+        notify_ti = getattr(setting, "notify_ti_on_create", True) if setting else True
+
+        req_user = db.query(User).filter(User.id == ticket.requester_id).first()
+        req_name = req_user.display_name if req_user else "Solicitante"
+        req_dept = req_user.department.name if (req_user and req_user.department) else "Geral"
+
+        # 1. E-mail de confirmação ao Solicitante
+        if notify_req and req_user and req_user.email:
+            background_tasks.add_task(
+                send_ticket_created_notification,
+                ticket=ticket,
+                requester_name=req_name,
+                requester_email=req_user.email,
+            )
+
+        # 2. WhatsApp ao Solicitante (se tiver telefone)
+        if req_user and req_user.phone:
+            user_wa = (
+                f"🎫 *[TIHFSA] Chamado #{ticket.id} Registrado!*\n\n"
+                f"Olá, *{req_name}*!\n"
+                f"Seu chamado foi registrado com sucesso em nosso sistema de TI.\n"
+                f"*Título:* {ticket.title}\n"
+                f"*Prioridade:* {ticket.priority.value}\n\n"
+                f"Nossa equipe técnica já foi notificada e em breve dará início ao atendimento."
+            )
+            background_tasks.add_task(
+                EvolutionService.send_whatsapp_message,
+                user_wa,
+                recipient=req_user.phone,
+                ticket_id=ticket.id,
+                recipient_name=req_name,
+            )
+
+        # 3. E-mail à Equipe de TI / Suporte (support_notification_email)
+        if notify_ti:
+            asset_label = ticket.asset.name if ticket.asset else ""
+            background_tasks.add_task(
+                send_ticket_created_staff_notification,
+                ticket=ticket,
+                requester_name=req_name,
+                requester_dept=req_dept,
+                origin="Painel / Sistema Interno",
+                location_or_asset=asset_label,
+            )
     except Exception as e:
-        print(f"[WARN] Falha ao agendar e-mail de confirmação de chamado: {e}")
+        print(f"[WARN] Falha ao agendar notificações de abertura de chamado: {e}")
     
     return ticket
 
@@ -549,13 +587,80 @@ def update_ticket(
     db.refresh(ticket)
     
     if new_status:
+        from app.models.system_setting import SystemSetting
+        from app.services.email_service import (
+            send_ticket_closed_staff_notification,
+            send_ticket_status_changed_notification,
+        )
+        setting = db.query(SystemSetting).first()
+        notify_ti_close = getattr(setting, "notify_ti_on_close", True) if setting else True
+        notify_req_update = getattr(setting, "notify_requester_on_update", True) if setting else True
+        req_user = db.query(User).filter(User.id == ticket.requester_id).first()
+        req_name = req_user.display_name if req_user else "Solicitante"
+
         if new_status == TicketStatus.CLOSED:
             reason = ticket.closure_reason or "Não informado"
             msg_text = f"🔒 *[Chamado Fechado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Responsável:* {current_user.display_name}\n*Motivo do Fechamento:* {reason}"
+            background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
+            
+            # Pesquisa CSAT ao solicitante
             dispatch_csat_survey(ticket, db, background_tasks)
+
+            # Notificação por E-mail à Equipe de TI
+            if notify_ti_close:
+                background_tasks.add_task(
+                    send_ticket_closed_staff_notification,
+                    ticket=ticket,
+                    closed_by_name=current_user.display_name,
+                    solution_or_reason=reason,
+                    requester_name=req_name,
+                )
+
+            # WhatsApp de encerramento ao solicitante se tiver telefone
+            if req_user and req_user.phone:
+                wa_close = (
+                    f"🔒 *[TIHFSA] Chamado #{ticket.id} Encerrado!*\n\n"
+                    f"Olá, *{req_name}*!\n"
+                    f"Seu chamado *'{ticket.title}'* foi finalizado pela equipe de TI.\n"
+                    f"*Responsável:* {current_user.display_name}\n"
+                    f"*Motivo / Resolução:* {reason}\n\n"
+                    f"Enviamos a pesquisa de avaliação para o seu e-mail corporativo."
+                )
+                background_tasks.add_task(
+                    EvolutionService.send_whatsapp_message,
+                    wa_close,
+                    recipient=req_user.phone,
+                    ticket_id=ticket.id,
+                    recipient_name=req_name,
+                )
         else:
-            msg_text = f"🔄 *[Chamado Atualizado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Novo Status:* {ticket.status.value}"
-        background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+            msg_text = f"🔄 *[Chamado Atualizado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Novo Status:* {ticket.status.value}\n*Responsável:* {current_user.display_name}"
+            background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
+
+            # Notificação ao Solicitante da alteração de status
+            if notify_req_update and req_user:
+                if req_user.email:
+                    background_tasks.add_task(
+                        send_ticket_status_changed_notification,
+                        ticket=ticket,
+                        new_status=ticket.status.value,
+                        changed_by_name=current_user.display_name,
+                        requester_name=req_name,
+                        requester_email=req_user.email,
+                    )
+                if req_user.phone:
+                    wa_status = (
+                        f"🔄 *[TIHFSA] Atualização do Chamado #{ticket.id}*\n\n"
+                        f"Olá, *{req_name}*!\n"
+                        f"O status do seu chamado *'{ticket.title}'* mudou para: *{ticket.status.value}* por {current_user.display_name}."
+                    )
+                    background_tasks.add_task(
+                        EvolutionService.send_whatsapp_message,
+                        wa_status,
+                        recipient=req_user.phone,
+                        ticket_id=ticket.id,
+                        recipient_name=req_name,
+                    )
 
     # Notificação ao Solicitante se técnico foi designado
     if "technician_id" in update_data and update_data["technician_id"]:
@@ -657,8 +762,40 @@ def batch_update_status(
     db.commit()
 
     if target_status == TicketStatus.CLOSED:
+        from app.models.system_setting import SystemSetting
+        from app.services.email_service import send_ticket_closed_staff_notification
+        setting = db.query(SystemSetting).first()
+        notify_ti_close = getattr(setting, "notify_ti_on_close", True) if setting else True
+
         for t in updated_tickets:
             dispatch_csat_survey(t, db, background_tasks)
+            if notify_ti_close:
+                req_u = db.query(User).filter(User.id == t.requester_id).first()
+                req_disp = req_u.display_name if req_u else "Solicitante"
+                background_tasks.add_task(
+                    send_ticket_closed_staff_notification,
+                    ticket=t,
+                    closed_by_name=current_user.display_name,
+                    solution_or_reason=closure_reason,
+                    requester_name=req_disp,
+                )
+    else:
+        from app.models.system_setting import SystemSetting
+        from app.services.email_service import send_ticket_status_changed_notification
+        setting = db.query(SystemSetting).first()
+        notify_req_update = getattr(setting, "notify_requester_on_update", True) if setting else True
+        if notify_req_update:
+            for t in updated_tickets:
+                req_u = db.query(User).filter(User.id == t.requester_id).first()
+                if req_u and req_u.email:
+                    background_tasks.add_task(
+                        send_ticket_status_changed_notification,
+                        ticket=t,
+                        new_status=target_status.value,
+                        changed_by_name=current_user.display_name,
+                        requester_name=req_u.display_name,
+                        requester_email=req_u.email,
+                    )
 
     # Notificação opcional no WhatsApp
     if data.notify_whatsapp and updated_tickets:
@@ -746,10 +883,26 @@ def validate_ticket(
         if data.action == "approve":
             msg_text = f"✅ *[Chamado Fechado]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Status:* Fechado com Sucesso"
             dispatch_csat_survey(ticket, db, background_tasks)
+            try:
+                from app.models.system_setting import SystemSetting
+                from app.services.email_service import send_ticket_closed_staff_notification
+                setting = db.query(SystemSetting).first()
+                if not setting or getattr(setting, "notify_ti_on_close", True):
+                    req_u = db.query(User).filter(User.id == ticket.requester_id).first()
+                    req_disp = req_u.display_name if req_u else "Solicitante"
+                    background_tasks.add_task(
+                        send_ticket_closed_staff_notification,
+                        ticket=ticket,
+                        closed_by_name="Gestor (Aprovação)",
+                        solution_or_reason=ticket.closure_reason or "Solução validada e aprovada pelo gestor.",
+                        requester_name=req_disp,
+                    )
+            except Exception as e:
+                print(f"[WARN] Falha ao agendar notificação de fechamento para a TI: {e}")
         else:
             msg_text = f"❌ *[Solução Rejeitada]*\n\n*Ticket ID:* #{ticket.id}\n*Título:* {ticket.title}\n*Motivo:* {data.rejection_reason or 'Não informado'}"
             
-        background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+        background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
         
         return ticket
     except ValueError as e:
@@ -782,9 +935,64 @@ def add_interaction(
     u_name = current_user.display_name
     u_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
 
-    # Notificação Evolution API
+    # 1. Notificação Evolution API para o Grupo da TI
     msg_text = f"💬 *[Novo Comentário no Chamado #{ticket.id}]*\n\n*Título:* {ticket.title}\n*Por:* {u_name}\n\n*Mensagem:* {interaction.message}"
-    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text)
+    background_tasks.add_task(EvolutionService.send_whatsapp_message, msg_text, ticket_id=ticket.id)
+
+    # 2. Notificações adicionais por E-mail e WhatsApp
+    try:
+        from app.models.system_setting import SystemSetting
+        from app.services.email_service import send_ticket_interaction_notification, get_support_email
+        setting = db.query(SystemSetting).first()
+        notify_req_update = getattr(setting, "notify_requester_on_update", True) if setting else True
+        notify_ti_update = getattr(setting, "notify_ti_on_update", True) if setting else True
+
+        req_user = db.query(User).filter(User.id == ticket.requester_id).first()
+        req_name = req_user.display_name if req_user else "Solicitante"
+
+        is_staff_author = current_user.id != ticket.requester_id
+
+        if is_staff_author:
+            # Autor é técnico/admin -> Notificar o Solicitante
+            if notify_req_update and req_user:
+                if req_user.email:
+                    background_tasks.add_task(
+                        send_ticket_interaction_notification,
+                        ticket=ticket,
+                        author_name=u_name,
+                        message_text=interaction.message,
+                        to_email=req_user.email,
+                        recipient_name=req_name,
+                        is_for_requester=True,
+                    )
+                if req_user.phone:
+                    wa_req = (
+                        f"💬 *[TIHFSA] Nova Resposta no Chamado #{ticket.id}*\n\n"
+                        f"Olá, *{req_name}*!\n"
+                        f"O analista *{u_name}* adicionou uma mensagem no seu chamado *'{ticket.title}'*:\n\n"
+                        f"\"{interaction.message}\""
+                    )
+                    background_tasks.add_task(
+                        EvolutionService.send_whatsapp_message,
+                        wa_req,
+                        recipient=req_user.phone,
+                        ticket_id=ticket.id,
+                        recipient_name=req_name,
+                    )
+        else:
+            # Autor é o próprio solicitante -> Notificar a Equipe de TI por E-mail (além do grupo WhatsApp que já recebeu)
+            if notify_ti_update:
+                background_tasks.add_task(
+                    send_ticket_interaction_notification,
+                    ticket=ticket,
+                    author_name=u_name,
+                    message_text=interaction.message,
+                    to_email=get_support_email(),
+                    recipient_name="Equipe de TI",
+                    is_for_requester=False,
+                )
+    except Exception as e:
+        print(f"[WARN] Falha ao agendar notificações de interação: {e}")
 
     return InteractionResponse(
         id=interaction.id,

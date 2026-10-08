@@ -31,6 +31,13 @@ class SystemSetting(Base):
     notify_requester_on_create = Column(Boolean, default=True, nullable=False)
     notify_requester_on_assign = Column(Boolean, default=True, nullable=False)
     notify_requester_on_solve = Column(Boolean, default=True, nullable=False)
+    notify_requester_on_update = Column(Boolean, default=True, nullable=False)
+    
+    # Notificações por E-mail à Equipe de TI / Suporte
+    notify_ti_on_create = Column(Boolean, default=True, nullable=False)
+    notify_ti_on_close = Column(Boolean, default=True, nullable=False)
+    notify_ti_on_update = Column(Boolean, default=True, nullable=False)
     
     # Notificação por E-mail ao Técnico Responsável
     notify_technician_on_assign = Column(Boolean, default=True, nullable=False)
+

@@ -45,9 +45,16 @@ def safe_evolution_request(method: str, url: str, headers: dict = None, json: di
 
 class EvolutionService:
     @classmethod
-    def send_whatsapp_message_with_status(cls, text: str) -> tuple[bool, str]:
+    def send_whatsapp_message_with_status(
+        cls,
+        text: str,
+        recipient: str | None = None,
+        ticket_id: int | None = None,
+        recipient_name: str | None = None,
+    ) -> tuple[bool, str]:
         """
-        Envia mensagem via Evolution API e retorna tupla (sucesso: bool, mensagem_diagnostico: str).
+        Envia mensagem via Evolution API para o Grupo de TI ou para um destinatário específico (ex: telefone do solicitante).
+        Retorna tupla (sucesso: bool, mensagem_diagnostico: str).
         """
         try:
             with SessionLocal() as db:
@@ -55,8 +62,8 @@ class EvolutionService:
                 if not config or not config.is_active:
                     return False, "Integração do WhatsApp desativada nas configurações."
 
-                if not config.api_url or not config.instance_name or not config.api_key or not config.ti_group_jid:
-                    return False, "Configurações incompletas (URL, Instância, API Key ou Grupo de TI)."
+                if not config.api_url or not config.instance_name or not config.api_key:
+                    return False, "Configurações incompletas (URL, Instância ou API Key)."
 
                 url = f"{config.api_url.rstrip('/')}/send/text"
                 api_key = config.api_key
@@ -66,10 +73,24 @@ class EvolutionService:
                 "apikey": api_key,
                 "Content-Type": "application/json"
             }
-            # Enviar para cada grupo selecionado
-            jids = [j.strip() for j in ti_group_jid.split(",") if j.strip()]
+
+            if recipient:
+                import re
+                clean_num = re.sub(r"\D", "", str(recipient))
+                if clean_num.startswith("0"):
+                    clean_num = clean_num[1:]
+                if len(clean_num) in (10, 11) and not clean_num.startswith("55"):
+                    clean_num = f"55{clean_num}"
+                if len(clean_num) < 10:
+                    return False, f"Número de telefone '{recipient}' inválido para WhatsApp."
+                jids = [clean_num]
+            else:
+                if not ti_group_jid:
+                    return False, "Nenhum grupo de TI configurado."
+                jids = [j.strip() for j in ti_group_jid.split(",") if j.strip()]
+
             if not jids:
-                return False, "Nenhum grupo de TI configurado."
+                return False, "Nenhum destinatário definido para envio."
 
             sent_any = False
             last_err_msg = ""
@@ -92,6 +113,20 @@ class EvolutionService:
                 if response.status_code in [200, 201]:
                     print(f"[Evolution API] Mensagem enviada com sucesso para {jid}.")
                     sent_any = True
+                    try:
+                        from app.services.email_service import log_notification
+                        log_notification(
+                            channel="WHATSAPP",
+                            notification_type="WHATSAPP_MSG",
+                            recipient=jid,
+                            recipient_name=recipient_name or ("Grupo TI" if not recipient else "Solicitante"),
+                            subject=text[:60] + "..." if len(text) > 60 else text,
+                            body=text,
+                            ticket_id=ticket_id,
+                            status="SENT",
+                        )
+                    except Exception:
+                        pass
                 else:
                     resp_text = response.text or ""
                     print(f"[Evolution API] Falha ao enviar para {jid}: {response.status_code} - {resp_text}")
@@ -99,6 +134,22 @@ class EvolutionService:
                         last_err_msg = "O WhatsApp está desconectado na Evolution API. É necessário reconectar o WhatsApp lendo o QR Code no painel da Evolution."
                     else:
                         last_err_msg = f"Erro {response.status_code} da Evolution API: {resp_text[:120]}"
+
+                    try:
+                        from app.services.email_service import log_notification
+                        log_notification(
+                            channel="WHATSAPP",
+                            notification_type="WHATSAPP_MSG",
+                            recipient=jid,
+                            recipient_name=recipient_name or ("Grupo TI" if not recipient else "Solicitante"),
+                            subject=text[:60] + "..." if len(text) > 60 else text,
+                            body=text,
+                            ticket_id=ticket_id,
+                            status="FAILED",
+                            error_message=last_err_msg,
+                        )
+                    except Exception:
+                        pass
 
             if sent_any:
                 return True, "Mensagem enviada com sucesso para o WhatsApp!"
@@ -110,10 +161,21 @@ class EvolutionService:
             return False, err_detail
 
     @classmethod
-    def send_whatsapp_message(cls, text: str) -> bool:
+    def send_whatsapp_message(
+        cls,
+        text: str,
+        recipient: str | None = None,
+        ticket_id: int | None = None,
+        recipient_name: str | None = None,
+    ) -> bool:
         """
-        Envia uma mensagem no WhatsApp para o Grupo de TI usando a Evolution API.
+        Envia uma mensagem no WhatsApp para o Grupo de TI ou para um destinatário usando a Evolution API.
         """
-        success, _ = cls.send_whatsapp_message_with_status(text)
+        success, _ = cls.send_whatsapp_message_with_status(
+            text=text,
+            recipient=recipient,
+            ticket_id=ticket_id,
+            recipient_name=recipient_name,
+        )
         return success
 
