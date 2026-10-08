@@ -16,6 +16,7 @@ import PublicHelpdeskTv from "./pages/public/PublicHelpdeskTv";
 import PublicTicketForm from "./pages/public/PublicTicketForm";
 import CSATDashboard from "./pages/admin/CSATDashboard";
 import Contracts from "./pages/admin/Contracts";
+import Reports from "./pages/admin/Reports";
 
 // Client App Pages (Colaboradores / Vistorias)
 import ClientHome from "./pages/client/ClientHome";
@@ -103,6 +104,8 @@ export default function App() {
             <Route path="avaliacoes" element={<CSATDashboard />} />
             <Route path="contracts" element={<Contracts />} />
             <Route path="contratos" element={<Contracts />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="relatorios" element={<Reports />} />
             <Route path="assets" element={<Assets />} />
             <Route path="qrcodes" element={<QRCodeManager />} />
             <Route path="qrcodes/scan" element={<QRCodeScannerPage />} />

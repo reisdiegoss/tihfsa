@@ -78,3 +78,37 @@ class AgentMetricsHistory(Base):
         nullable=False,
     )
 
+
+class NetworkOutageEvent(Base):
+    """
+    Registra cada evento de indisponibilidade (queda) e restabelecimento de dispositivos de rede
+    (Switches, Access Points UniFi, Servidores ou Triggers do Zabbix) para emissão de relatórios
+    de estabilidade, cálculo de MTTR, SLA de uptime e detecção de 'Top Flapping Devices'.
+    """
+    __tablename__ = "network_outage_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source = Column(String(50), nullable=False, index=True)  # 'unifi', 'zabbix', 'agent', 'icmp'
+    device_identifier = Column(String(150), nullable=False, index=True)  # MAC, IP ou HostID
+    device_name = Column(String(150), nullable=False, index=True)
+    ip_address = Column(String(45), nullable=True)
+    mac_address = Column(String(50), nullable=True, index=True)
+    device_type = Column(String(100), nullable=True)  # 'Access Point (Wi-Fi)', 'Switch de Rede', etc.
+    
+    asset_id = Column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    asset = relationship("Asset")
+
+    started_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    ended_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    duration_seconds = Column(Integer, nullable=True)  # Calculado automaticamente ao restabelecer
+    
+    status = Column(String(20), default="ongoing", nullable=False, index=True)  # 'ongoing', 'resolved'
+    trigger_reason = Column(String(255), nullable=True)
+
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+

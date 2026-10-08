@@ -287,3 +287,94 @@ class ZabbixService:
 
         items = result.get("result", [])
         return items
+
+    @classmethod
+    def sync_outages(cls, db) -> dict:
+        """
+        Sincroniza eventos de indisponibilidade (quedas) do Zabbix na tabela network_outage_events.
+        Identifica hosts com perda de conectividade (ICMP, host down, link offline) e registra
+        o início e fim das quedas com cálculo de duração exata.
+        """
+        from datetime import datetime, timezone
+        from app.models.monitoring import NetworkOutageEvent
+        from app.models.asset import Asset
+
+        active_triggers = cls.get_active_triggers_with_hosts()
+        now_utc = datetime.now(timezone.utc)
+
+        # Palavras-chave indicativas de queda de host/rede no Zabbix
+        down_keywords = ("unavailable", "unreachable", "ping", "down", "offline", "icmp", "sem resposta", "loss", "link")
+
+        current_down_host_ids = set()
+
+        for trig in active_triggers:
+            desc = (trig.get("description") or "").lower()
+            hosts = trig.get("hosts") or []
+            if not hosts:
+                continue
+
+            # Checar se a trigger é de perda de comunicação ou criticidade alta
+            priority = int(trig.get("priority", 0))
+            is_down_event = any(k in desc for k in down_keywords) or priority >= 4
+
+            if not is_down_event:
+                continue
+
+            for h in hosts:
+                host_id = str(h.get("hostid", ""))
+                host_name = h.get("name") or h.get("host") or f"Host Zabbix #{host_id}"
+                
+                # IP da primeira interface
+                interfaces = trig.get("interfaces") or []
+                ip = interfaces[0].get("ip") if interfaces else None
+
+                current_down_host_ids.add(host_id)
+
+                # Verificar se já existe evento de queda em aberto
+                existing = db.query(NetworkOutageEvent).filter(
+                    NetworkOutageEvent.source == "zabbix",
+                    NetworkOutageEvent.device_identifier == host_id,
+                    NetworkOutageEvent.status == "ongoing",
+                ).first()
+
+                if not existing:
+                    # Vincular ao ativo do CMDB por IP ou nome se existir
+                    asset = None
+                    if ip:
+                        asset = db.query(Asset).filter(Asset.ip_address == ip, Asset.is_active == True).first()
+                    if not asset and host_name:
+                        asset = db.query(Asset).filter(Asset.name.ilike(host_name.strip()), Asset.is_active == True).first()
+
+                    outage = NetworkOutageEvent(
+                        source="zabbix",
+                        device_identifier=host_id,
+                        device_name=host_name,
+                        ip_address=ip,
+                        device_type="Host Zabbix",
+                        asset_id=asset.id if asset else None,
+                        started_at=now_utc,
+                        status="ongoing",
+                        trigger_reason=trig.get("description") or "Alarme de indisponibilidade Zabbix",
+                    )
+                    db.add(outage)
+
+        # Resolver eventos que não estão mais com triggers ativas
+        open_zabbix_events = db.query(NetworkOutageEvent).filter(
+            NetworkOutageEvent.source == "zabbix",
+            NetworkOutageEvent.status == "ongoing",
+        ).all()
+
+        resolved_count = 0
+        for ev in open_zabbix_events:
+            if ev.device_identifier not in current_down_host_ids:
+                ev.ended_at = now_utc
+                ev.duration_seconds = max(1, int((now_utc - ev.started_at).total_seconds()))
+                ev.status = "resolved"
+                resolved_count += 1
+
+        db.commit()
+        return {
+            "active_down": len(current_down_host_ids),
+            "resolved": resolved_count,
+        }
+

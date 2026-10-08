@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Ticket, Clock, CheckCircle, Monitor, ShieldCheck, Activity, FileText, Star, Briefcase } from "lucide-react";
+import { Ticket, Clock, CheckCircle, Monitor, ShieldCheck, Activity, FileText, Star, Briefcase, BarChart3 } from "lucide-react";
 import api from "../../api/client";
 
 export default function Dashboard() {
@@ -195,6 +195,15 @@ export default function Dashboard() {
                   <Briefcase size={20} />
                 </div>
                 <span className="text-xs font-bold text-slate-700">Contratos</span>
+              </button>
+              <button
+                onClick={() => navigate("/admin/reports")}
+                className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-400 hover:bg-indigo-50/70 transition-all cursor-pointer group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                  <BarChart3 size={20} />
+                </div>
+                <span className="text-xs font-bold text-slate-700">Relatórios</span>
               </button>
             </div>
           </div>

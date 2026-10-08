@@ -313,6 +313,31 @@ def apply_migrations():
             CREATE INDEX IF NOT EXISTS idx_contract_invoices_status ON contract_invoices(status);
             CREATE INDEX IF NOT EXISTS idx_contract_invoices_contract_id ON contract_invoices(contract_id);
         """),
+
+        # Eventos Históricos de Quedas de Rede (UniFi, Zabbix e Agentes)
+        ("network_outage_events", """
+            CREATE TABLE IF NOT EXISTS network_outage_events (
+                id SERIAL PRIMARY KEY,
+                source VARCHAR(50) NOT NULL,
+                device_identifier VARCHAR(150) NOT NULL,
+                device_name VARCHAR(150) NOT NULL,
+                ip_address VARCHAR(45),
+                mac_address VARCHAR(50),
+                device_type VARCHAR(100),
+                asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+                started_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                ended_at TIMESTAMP WITH TIME ZONE,
+                duration_seconds INTEGER,
+                status VARCHAR(20) DEFAULT 'ongoing' NOT NULL,
+                trigger_reason VARCHAR(255),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_outage_source ON network_outage_events(source);
+            CREATE INDEX IF NOT EXISTS idx_outage_dev_id ON network_outage_events(device_identifier);
+            CREATE INDEX IF NOT EXISTS idx_outage_mac ON network_outage_events(mac_address);
+            CREATE INDEX IF NOT EXISTS idx_outage_status ON network_outage_events(status);
+            CREATE INDEX IF NOT EXISTS idx_outage_started_at ON network_outage_events(started_at);
+        """),
     ]
 
     with engine.connect() as conn:

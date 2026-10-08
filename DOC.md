@@ -881,7 +881,40 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
           - `POST /api/v1/contracts/{id}/upload` e `POST /api/v1/contracts/invoices/{id}/upload`: Upload de contratos e boletos.
           - `POST /api/v1/contracts/alerts/trigger`: Processamento e envio de e-mails de alerta aos destinatários específicos configurados.
 
-    - **Gestão Completa de Colaboradores & Permissões (`/admin/settings` -> Usuários)**:
+      - **Módulo Central de Relatórios Executivos & Analíticos (`/admin/reports` / `/admin/relatorios`)**:
+        - **Visão Geral e Objetivos**:
+          - Consolidação completa de indicadores estratégicos da TI do Hotel Fasano Salvador, permitindo tomada de decisão baseada em dados reais e prestação de contas à diretoria.
+          - Suporte a **Exportação Dupla**: download de planilhas Excel estruturadas (`.csv`/`.xlsx`) com 1 clique e modo de **Impressão / PDF Executivo** (`@media print`) formatado com cabeçalho corporativo, dados estatísticos e tabelas sem quebra de página indesejada.
+          - **Memória de Período do Usuário (`localStorage`)**: memoriza a última seleção temporal feita pelo usuário; se não houver preferência anterior salva, posiciona automaticamente no **1º dia do mês corrente até a data de hoje**.
+          - Atalhos temporais rápidos: *Mês Atual*, *Últimos 7 dias*, *Últimos 30 dias*, *Mês Anterior*, *Ano Atual* e seleção customizada de datas *De* e *Até*.
+        - **1. Relatório de Chamados & Nível de Serviço (SLA)**:
+          - Indicadores: Total de chamados, taxa de resolução (%), chamados em atendimento, tempo médio de atendimento (TMA em minutos/horas), índice de cumprimento de SLA (%) e nota média de satisfação do usuário (CSAT estrelas).
+          - Gráficos de distribuição: chamados abertos e resolvidos dia a dia, ranking de chamados por setor/departamento e tipos de problemas mais reincidentes (Wi-Fi, TV, Opera PMS, Impressoras).
+          - Produtividade por técnico: chamados atribuídos, chamados finalizados, taxa de conclusão e TMA individual.
+          - Tabela analítica completa com busca instantânea e exportação.
+        - **2. Relatório de Ativos & CMDB**:
+          - Indicadores: Total de equipamentos cadastrados, ativos em operação, ativos em manutenção, valor patrimonial total investido (R$) e controle de garantias (vencidas, vencendo em 30d, vencendo em 90d e ativas).
+          - Ranking de **Ativos Problemáticos**: identificação rápida dos equipamentos com maior volume de chamados associados no histórico do hotel.
+          - Distribuição patrimonial por categoria/tipo de ativo e departamento.
+        - **3. Relatório de Desempenho de Máquinas (Telemetria do TIHFSA Agent)**:
+          - Métricas em tempo real das estações de trabalho e servidores com agente instalado.
+          - Detecção precoce de gargalos crônicos: uso de CPU persistente (>80%), saturação de memória RAM (>85%) e disco principal C: crítico (<15GB livres).
+          - **Diagnóstico Automático de Upgrades**: lista gerada automaticamente para a gestão de TI indicando quais computadores necessitam de upgrade imediato de memória RAM (ex: estações trabalhando com apenas 8GB), limpeza preventiva ou expansão de SSD.
+          - Controle de higiene operacional e uptime (máquinas ligadas ininterruptamente há mais de 15/30 dias).
+        - **4. Relatório de Quedas, Flapping e Estabilidade de Rede (Zabbix & UniFi)**:
+          - **Tabela Histórica `network_outage_events`**: armazena cada ocorrência de indisponibilidade com data/hora de início (`started_at`), retorno online (`ended_at`), duração total do downtime em segundos e motivo da interrupção.
+          - **Captura Contínua e Automática**: sincronização em tempo real alimentada pelo poller contínuo do UniFi (`sync_active_unifi_devices`) e pelo monitor de triggers do Zabbix (`sync_outages`).
+          - **Tolerância Mínima Configurável**: permite ao usuário filtrar o relatório descartando micro-oscilações (ex: tolerância mínima padrão de 2 minutos / 120s, 1 min, 5 min ou ver todas as oscilações desde 0s).
+          - **Ranking "Top Flapping Devices"**: identifica com precisão cirúrgica os equipamentos que mais caem e quanto tempo acumulado ficaram offline (ex: *Dispositivo X caiu 14 vezes nos últimos 7 dias, totalizando 3h20m fora do ar*).
+          - Linha do tempo cronológica com status (*Offline Agora* vs *Normalizado*), IP, MAC e duração formatada.
+          - Estimativa do SLA global de disponibilidade / Uptime da rede (%) no período analisado.
+        - **Permissões Granulares**:
+          - Protegido pela permissão do módulo `"reports"`, liberado para administradores e analistas autorizados na gestão de usuários.
+        - **APIs do Backend**:
+          - `GET /api/v1/reports/tickets`: Resumo executivo, TMA, SLA, rankings e lista analítica de chamados.
+          - `GET /api/v1/reports/assets`: Inventário, valores patrimoniais, saúde das garantias e ativos problemáticos.
+          - `GET /api/v1/reports/hardware-performance`: Telemetria, alertas de saturação e recomendações de upgrade.
+          - `GET /api/v1/reports/outages`: Eventos de downtime de rede, ranking de flapping, tolerância mínima e SLA de uptime.
       - **Restauração do Botão "Editar Usuário"**: O botão da lista de usuários agora é claramente destacado em azul como `[ ✏️ Editar Usuário ]`.
       - **Modal Unificado de Edição Cadastral & Acesso**:
         - **Dados de Cadastro e Contato**: Permite alterar Nome de Exibição, Login de Rede (AD/LDAP), E-mail Corporativo, Telefone/Ramal, Setor de Lotação e Status de Atividade (Ativo / Inativo).

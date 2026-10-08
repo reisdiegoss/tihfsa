@@ -13,7 +13,7 @@ from app.models.integration_config import EvolutionConfig
 from app.models.network_map import NetworkMap
 from app.models.floor import Floor
 from app.models.sla import SLAConfig, SLACategoryRule
-from app.models.monitoring import AgentCheckin, AgentMetricsHistory
+from app.models.monitoring import AgentCheckin, AgentMetricsHistory, NetworkOutageEvent
 from app.models.system_setting import SystemSetting
 from app.models.satisfaction_survey import TicketSatisfactionSurvey
 from app.models.qrcode import QRCodeItem, QRCodeConfig
@@ -41,6 +41,7 @@ __all__ = [
     "SLACategoryRule",
     "AgentCheckin",
     "AgentMetricsHistory",
+    "NetworkOutageEvent",
     "SystemSetting",
     "TicketSatisfactionSurvey",
     "NotificationLog",
