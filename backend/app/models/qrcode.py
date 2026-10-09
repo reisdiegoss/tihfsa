@@ -13,9 +13,10 @@ class QRCodeItem(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     code = Column(String(32), unique=True, index=True, nullable=False)  # Ex: QR-B72F9A
-    type = Column(String(20), nullable=False, default="equipment")     # "equipment" | "wifi"
+    type = Column(String(20), nullable=False, default="equipment")     # "equipment" | "wifi" | "url"
     title = Column(String(200), nullable=False)                         # Identificação / Nome de exibição
     company = Column(String(150), nullable=True)                        # Nome da Empresa (Hotel Fasano Salvador / Cliente Evento)
+    url = Column(String(500), nullable=True)                            # URL / Link Web direto (ex: https://...)
 
     # Parâmetros específicos para Wi-Fi
     ssid = Column(String(100), nullable=True)

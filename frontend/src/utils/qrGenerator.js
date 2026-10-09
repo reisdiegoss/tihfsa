@@ -11,6 +11,20 @@ export function formatWifiPayload(ssid, password, securityType = "WPA", isHidden
 }
 
 /**
+ * Normaliza e formata o payload para QR Code de Link / URL Web.
+ * Garante que a URL possua protocolo (http:// ou https://) para que qualquer câmera
+ * (iOS, Android, Google Lens) a reconheça e abra diretamente no navegador.
+ */
+export function formatUrlPayload(url) {
+  if (!url) return "";
+  const trimmed = url.trim();
+  if (/^[a-zA-Z]+:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+/**
  * Insere caracteres zero-width space (\u200B) invisíveis aos olhos humanos em palavras-chave
  * e padrões de logradouros/cidades.
  * Isso quebra os tokens de detecção de entidades do iOS Data Detectors e Google Lens,

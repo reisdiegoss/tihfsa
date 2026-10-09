@@ -28,10 +28,11 @@ os.makedirs(UPLOAD_LOGOS_DIR, exist_ok=True)
 # ==========================================
 
 class QRCodeCreate(BaseModel):
-    type: str = "equipment"  # "equipment" | "wifi"
+    type: str = "equipment"  # "equipment" | "wifi" | "url"
     encode_mode: Optional[str] = "vcard"  # "vcard" (Ficha Nativa iOS/Android 100% Offline) | "url" (Web)
     title: str
     company: Optional[str] = "Hotel Fasano Salvador"
+    url: Optional[str] = None  # URL direta
 
     # Wi-Fi
     ssid: Optional[str] = None
@@ -57,6 +58,7 @@ class QRCodeUpdate(BaseModel):
     title: Optional[str] = None
     encode_mode: Optional[str] = None
     company: Optional[str] = None
+    url: Optional[str] = None
 
     # Wi-Fi
     ssid: Optional[str] = None
@@ -85,6 +87,7 @@ class QRCodeResponse(BaseModel):
     encode_mode: Optional[str] = "vcard"
     title: str
     company: Optional[str] = None
+    url: Optional[str] = None
 
     ssid: Optional[str] = None
     password: Optional[str] = None
@@ -119,6 +122,7 @@ def _format_item(item: QRCodeItem) -> dict:
         "encode_mode": getattr(item, "encode_mode", "vcard") or "vcard",
         "title": item.title,
         "company": item.company,
+        "url": item.url,
         "ssid": item.ssid,
         "password": item.password,
         "security_type": item.security_type,
@@ -154,7 +158,7 @@ def list_qrcodes(
 ):
     query = db.query(QRCodeItem)
 
-    if type and type in ["equipment", "wifi"]:
+    if type and type in ["equipment", "wifi", "url"]:
         query = query.filter(QRCodeItem.type == type)
 
     if search:
@@ -165,6 +169,7 @@ def list_qrcodes(
             (QRCodeItem.collaborator.ilike(search_pattern)) |
             (QRCodeItem.asset_name.ilike(search_pattern)) |
             (QRCodeItem.ssid.ilike(search_pattern)) |
+            (QRCodeItem.url.ilike(search_pattern)) |
             (QRCodeItem.code.ilike(search_pattern))
         )
 
@@ -201,6 +206,7 @@ def create_qrcode(
         encode_mode=payload.encode_mode or "vcard",
         title=payload.title,
         company=payload.company or "Hotel Fasano Salvador",
+        url=payload.url,
         ssid=payload.ssid,
         password=payload.password,
         security_type=payload.security_type or "WPA",
@@ -353,6 +359,7 @@ def get_public_qrcode(
         "model": item.model,
         "address": item.address,
         "message": item.message,
+        "url": item.url,
         "logo_url": item.logo_url,
         "created_at": item.created_at,
         "updated_at": item.updated_at,

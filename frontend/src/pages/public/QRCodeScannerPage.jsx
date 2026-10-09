@@ -192,6 +192,9 @@ export default function QRCodeScannerPage() {
         } catch (e) {
           // Mantém texto original
         }
+      } else if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
+        displayTitle = "Link / URL Web";
+        displayMessage = `Endereço detectado:\n${decodedText}`;
       }
     }
 

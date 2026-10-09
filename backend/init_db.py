@@ -125,6 +125,7 @@ def apply_migrations():
         ("locations.order_index", "ALTER TABLE locations ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 0 NOT NULL;"),
         ("users.floor", "ALTER TABLE users ADD COLUMN IF NOT EXISTS floor VARCHAR(100);"),
         ("users.allowed_modules", "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_modules JSON;"),
+        ("qrcodes.url", "ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS url VARCHAR(500);"),
 
         # Vínculo N:N Localizações Físicas x Setores
         ("location_departments", """

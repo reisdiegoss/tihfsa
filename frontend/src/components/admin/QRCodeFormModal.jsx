@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { 
-  X, Wifi, Laptop, Save, RefreshCw, Eye, 
+  X, Wifi, Laptop, Globe, Link2, ExternalLink, Save, RefreshCw, Eye, 
   Sparkles, CheckCircle2, AlertCircle, ShieldCheck, Lock, Building2, User, MapPin, MessageSquare
 } from "lucide-react";
 import api from "../../api/client";
-import { formatWifiPayload, formatEquipmentPayload, renderQRCodeToCanvas } from "../../utils/qrGenerator";
+import { formatWifiPayload, formatEquipmentPayload, formatUrlPayload, renderQRCodeToCanvas } from "../../utils/qrGenerator";
 
 export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultLogoUrl, onSaved }) {
-  const [activeTab, setActiveTab] = useState("equipment"); // "equipment" | "wifi"
+  const [activeTab, setActiveTab] = useState("equipment"); // "equipment" | "wifi" | "url"
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [assetsList, setAssetsList] = useState([]);
@@ -16,6 +16,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
   const [formData, setFormData] = useState({
     title: "",
     company: "Hotel Fasano Salvador",
+    url: "",
     // Wi-Fi
     ssid: "",
     password: "",
@@ -57,6 +58,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
         setFormData({
           title: editingItem.title || "",
           company: editingItem.company || "Hotel Fasano Salvador",
+          url: editingItem.url || "",
           ssid: editingItem.ssid || "",
           password: editingItem.password || "",
           security_type: editingItem.security_type || "WPA",
@@ -76,6 +78,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
         setFormData({
           title: "",
           company: "Hotel Fasano Salvador",
+          url: "",
           ssid: "",
           password: "",
           security_type: "WPA",
@@ -103,6 +106,8 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
       const ssid = formData.ssid || "WiFi-Fasano-Evento";
       const pwd = formData.password || "";
       payloadText = formatWifiPayload(ssid, pwd, formData.security_type, formData.is_hidden);
+    } else if (activeTab === "url") {
+      payloadText = formatUrlPayload(formData.url || "https://fasano.com.br");
     } else {
       payloadText = formatEquipmentPayload({
         code: editingItem?.code || "QR-PREVIEW",
@@ -161,12 +166,18 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
       return;
     }
 
+    if (activeTab === "url" && !formData.url.trim()) {
+      setErrorMsg("Informe a URL de destino para o QR Code.");
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = {
         type: activeTab,
         title: formData.title.trim(),
         company: formData.company.trim(),
+        url: activeTab === "url" ? formatUrlPayload(formData.url.trim()) : null,
         ssid: activeTab === "wifi" ? formData.ssid.trim() : null,
         password: activeTab === "wifi" ? formData.password : null,
         security_type: activeTab === "wifi" ? formData.security_type : null,
@@ -176,7 +187,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
         brand: activeTab === "equipment" ? formData.brand.trim() : null,
         model: activeTab === "equipment" ? formData.model.trim() : null,
         address: activeTab === "equipment" ? formData.address.trim() : null,
-        message: activeTab === "equipment" ? formData.message.trim() : null,
+        message: activeTab === "equipment" || activeTab === "url" ? (formData.message || "").trim() : null,
         asset_id: activeTab === "equipment" ? formData.asset_id : null,
         encode_mode: formData.encode_mode || "vcard",
         include_logo: formData.include_logo,
@@ -207,13 +218,17 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
         <div className="px-6 py-4 sm:py-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-              activeTab === "wifi" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
+              activeTab === "wifi"
+                ? "bg-blue-50 text-blue-600"
+                : activeTab === "url"
+                ? "bg-purple-50 text-purple-600"
+                : "bg-emerald-50 text-emerald-600"
             }`}>
-              {activeTab === "wifi" ? <Wifi size={22} /> : <Laptop size={22} />}
+              {activeTab === "wifi" ? <Wifi size={22} /> : activeTab === "url" ? <Globe size={22} /> : <Laptop size={22} />}
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-800">
-                {editingItem ? "Editar QR Code" : "Novo QR Code para Evento / Equipamento"}
+                {editingItem ? "Editar QR Code" : "Novo QR Code (Equipamento, Wi-Fi ou URL)"}
               </h2>
               <p className="text-xs text-slate-400 font-medium">
                 Gere e personalize códigos com a logo da empresa centralizada
@@ -240,35 +255,47 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
               </div>
             )}
 
-            {/* Selector de Tipo (Abas) */}
+            {/* Selector de Tipo (Abas com 3 opções) */}
             <div>
               <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
                 Tipo de QR Code
               </label>
-              <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+              <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-slate-100 rounded-2xl">
                 <button
                   type="button"
                   onClick={() => setActiveTab("equipment")}
-                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeTab === "equipment"
                       ? "bg-white text-emerald-700 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  <Laptop size={16} />
+                  <Laptop size={15} />
                   <span>🏷️ Equipamento</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab("wifi")}
-                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeTab === "wifi"
                       ? "bg-white text-blue-700 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  <Wifi size={16} />
-                  <span>📶 Wi-Fi de Eventos</span>
+                  <Wifi size={15} />
+                  <span>📶 Wi-Fi</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("url")}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === "url"
+                      ? "bg-white text-purple-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <Globe size={15} />
+                  <span>🌐 Link / URL</span>
                 </button>
               </div>
             </div>
@@ -282,7 +309,13 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
                 <input
                   type="text"
                   required
-                  placeholder={activeTab === "wifi" ? "Ex: Wi-Fi Casamento Silva" : "Ex: MacBook Pro Diretor"}
+                  placeholder={
+                    activeTab === "wifi"
+                      ? "Ex: Wi-Fi Casamento Silva"
+                      : activeTab === "url"
+                      ? "Ex: Cardápio Digital Gero"
+                      : "Ex: MacBook Pro Diretor"
+                  }
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all outline-none"
@@ -370,6 +403,64 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
 
                 <p className="text-[11px] text-blue-700 leading-tight">
                   ✨ <strong>Compatibilidade Universal:</strong> Ao ler o QR Code, celulares <strong>Android</strong> e <strong>iPhone (iOS)</strong> conectam automaticamente sem digitar a senha.
+                </p>
+              </div>
+            )}
+
+            {/* Campos Específicos: LINK / URL */}
+            {activeTab === "url" && (
+              <div className="p-4 bg-purple-50/50 rounded-2xl border border-purple-100 space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-purple-800">
+                  <Globe size={15} />
+                  <span>Endereço Web / Link de Destino</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    URL do Link / Página <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: https://fasano.com.br/cardapio ou https://fassa29/suporte"
+                      value={formData.url}
+                      onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-purple-100 focus:border-purple-500 transition-all outline-none font-mono pr-20"
+                    />
+                    {formData.url && (
+                      <a
+                        href={formatUrlPayload(formData.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-extrabold text-purple-700 hover:text-purple-900 flex items-center gap-1 bg-purple-100 hover:bg-purple-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                        title="Testar link no navegador"
+                      >
+                        <span>Testar</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Aceita qualquer link web (ex: cardápio, portal de chamados, pesquisa, Instagram, intranet). O protocolo <code>https://</code> é inserido automaticamente se omitido.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Instrução / Mensagem de Apoio (Opcional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Ex: Aponte a câmera para acessar o cardápio digital do Restaurante Gero Salvador."
+                    value={formData.message}
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-purple-100 focus:border-purple-500 transition-all outline-none resize-none"
+                  />
+                </div>
+
+                <p className="text-[11px] text-purple-700 leading-tight">
+                  ✨ <strong>Acesso Instantâneo:</strong> Ao ler o QR Code com a câmera do celular (iOS ou Android), o aparelho abre imediatamente a página no navegador padrão.
                 </p>
               </div>
             )}
@@ -534,7 +625,11 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
                 Pré-visualização em Tempo Real
               </span>
               <p className="text-xs text-slate-400 font-medium mt-1">
-                {activeTab === "wifi" ? "Scan direto para Wi-Fi" : "Ficha Digital Web Universal (iOS / Android)"}
+                {activeTab === "wifi"
+                  ? "Scan direto para Wi-Fi"
+                  : activeTab === "url"
+                  ? "Acesso Direto à Página Web"
+                  : "Ficha Digital Web Universal (iOS / Android)"}
               </p>
             </div>
 
@@ -556,6 +651,10 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
               {activeTab === "wifi" ? (
                 <span>
                   📶 <strong>SSID:</strong> {formData.ssid || "—"} | <strong>Segurança:</strong> {formData.security_type}
+                </span>
+              ) : activeTab === "url" ? (
+                <span className="break-all">
+                  🌐 <strong>URL:</strong> <span className="font-mono text-purple-700 font-semibold">{formData.url ? formatUrlPayload(formData.url) : "https://fasano.com.br"}</span>
                 </span>
               ) : (
                 <span>

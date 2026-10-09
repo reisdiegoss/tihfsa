@@ -1122,5 +1122,19 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Visão Especializada Zabbix**: KPIs temáticos em vermelho (`rose-600`), ranking **"Top Hosts & Links Críticos — Servidores com Maior Incidência de Alarmes"** detalhando servidores Opera/AD/links de operadora e gatilhos disparados.
       - **Exportação CSV & Impressão PDF Contextuais**: Arquivos CSV gerados dinamicamente com nomes e colunas específicos (`relatorio_quedas_unifi_wifi_...csv`, `relatorio_quedas_zabbix_infra_...csv`, etc.) e cabeçalho executivo formatado para impressão oficial no padrão Fasano.
 
-
-
+33. **Módulo Gerador de QR Codes (`/admin/qrcodes`) com Suporte a URLs Web, Wi-Fi e Equipamentos**:
+    - **Criação de QR Codes para Links / URLs Web (Direto no Navegador)**:
+      - Permite a emissão ágil de QR Codes apontando diretamente para links web (ex: cardápio digital do hotel, portal público de chamados `/suporte`, pesquisas de satisfação CSAT, links de eventos, intranet ou sites corporativos).
+      - Higienização e sanitização automática de protocolo (`formatUrlPayload`), prefixando `https://` caso omitido pelo operador.
+      - Botão de validação e teste direto da URL no formulário de cadastro.
+      - Compatibilidade nativa em celulares iOS (iPhone) e Android: ao apontar a câmera do celular, o aparelho reconhece instantaneamente como hiperlink web e abre no navegador padrão sem intermediários.
+    - **Ecossistema Completo de Tipos no Gerador**:
+      - **🌐 Link / URL Web**: Redirecionamento instantâneo para páginas e portais da web.
+      - **📶 Wi-Fi de Eventos**: Padrão RFC Wi-Fi (`WIFI:S:ssid;T:WPA;P:password;;`) para conexão automática do hóspede/participante à rede sem fio sem digitação manual, com opção de exibir ou omitir senha na impressão.
+      - **🏷️ Equipamentos / Patrimônio**: Ficha técnica offline via vCard 3.0 ou etiqueta de patrimônio com dados de marca, modelo, colaborador e localização.
+    - **Recursos de Emissão, Impressão e Identidade Visual**:
+      - **Logo Central Personalizada**: Capacidade de embutir a logomarca oficial do Hotel Fasano Salvador no centro dos códigos QR com nível de correção de erro de alta precisão (`errorCorrectionLevel: 'H'`).
+      - **Seletor de Resolução de Download (PNG)**: 256px (Web), 512px (Crachás/Tags), 1024px (Placas de Mesa) e 2048px (Totens e Banners).
+      - **Display de Mesa para Impressão**: Layout dedicado e estilizado para impressão direta de displays de mesa e placas acrílicas com moldura, cabeçalho oficial do Fasano, QR code ampliado e instruções amigáveis ao usuário.
+      - **Gestão e Filtros no Painel Administrativo**: Métricas rápidas segregadas por tipo (Total, Links/URLs, Wi-Fi e Equipamentos), busca textual em tempo real e visualização contextual com link externo direto na tabela.
+      - **Persistência e Backend**: Coluna `url VARCHAR(500)` na tabela `qrcodes` do PostgreSQL com migração idempotente em `init_db.py`, endpoints `/api/v1/qrcodes/` e schemas Pydantic atualizados.

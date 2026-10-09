@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
-  QrCode, Plus, Search, RefreshCw, Wifi, Laptop, 
+  QrCode, Plus, Search, RefreshCw, Wifi, Laptop, Globe, ExternalLink,
   Edit2, Trash2, Image as ImageIcon, Calendar, 
   MapPin, User, Building2, CheckCircle2, ShieldCheck, Download, Camera,
   RotateCcw, X
@@ -16,7 +16,7 @@ export default function QRCodeManager() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedType, setSelectedType] = useState("all"); // "all" | "equipment" | "wifi"
+  const [selectedType, setSelectedType] = useState("all"); // "all" | "equipment" | "wifi" | "url"
   const [defaultLogoUrl, setDefaultLogoUrl] = useState(null);
 
   // Modais
@@ -84,7 +84,8 @@ export default function QRCodeManager() {
         const matchAsset = item.asset_name?.toLowerCase().includes(term);
         const matchSsid = item.ssid?.toLowerCase().includes(term);
         const matchCode = item.code?.toLowerCase().includes(term);
-        return matchTitle || matchCompany || matchCollaborator || matchAsset || matchSsid || matchCode;
+        const matchUrl = item.url?.toLowerCase().includes(term);
+        return matchTitle || matchCompany || matchCollaborator || matchAsset || matchSsid || matchCode || matchUrl;
       }
       return true;
     });
@@ -93,6 +94,7 @@ export default function QRCodeManager() {
   // Contadores
   const wifiCount = items.filter((i) => i.type === "wifi").length;
   const equipCount = items.filter((i) => i.type === "equipment").length;
+  const urlCount = items.filter((i) => i.type === "url").length;
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
@@ -109,7 +111,7 @@ export default function QRCodeManager() {
                 Gerenciador de QR Codes
               </h1>
               <p className="text-xs font-semibold text-slate-400">
-                Emissão e cadastro de QR Codes para Equipamentos e Conexão Wi-Fi de Eventos
+                Emissão e cadastro de QR Codes para Links Web, Wi-Fi de Eventos e Equipamentos
               </p>
             </div>
           </div>
@@ -149,7 +151,7 @@ export default function QRCodeManager() {
       </div>
 
       {/* Cards de Métricas Rápidas */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total de QR Codes</p>
@@ -157,6 +159,16 @@ export default function QRCodeManager() {
           </div>
           <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
             <QrCode size={22} />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Links / URLs Web</p>
+            <p className="text-2xl font-black text-indigo-600 mt-1">{urlCount}</p>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <Globe size={22} />
           </div>
         </div>
 
@@ -188,7 +200,7 @@ export default function QRCodeManager() {
           <Search size={16} className="text-slate-400 shrink-0" />
           <input
             type="text"
-            placeholder="Buscar por título, SSID, colaborador, patrimônio..."
+            placeholder="Buscar por título, URL, SSID, colaborador..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="bg-transparent text-xs font-medium text-slate-800 placeholder-slate-400 outline-none w-full pr-6"
@@ -216,6 +228,17 @@ export default function QRCodeManager() {
               }`}
             >
               Todos ({items.length})
+            </button>
+            <button
+              onClick={() => setSelectedType("url")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                selectedType === "url"
+                  ? "bg-white text-indigo-700 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Globe size={13} />
+              <span>Links / URLs ({urlCount})</span>
             </button>
             <button
               onClick={() => setSelectedType("wifi")}
@@ -300,6 +323,7 @@ export default function QRCodeManager() {
               <tbody className="divide-y divide-slate-100 text-sm">
                 {filteredItems.map((item) => {
                   const isWifi = item.type === "wifi";
+                  const isUrl = item.type === "url";
 
                   return (
                     <tr
@@ -310,15 +334,23 @@ export default function QRCodeManager() {
                       <td className="py-4 px-6 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
-                            isWifi ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
+                            isWifi 
+                              ? "bg-blue-50 text-blue-600" 
+                              : isUrl 
+                              ? "bg-indigo-50 text-indigo-600" 
+                              : "bg-emerald-50 text-emerald-600"
                           }`}>
-                            {isWifi ? <Wifi size={19} /> : <Laptop size={19} />}
+                            {isWifi ? <Wifi size={19} /> : isUrl ? <Globe size={19} /> : <Laptop size={19} />}
                           </div>
                           <div>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                              isWifi ? "bg-blue-50 text-blue-700 border border-blue-100" : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                              isWifi 
+                                ? "bg-blue-50 text-blue-700 border border-blue-100" 
+                                : isUrl 
+                                ? "bg-indigo-50 text-indigo-700 border border-indigo-100" 
+                                : "bg-emerald-50 text-emerald-700 border border-emerald-100"
                             }`}>
-                              {isWifi ? "Wi-Fi Evento" : "Equipamento"}
+                              {isWifi ? "Wi-Fi Evento" : isUrl ? "Link / URL" : "Equipamento"}
                             </span>
                             <p className="text-xs font-mono font-bold text-slate-600 mt-0.5">
                               {item.code}
@@ -356,6 +388,25 @@ export default function QRCodeManager() {
                                 </span>
                               )}
                             </div>
+                          </div>
+                        ) : isUrl ? (
+                          <div className="text-xs space-y-0.5 max-w-xs sm:max-w-sm">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-400 font-medium shrink-0">Link:</span>
+                              <a
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 truncate font-mono text-[11px]"
+                                title={item.url}
+                              >
+                                <span className="truncate">{item.url}</span>
+                                <ExternalLink size={12} className="shrink-0" />
+                              </a>
+                            </div>
+                            {item.message && (
+                              <p className="text-slate-500 text-[11px] truncate italic">{item.message}</p>
+                            )}
                           </div>
                         ) : (
                           <div className="text-xs space-y-0.5">

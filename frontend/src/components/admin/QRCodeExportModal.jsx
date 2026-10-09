@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { 
-  X, Download, Printer, Wifi, Laptop, CheckCircle2, 
+  X, Download, Printer, Wifi, Laptop, Globe, Link2, CheckCircle2, 
   Sparkles, Sliders, Layers, ArrowDownToLine, RefreshCw, ExternalLink 
 } from "lucide-react";
-import { formatWifiPayload, formatEquipmentPayload, formatEquipmentText, renderQRCodeToCanvas } from "../../utils/qrGenerator";
+import { formatWifiPayload, formatEquipmentPayload, formatUrlPayload, formatEquipmentText, renderQRCodeToCanvas } from "../../utils/qrGenerator";
 
 export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUrl }) {
   const [downloadSize, setDownloadSize] = useState(1024); // 256 | 512 | 1024 | 2048
@@ -18,6 +18,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const exportCanvasRef = useRef(null);
 
   const isWifi = item?.type === "wifi";
+  const isUrl = item?.type === "url";
 
   // Sincroniza modo padrão do item ao abrir (sempre prioriza vCard 100% offline)
   useEffect(() => {
@@ -31,6 +32,9 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
     if (!item) return "";
     if (isWifi) {
       return formatWifiPayload(item.ssid, item.password, item.security_type, item.is_hidden);
+    }
+    if (isUrl) {
+      return formatUrlPayload(item.url || item.title);
     }
     return formatEquipmentPayload(item, equipmentMode);
   };
@@ -149,7 +153,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
               {item.company || "Hotel Fasano Salvador"}
             </h1>
             <p className="text-sm font-bold text-slate-500 mt-0.5">
-              {isWifi ? "Acesso à Rede Wi-Fi de Eventos" : "Identificação e Ficha Técnica"}
+              {isWifi ? "Acesso à Rede Wi-Fi de Eventos" : isUrl ? "Acesso Direto ao Link Web" : "Identificação e Ficha Técnica"}
             </p>
           </div>
 
@@ -181,6 +185,17 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
                 Aponte a câmera do seu celular para conectar automaticamente.
               </p>
             </div>
+          ) : isUrl ? (
+            <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2 mt-2 text-xs">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Destino / Link:</p>
+                <p className="text-sm font-bold text-indigo-700 break-all select-all font-mono">{item.url}</p>
+              </div>
+              {item.message && <p className="text-slate-600 italic pt-1">{item.message}</p>}
+              <p className="text-[11px] text-slate-500 italic pt-1 text-center border-t border-slate-200/60">
+                Aponte a câmera do seu celular para abrir o link diretamente no navegador.
+              </p>
+            </div>
           ) : (
             <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-1 mt-2 text-xs">
               <p><strong className="text-slate-900">Equipamento:</strong> {item.asset_name || item.title}</p>
@@ -206,7 +221,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-              isWifi ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
+              isWifi ? "bg-blue-50 text-blue-600" : isUrl ? "bg-indigo-50 text-indigo-600" : "bg-emerald-50 text-emerald-600"
             }`}>
               <Download size={20} />
             </div>
@@ -236,13 +251,24 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
 
             <div className="text-center mt-3.5">
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                isWifi ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800"
+                isWifi ? "bg-blue-100 text-blue-800" : isUrl ? "bg-indigo-100 text-indigo-800" : "bg-emerald-100 text-emerald-800"
               }`}>
-                {isWifi ? <Wifi size={12} /> : <Laptop size={12} />}
-                {isWifi ? "Wi-Fi de Eventos" : "Equipamento"}
+                {isWifi ? <Wifi size={12} /> : isUrl ? <Globe size={12} /> : <Laptop size={12} />}
+                {isWifi ? "Wi-Fi de Eventos" : isUrl ? "Link / URL Web" : "Equipamento"}
               </span>
               <h3 className="text-sm font-bold text-slate-800 mt-1">{item.title}</h3>
               <p className="text-xs text-slate-400 font-medium">{item.company || "Hotel Fasano Salvador"}</p>
+              {isUrl && item.url && (
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-mono mt-1 underline underline-offset-2 break-all max-w-sm truncate"
+                >
+                  <ExternalLink size={12} />
+                  {item.url}
+                </a>
+              )}
             </div>
           </div>
 
@@ -302,8 +328,21 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </div>
           )}
 
+          {/* Informação de Formato para URL */}
+          {isUrl && (
+            <div className="bg-indigo-50/80 p-4 rounded-2xl border border-indigo-200 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Globe size={16} className="text-indigo-600" />
+                <p className="text-xs font-bold text-indigo-950">Abertura Imediata em Navegador</p>
+              </div>
+              <p className="text-[11px] text-indigo-800 leading-relaxed">
+                Ao apontar a câmera do celular (iOS ou Android), o aparelho reconhece instantaneamente como link web e sugere abrir a URL no navegador padrão sem nenhum intermediário.
+              </p>
+            </div>
+          )}
+
           {/* Informação de Formato para Equipamento: Ficha Nativa iOS & Android 100% Offline */}
-          {!isWifi && (
+          {!isWifi && !isUrl && (
             <div className="bg-emerald-50/80 p-4 rounded-2xl border border-emerald-200 space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-sm">📇</span>
@@ -329,6 +368,14 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
                   )}
                 </p>
                 <p><strong>Criptografia:</strong> {item.security_type || "WPA"}</p>
+              </>
+            ) : isUrl ? (
+              <>
+                <p><strong>Padrão:</strong> Link Web Direto (HTTP/HTTPS)</p>
+                <p><strong>Título:</strong> {item.title || "—"}</p>
+                <p className="break-all"><strong>URL de Destino:</strong> {item.url || "—"}</p>
+                {item.company && <p><strong>Empresa/Organização:</strong> {item.company}</p>}
+                {item.message && <p><strong>Observação:</strong> {item.message}</p>}
               </>
             ) : (
               <>
