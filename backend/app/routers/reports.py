@@ -609,25 +609,60 @@ def get_outages_report(
 
     start_dt, end_dt = _parse_date_range(start_date, end_date)
 
-    query = db.query(NetworkOutageEvent).filter(
+    base_query = db.query(NetworkOutageEvent).filter(
         NetworkOutageEvent.started_at >= start_dt,
         NetworkOutageEvent.started_at <= end_dt,
     )
 
-    if isinstance(source, str) and source.lower() != "all":
-        query = query.filter(NetworkOutageEvent.source == source.lower())
-
-    if isinstance(status_filter, str) and status_filter.lower() != "all":
-        query = query.filter(NetworkOutageEvent.status == status_filter.lower())
-
     # Tolerância configurável: apenas eventos com duração >= min_duration_seconds (ou ongoing)
     if isinstance(min_duration_seconds, (int, float)) and min_duration_seconds > 0:
-        query = query.filter(
+        base_query = base_query.filter(
             or_(
                 NetworkOutageEvent.duration_seconds >= int(min_duration_seconds),
                 NetworkOutageEvent.status == "ongoing",
             )
         )
+
+    # 1. Pré-cálculo global de UniFi e Zabbix em todo o período (para alimentar contadores e comparativos)
+    all_period_outages = base_query.all()
+    period_total_seconds = max(1, int((end_dt - start_dt).total_seconds()))
+    now_utc = datetime.now(timezone.utc)
+
+    unifi_downtime_seconds = 0
+    unifi_events = 0
+    unifi_devices = set()
+
+    zabbix_downtime_seconds = 0
+    zabbix_events = 0
+    zabbix_devices = set()
+
+    for ev in all_period_outages:
+        dur = max(1, int((now_utc - ev.started_at).total_seconds())) if ev.status == "ongoing" else (ev.duration_seconds or 0)
+        ev_src = (ev.source or "").lower()
+        if ev_src == "unifi":
+            unifi_events += 1
+            unifi_downtime_seconds += dur
+            unifi_devices.add(ev.device_identifier)
+        elif ev_src == "zabbix":
+            zabbix_events += 1
+            zabbix_downtime_seconds += dur
+            zabbix_devices.add(ev.device_identifier)
+
+    unifi_dev_count = max(1, len(unifi_devices))
+    unifi_expected = period_total_seconds * unifi_dev_count
+    unifi_sla_pct = max(0.0, round(((unifi_expected - unifi_downtime_seconds) / unifi_expected) * 100, 3)) if unifi_events > 0 else 100.0
+
+    zabbix_dev_count = max(1, len(zabbix_devices))
+    zabbix_expected = period_total_seconds * zabbix_dev_count
+    zabbix_sla_pct = max(0.0, round(((zabbix_expected - zabbix_downtime_seconds) / zabbix_expected) * 100, 3)) if zabbix_events > 0 else 100.0
+
+    # 2. Filtragem específica para tabela e ranking solicitados
+    query = base_query
+    if isinstance(source, str) and source.lower() != "all":
+        query = query.filter(NetworkOutageEvent.source == source.lower())
+
+    if isinstance(status_filter, str) and status_filter.lower() != "all":
+        query = query.filter(NetworkOutageEvent.status == status_filter.lower())
 
     outages = query.order_by(NetworkOutageEvent.started_at.desc()).all()
 
@@ -697,7 +732,6 @@ def get_outages_report(
 
     # Cálculo do período total em segundos para estimar Uptime SLA (%)
     period_total_seconds = max(1, int((end_dt - start_dt).total_seconds()))
-    # Número de dispositivos únicos monitorados (mínimo 1 para evitar divisão por zero)
     unique_devices_count = max(1, len(device_flapping_map))
     total_expected_device_seconds = period_total_seconds * unique_devices_count
     uptime_sla_pct = max(0.0, round(((total_expected_device_seconds - total_downtime_seconds) / total_expected_device_seconds) * 100, 3))
@@ -709,6 +743,7 @@ def get_outages_report(
             "start_date": start_dt.strftime("%Y-%m-%d"),
             "end_date": end_dt.strftime("%Y-%m-%d"),
             "min_duration_seconds": min_duration_seconds,
+            "source": source or "all",
         },
         "summary": {
             "total_outage_events": total_events,
@@ -720,8 +755,22 @@ def get_outages_report(
             "avg_outage_seconds": avg_outage_seconds,
             "avg_outage_formatted": _format_duration(avg_outage_seconds),
             "estimated_uptime_sla_pct": uptime_sla_pct,
+            "unifi": {
+                "events_count": unifi_events,
+                "affected_devices": len(unifi_devices),
+                "downtime_seconds": unifi_downtime_seconds,
+                "downtime_formatted": _format_duration(unifi_downtime_seconds),
+                "sla_pct": unifi_sla_pct,
+            },
+            "zabbix": {
+                "events_count": zabbix_events,
+                "affected_devices": len(zabbix_devices),
+                "downtime_seconds": zabbix_downtime_seconds,
+                "downtime_formatted": _format_duration(zabbix_downtime_seconds),
+                "sla_pct": zabbix_sla_pct,
+            },
         },
-        "top_flapping_devices": top_flapping[:15],
+        "top_flapping_devices": top_flapping[:20],
         "timeline_events": analytic_rows,
     }
 

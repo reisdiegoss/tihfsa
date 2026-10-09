@@ -1107,6 +1107,20 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Campo opcional de complemento / ponto de referência (ex: `Mesa 4`, `Balcão`, `Próximo ao elevador`).
       - Opção *"Outro Local (Digitar Manualmente)..."* com input de texto aberto para áreas atípicas ou externas.
     - **Validação de Formulário**:
-      - O campo de Localização/UH é obrigatório no envio, garantindo que nenhum chamado seja aberto sem o local do incidente.
+32. **Módulo de Relatórios Analíticos & Executivos (`/admin/reports`) com Segregação Especializada UniFi vs. Zabbix**:
+    - **Contexto Operacional e Distinção Tecnológica**:
+      - **UniFi Network**: Monitoramento da rede sem fio (Access Points U6/UAP) e switches PoE de distribuição. Focado na qualidade da experiência do hóspede nos apartamentos (UHs), restaurantes, rooftop e áreas comuns do hotel. Métricas centrais: flapping de sinal Wi-Fi, desconexões de APs por UH e SLA de cobertura sem fio.
+      - **Zabbix Monitoring**: Monitoramento de infraestrutura crítica de TI, servidores de banco de dados, sistemas hoteleiros essenciais (Opera PMS, CM/Central de Marcações, Active Directory), storages, appliances de segurança e links de internet/SD-WAN redundantes (Embratel, Claro). Métricas centrais: gatilhos ICMP/SNMP, hosts fora da rede, perda de redundância e SLA de sistemas corporativos.
+    - **Backend e Métricas Segregadas (`backend/app/routers/reports.py`)**:
+      - Endpoint `GET /api/v1/reports/outages` suportando filtro de tecnologia via `source` (`"all"`, `"unifi"`, `"zabbix"`), status e tolerância mínima de tempo offline (`min_duration_seconds`).
+      - Cálculo analítico segregado em tempo real em `summary.unifi` (eventos de desconexão, APs com oscilação, tempo sem sinal e SLA de Wi-Fi %) e `summary.zabbix` (alarmes de queda, servidores/links impactados, downtime acumulado e SLA de infraestrutura %).
+      - Sincronização automática contínua de status via `ZabbixService.sync_outages(db)`.
+    - **Frontend com Visões Especializadas (`frontend/src/pages/admin/Reports.jsx`)**:
+      - Sub-navegação dedicada em pills: **🌐 Consolidado Geral**, **📶 UniFi Network (Wi-Fi & APs)** e **🖥️ Zabbix (Servidores & Links)** com contadores em tempo real.
+      - **Visão Consolidada**: Bloco comparativo lado a lado exibindo cards independentes para UniFi e Zabbix com indicadores de SLA, volume de eventos, tempo de interrupção e atalhos rápidos de navegação.
+      - **Visão Especializada UniFi**: KPIs temáticos em azul (`sky-600`), ranking **"Top Access Points (APs) Mais Instáveis — Flapping de Sinal Wi-Fi"** detalhando UH/área, modelo, MAC, IP e histórico cronológico filtrado.
+      - **Visão Especializada Zabbix**: KPIs temáticos em vermelho (`rose-600`), ranking **"Top Hosts & Links Críticos — Servidores com Maior Incidência de Alarmes"** detalhando servidores Opera/AD/links de operadora e gatilhos disparados.
+      - **Exportação CSV & Impressão PDF Contextuais**: Arquivos CSV gerados dinamicamente com nomes e colunas específicos (`relatorio_quedas_unifi_wifi_...csv`, `relatorio_quedas_zabbix_infra_...csv`, etc.) e cabeçalho executivo formatado para impressão oficial no padrão Fasano.
+
 
 

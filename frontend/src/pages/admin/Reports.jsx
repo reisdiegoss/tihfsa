@@ -10,6 +10,10 @@ import {
   Monitor,
   Cpu,
   WifiOff,
+  Wifi,
+  Server,
+  Radio,
+  ArrowRight,
   Clock,
   CheckCircle2,
   AlertTriangle,
@@ -57,6 +61,7 @@ export default function Reports() {
 
   const [dateRange, setDateRange] = useState(getDefaultDateRange);
   const [minOutageSeconds, setMinOutageSeconds] = useState(120); // 2 minutos tolerância padrão
+  const [outageSource, setOutageSource] = useState("all"); // "all" | "unifi" | "zabbix"
   const [searchFilter, setSearchFilter] = useState("");
 
   // Dados carregados de cada relatório
@@ -134,6 +139,7 @@ export default function Reports() {
             start_date: dateRange.startDate,
             end_date: dateRange.endDate,
             min_duration_seconds: minOutageSeconds,
+            source: outageSource,
           },
         });
         setOutagesData(res.data);
@@ -147,7 +153,7 @@ export default function Reports() {
 
   useEffect(() => {
     fetchReportData();
-  }, [activeTab, dateRange.startDate, dateRange.endDate, minOutageSeconds]);
+  }, [activeTab, dateRange.startDate, dateRange.endDate, minOutageSeconds, outageSource]);
 
   // Exportação para Excel / CSV
   const handleExportCSV = () => {
@@ -187,8 +193,10 @@ export default function Reports() {
         ])
       ];
     } else if (activeTab === "outages" && outagesData?.timeline_events) {
+      const sourceSuffix = outageSource === "unifi" ? "unifi_wifi" : outageSource === "zabbix" ? "zabbix_infra" : "rede_consolidado";
+      filename = `relatorio_quedas_${sourceSuffix}_${dateRange.startDate}_a_${dateRange.endDate}.csv`;
       rows = [
-        ["ID", "Origem", "Dispositivo", "Tipo", "IP", "MAC", "Início da Queda", "Retorno Online", "Duração", "Duração (Segundos)", "Status", "Motivo/Alarme"],
+        ["ID", "Origem", "Dispositivo", "Tipo de Equipamento", "IP", "MAC", "Início da Queda", "Retorno Online", "Duração", "Duração (Segundos)", "Status", "Motivo / Alarme"],
         ...outagesData.timeline_events.map(o => [
           o.id, o.source, `"${o.device_name.replace(/"/g, '""')}"`, `"${o.device_type || ''}"`,
           o.ip_address || "", o.mac_address || "", o.started_at || "", o.ended_at || "",
@@ -388,7 +396,13 @@ export default function Reports() {
               {activeTab === "tickets" && "Relatório Gerencial de Chamados e Nível de Serviço (SLA)"}
               {activeTab === "assets" && "Relatório Consolidado do Inventário Patrimonial (CMDB)"}
               {activeTab === "hardware" && "Relatório de Desempenho e Telemetria de Estações de Trabalho"}
-              {activeTab === "outages" && "Relatório de Quedas, Flapping e Estabilidade de Rede (Zabbix & UniFi)"}
+              {activeTab === "outages" && (
+                outageSource === "unifi"
+                  ? "Relatório de Estabilidade de Rede Wi-Fi & Access Points (UniFi Network)"
+                  : outageSource === "zabbix"
+                  ? "Relatório de Alta Disponibilidade de Infraestrutura & Links de Internet (Zabbix)"
+                  : "Relatório Consolidado de Quedas e Estabilidade de Rede (Zabbix & UniFi)"
+              )}
             </h2>
             <p className="text-xs text-slate-600 mt-1">
               Período de Análise: <strong>{dateRange.startDate}</strong> até <strong>{dateRange.endDate}</strong>
@@ -860,50 +874,286 @@ export default function Reports() {
       {/* ─────────────────────────────────────────────────────────────────────── */}
       {activeTab === "outages" && outagesData && (
         <div className="space-y-6">
-          
-          {/* Top Cards de Indicadores de Queda */}
+
+          {/* Sub-Navegação: Seletor de Origem (Consolidado, UniFi Wi-Fi, Zabbix Infra) */}
+          <div className="bg-white p-2.5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-wrap items-center justify-between gap-3 print:hidden">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-black text-slate-400 uppercase tracking-wider px-2 flex items-center gap-1.5">
+                <Filter size={13} /> Visão:
+              </span>
+
+              <button
+                onClick={() => setOutageSource("all")}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  outageSource === "all"
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                }`}
+              >
+                <Layers size={14} />
+                <span>Consolidado Geral</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                  outageSource === "all" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
+                }`}>
+                  {outagesData.summary.total_outage_events} quedas
+                </span>
+              </button>
+
+              <button
+                onClick={() => setOutageSource("unifi")}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  outageSource === "unifi"
+                    ? "bg-sky-600 text-white shadow-xs shadow-sky-600/20"
+                    : "text-slate-600 hover:text-sky-700 hover:bg-sky-50"
+                }`}
+              >
+                <Wifi size={14} className={outageSource === "unifi" ? "text-white" : "text-sky-600"} />
+                <span>UniFi Network (Wi-Fi & APs)</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                  outageSource === "unifi" ? "bg-sky-700 text-white" : "bg-sky-100 text-sky-800"
+                }`}>
+                  {outagesData.summary.unifi?.events_count || 0}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setOutageSource("zabbix")}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                  outageSource === "zabbix"
+                    ? "bg-rose-600 text-white shadow-xs shadow-rose-600/20"
+                    : "text-slate-600 hover:text-rose-700 hover:bg-rose-50"
+                }`}
+              >
+                <Server size={14} className={outageSource === "zabbix" ? "text-white" : "text-rose-600"} />
+                <span>Zabbix (Servidores & Links)</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                  outageSource === "zabbix" ? "bg-rose-700 text-white" : "bg-rose-100 text-rose-800"
+                }`}>
+                  {outagesData.summary.zabbix?.events_count || 0}
+                </span>
+              </button>
+            </div>
+
+            <div className="text-[11px] font-bold text-slate-400 px-2 hidden sm:block">
+              {outageSource === "unifi" && "📶 Malha Wi-Fi dos apartamentos e áreas sociais"}
+              {outageSource === "zabbix" && "🖥️ Servidores Opera, AD, Links Embratel/Claro e switches core"}
+              {outageSource === "all" && "🌐 Análise comparativa integrada da rede"}
+            </div>
+          </div>
+
+          {/* ── SEÇÃO COMPARATIVA: LADO A LADO (Quando visão consolidada ativa) ── */}
+          {outageSource === "all" && outagesData.summary.unifi && outagesData.summary.zabbix && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Card Comparativo: UniFi Network */}
+              <div className="bg-gradient-to-br from-sky-50/70 via-white to-sky-50/30 p-5 rounded-3xl border border-sky-200/80 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-sky-500 text-white flex items-center justify-center font-bold shadow-sm shadow-sky-500/20">
+                      <Wifi size={18} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">UniFi Network</h4>
+                      <p className="text-[11px] font-semibold text-slate-500">Wi-Fi de Hóspedes & Access Points (UHs)</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-sky-100 text-sky-800 border border-sky-200">
+                    Sinal & APs
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5 pt-1">
+                  <div className="bg-white p-3 rounded-2xl border border-sky-100 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">SLA Wi-Fi</span>
+                    <p className="text-lg font-black text-sky-700 mt-0.5">{outagesData.summary.unifi.sla_pct}%</p>
+                    <span className="text-[10px] font-semibold text-slate-400">uptime estimado</span>
+                  </div>
+                  <div className="bg-white p-3 rounded-2xl border border-sky-100 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Desconexões</span>
+                    <p className="text-lg font-black text-slate-900 mt-0.5">{outagesData.summary.unifi.events_count}</p>
+                    <span className="text-[10px] font-semibold text-slate-400">{outagesData.summary.unifi.affected_devices} APs afetados</span>
+                  </div>
+                  <div className="bg-white p-3 rounded-2xl border border-sky-100 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Tempo Fora</span>
+                    <p className="text-lg font-black text-slate-900 mt-0.5">{outagesData.summary.unifi.downtime_formatted}</p>
+                    <span className="text-[10px] font-semibold text-slate-400">acumulado</span>
+                  </div>
+                </div>
+
+                <div className="pt-1 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-slate-500">
+                    Oscilações nos quartos (UHs), restaurantes e áreas de lazer.
+                  </p>
+                  <button
+                    onClick={() => setOutageSource("unifi")}
+                    className="flex items-center gap-1.5 text-xs font-black text-sky-700 hover:text-sky-800 hover:underline cursor-pointer"
+                  >
+                    Filtrar UniFi <ArrowRight size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Card Comparativo: Zabbix Monitoring */}
+              <div className="bg-gradient-to-br from-rose-50/70 via-white to-rose-50/30 p-5 rounded-3xl border border-rose-200/80 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-sm shadow-rose-600/20">
+                      <Server size={18} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">Zabbix Monitoring</h4>
+                      <p className="text-[11px] font-semibold text-slate-500">Servidores Críticos, Opera PMS & Links</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-200">
+                    Infra & Sistemas
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5 pt-1">
+                  <div className="bg-white p-3 rounded-2xl border border-rose-100 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">SLA Infra</span>
+                    <p className="text-lg font-black text-rose-700 mt-0.5">{outagesData.summary.zabbix.sla_pct}%</p>
+                    <span className="text-[10px] font-semibold text-slate-400">uptime estimado</span>
+                  </div>
+                  <div className="bg-white p-3 rounded-2xl border border-rose-100 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Alarmes</span>
+                    <p className="text-lg font-black text-slate-900 mt-0.5">{outagesData.summary.zabbix.events_count}</p>
+                    <span className="text-[10px] font-semibold text-slate-400">{outagesData.summary.zabbix.affected_devices} hosts afetados</span>
+                  </div>
+                  <div className="bg-white p-3 rounded-2xl border border-rose-100 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Tempo Fora</span>
+                    <p className="text-lg font-black text-slate-900 mt-0.5">{outagesData.summary.zabbix.downtime_formatted}</p>
+                    <span className="text-[10px] font-semibold text-slate-400">acumulado</span>
+                  </div>
+                </div>
+
+                <div className="pt-1 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-slate-500">
+                    Servidores Opera, Active Directory, Firewalls e Links Embratel/Claro.
+                  </p>
+                  <button
+                    onClick={() => setOutageSource("zabbix")}
+                    className="flex items-center gap-1.5 text-xs font-black text-rose-700 hover:text-rose-800 hover:underline cursor-pointer"
+                  >
+                    Filtrar Zabbix <ArrowRight size={13} />
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* Banner Explicativo de Contexto (quando filtrado por UniFi ou Zabbix) */}
+          {outageSource === "unifi" && (
+            <div className="bg-sky-50 border border-sky-200 p-4 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-sky-100 rounded-xl text-sky-700">
+                  <Wifi size={18} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-sky-950 uppercase tracking-wide">
+                    Relatório Especializado: Malha Wi-Fi & Access Points (UniFi Network)
+                  </h4>
+                  <p className="text-xs font-medium text-sky-800 mt-0.5">
+                    Exibindo apenas Access Points e switches da controladora UniFi. O flapping indica perda de cobertura em apartamentos específicos.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOutageSource("all")}
+                className="text-xs font-bold text-sky-700 hover:text-sky-900 bg-white px-3 py-1.5 rounded-xl border border-sky-200 cursor-pointer print:hidden"
+              >
+                Voltar ao Consolidado
+              </button>
+            </div>
+          )}
+
+          {outageSource === "zabbix" && (
+            <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-rose-100 rounded-xl text-rose-700">
+                  <Server size={18} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-rose-950 uppercase tracking-wide">
+                    Relatório Especializado: Infraestrutura Crítica, Servidores & Links (Zabbix)
+                  </h4>
+                  <p className="text-xs font-medium text-rose-800 mt-0.5">
+                    Exibindo servidores de banco, Opera PMS, AD, storage e links de internet monitorados via ICMP/SNMP.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOutageSource("all")}
+                className="text-xs font-bold text-rose-700 hover:text-rose-900 bg-white px-3 py-1.5 rounded-xl border border-rose-200 cursor-pointer print:hidden"
+              >
+                Voltar ao Consolidado
+              </button>
+            </div>
+          )}
+
+          {/* Top Cards de Indicadores de Queda (Adaptados pelo Contexto Ativo) */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block">Total de Quedas</span>
-              <p className="text-2xl font-black text-rose-600 mt-1">{outagesData.summary.total_outage_events}</p>
+              <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                {outageSource === "unifi" ? "Desconexões Wi-Fi" : outageSource === "zabbix" ? "Alarmes de Queda" : "Total de Quedas"}
+              </span>
+              <p className={`text-2xl font-black mt-1 ${
+                outageSource === "unifi" ? "text-sky-600" : outageSource === "zabbix" ? "text-rose-600" : "text-slate-900"
+              }`}>
+                {outagesData.summary.total_outage_events}
+              </p>
               <span className="text-[11px] font-bold text-slate-500">eventos no período</span>
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[11px] font-extrabold text-amber-600 uppercase tracking-wider block">Dispositivos Afetados</span>
+              <span className="text-[11px] font-extrabold text-amber-600 uppercase tracking-wider block">
+                {outageSource === "unifi" ? "APs Afetados" : outageSource === "zabbix" ? "Hosts / Links Afetados" : "Dispositivos Afetados"}
+              </span>
               <p className="text-2xl font-black text-amber-600 mt-1">{outagesData.summary.unique_affected_devices}</p>
-              <span className="text-[11px] font-bold text-slate-500">itens sofreram queda</span>
+              <span className="text-[11px] font-bold text-slate-500">
+                {outageSource === "unifi" ? "antenas com oscilação" : outageSource === "zabbix" ? "servidores/links com alarme" : "itens sofreram queda"}
+              </span>
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[11px] font-extrabold text-purple-600 uppercase tracking-wider block">Tempo Total Offline</span>
+              <span className="text-[11px] font-extrabold text-purple-600 uppercase tracking-wider block">
+                {outageSource === "unifi" ? "Tempo Sem Sinal Wi-Fi" : "Tempo Total Offline"}
+              </span>
               <p className="text-2xl font-black text-purple-700 mt-1">{outagesData.summary.total_downtime_formatted}</p>
               <span className="text-[11px] font-bold text-slate-500">downtime acumulado</span>
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[11px] font-extrabold text-blue-600 uppercase tracking-wider block">Duração Média da Queda</span>
+              <span className="text-[11px] font-extrabold text-blue-600 uppercase tracking-wider block">Duração Média</span>
               <p className="text-2xl font-black text-blue-700 mt-1">{outagesData.summary.avg_outage_formatted}</p>
-              <span className="text-[11px] font-bold text-slate-500">MTTR de rede</span>
+              <span className="text-[11px] font-bold text-slate-500">tempo médio de retorno</span>
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[11px] font-extrabold text-emerald-600 uppercase tracking-wider block">Disponibilidade / Uptime</span>
+              <span className="text-[11px] font-extrabold text-emerald-600 uppercase tracking-wider block">
+                {outageSource === "unifi" ? "SLA Wi-Fi" : outageSource === "zabbix" ? "SLA Infra TI" : "Disponibilidade SLA"}
+              </span>
               <p className="text-2xl font-black text-emerald-700 mt-1">{outagesData.summary.estimated_uptime_sla_pct}%</p>
-              <span className="text-[11px] font-bold text-slate-500">SLA de rede estimado</span>
+              <span className="text-[11px] font-bold text-slate-500">uptime estimado no período</span>
             </div>
           </div>
 
-          {/* 🚨 RANKING TOP FLAPPING DEVICES (QUEM MAIS CAI E QUANTO TEMPO FICA FORA) */}
+          {/* 🚨 RANKING TOP FLAPPING DEVICES (ESPECÍFICO POR TECNOLOGIA) */}
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                  <Flame size={18} className="text-rose-600" />
-                  Top Flapping Devices — Dispositivos com Quedas Constantes
+                  <Flame size={18} className={outageSource === "unifi" ? "text-sky-600" : "text-rose-600"} />
+                  {outageSource === "unifi" && "Top Access Points (APs) Mais Instáveis — Flapping de Sinal Wi-Fi"}
+                  {outageSource === "zabbix" && "Top Hosts & Links Críticos — Servidores com Maior Incidência de Alarmes"}
+                  {outageSource === "all" && "Top Flapping Devices — Dispositivos com Quedas Constantes (Zabbix & UniFi)"}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Equipamentos que apresentaram maior frequência de interrupção no período selecionado.
+                  {outageSource === "unifi" && "Equipamentos que apresentaram mais interrupções de Wi-Fi, impactando hóspedes nos apartamentos."}
+                  {outageSource === "zabbix" && "Servidores e links que dispararam múltiplos alarmes de indisponibilidade no Zabbix."}
+                  {outageSource === "all" && "Equipamentos com maior frequência de interrupção ordenada por total de quedas registradas."}
                 </p>
               </div>
             </div>
@@ -911,49 +1161,67 @@ export default function Reports() {
             {outagesData.top_flapping_devices.length === 0 ? (
               <div className="p-8 text-center text-slate-400 font-semibold space-y-2">
                 <CheckCircle2 size={36} className="text-emerald-500 mx-auto" />
-                <p className="text-xs">Nenhum equipamento com registro de instabilidade no período.</p>
+                <p className="text-xs">Nenhum equipamento com registro de instabilidade para o filtro atual.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-slate-100 text-[11px] font-black text-slate-400 uppercase">
-                      <th className="py-2.5 px-3">Dispositivo</th>
+                      <th className="py-2.5 px-3">
+                        {outageSource === "unifi" ? "Access Point / UH" : outageSource === "zabbix" ? "Host / Servidor / Link" : "Dispositivo"}
+                      </th>
                       <th className="py-2.5 px-3">Origem</th>
                       <th className="py-2.5 px-3">IP / MAC</th>
-                      <th className="py-2.5 px-3 text-center">Quedas no Período</th>
+                      <th className="py-2.5 px-3 text-center">
+                        {outageSource === "unifi" ? "Quedas de Sinal" : outageSource === "zabbix" ? "Alarmes Disparados" : "Quedas no Período"}
+                      </th>
                       <th className="py-2.5 px-3 text-center">Tempo Total Offline</th>
                       <th className="py-2.5 px-3 text-right">Duração Média</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                    {outagesData.top_flapping_devices.map((dev, idx) => (
-                      <tr key={idx} className="hover:bg-rose-50/40 transition-colors">
-                        <td className="py-3 px-3">
-                          <p className="font-extrabold text-slate-900">{dev.device_name}</p>
-                          <span className="text-[11px] text-slate-400">{dev.device_type || "Equipamento"}</span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 uppercase">
-                            {dev.source}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 font-mono text-[11px] text-slate-500">
-                          {dev.ip_address || dev.mac_address || "—"}
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200">
-                            {dev.outage_count}x
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-center font-mono font-bold text-slate-800">
-                          {dev.total_downtime_formatted}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-600">
-                          {dev.avg_downtime_formatted}
-                        </td>
-                      </tr>
-                    ))}
+                    {outagesData.top_flapping_devices.map((dev, idx) => {
+                      const isUnifi = (dev.source || "").toLowerCase() === "unifi";
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-3">
+                            <p className="font-extrabold text-slate-900 flex items-center gap-2">
+                              {isUnifi ? <Wifi size={13} className="text-sky-600 shrink-0" /> : <Server size={13} className="text-rose-600 shrink-0" />}
+                              {dev.device_name}
+                            </p>
+                            <span className="text-[11px] text-slate-400 pl-5">{dev.device_type || (isUnifi ? "Access Point" : "Servidor")}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                              isUnifi
+                                ? "bg-sky-50 text-sky-700 border border-sky-200"
+                                : "bg-rose-50 text-rose-700 border border-rose-200"
+                            }`}>
+                              {dev.source}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-500">
+                            {dev.ip_address || dev.mac_address || "—"}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border ${
+                              isUnifi
+                                ? "bg-sky-50 text-sky-800 border-sky-200"
+                                : "bg-rose-50 text-rose-800 border-rose-200"
+                            }`}>
+                              {dev.outage_count}x
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-800">
+                            {dev.total_downtime_formatted}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono text-slate-600">
+                            {dev.avg_downtime_formatted}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -962,10 +1230,16 @@ export default function Reports() {
 
           {/* Linha do Tempo Cronológica de Eventos de Queda */}
           <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                Histórico Cronológico de Quedas ({outagesData.timeline_events.length} eventos)
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Clock size={14} className="text-slate-400" />
+                Histórico Cronológico de Quedas ({outagesData.timeline_events.length} eventos registrados)
               </h3>
+              {outageSource !== "all" && (
+                <span className="text-[11px] font-bold text-slate-400">
+                  Filtrado por: <strong className="text-slate-700 uppercase">{outageSource}</strong>
+                </span>
+              )}
             </div>
             <div className="overflow-x-auto max-h-[500px]">
               <table className="w-full text-left border-collapse text-xs">
@@ -973,7 +1247,7 @@ export default function Reports() {
                   <tr className="border-b border-slate-200 text-[11px] font-black text-slate-400 uppercase">
                     <th className="py-3 px-3">Status</th>
                     <th className="py-3 px-3">Origem</th>
-                    <th className="py-3 px-3">Dispositivo</th>
+                    <th className="py-3 px-3">Dispositivo / Host</th>
                     <th className="py-3 px-3">Início da Queda</th>
                     <th className="py-3 px-3">Restabelecimento</th>
                     <th className="py-3 px-3 text-center">Tempo Offline</th>
@@ -983,44 +1257,54 @@ export default function Reports() {
                 <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                   {outagesData.timeline_events
                     .filter(o => !searchFilter || o.device_name.toLowerCase().includes(searchFilter.toLowerCase()) || (o.ip_address && o.ip_address.includes(searchFilter)))
-                    .map((ev) => (
-                      <tr key={ev.id} className="hover:bg-slate-50/80">
-                        <td className="py-2.5 px-3">
-                          {ev.status === "ongoing" ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-                              Offline Agora
+                    .map((ev) => {
+                      const isUnifi = (ev.source || "").toLowerCase() === "unifi";
+                      return (
+                        <tr key={ev.id} className="hover:bg-slate-50/80">
+                          <td className="py-2.5 px-3">
+                            {ev.status === "ongoing" ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
+                                Offline Agora
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                                Normalizado
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                              isUnifi
+                                ? "bg-sky-50 text-sky-700 border border-sky-200"
+                                : "bg-rose-50 text-rose-700 border border-rose-200"
+                            }`}>
+                              {ev.source}
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                              Normalizado
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-slate-100 text-slate-700 uppercase">
-                            {ev.source}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 font-extrabold text-slate-900">
-                          {ev.device_name}
-                          {ev.ip_address && <span className="block text-[11px] text-slate-400 font-mono">{ev.ip_address}</span>}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          {ev.started_at ? new Date(ev.started_at).toLocaleString("pt-BR") : "—"}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          {ev.ended_at ? new Date(ev.ended_at).toLocaleString("pt-BR") : "Ainda Offline"}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">
-                          {ev.duration_formatted}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate" title={ev.trigger_reason}>
-                          {ev.trigger_reason || "Perda de comunicação"}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-2.5 px-3 font-extrabold text-slate-900">
+                            <div className="flex items-center gap-1.5">
+                              {isUnifi ? <Wifi size={12} className="text-sky-600" /> : <Server size={12} className="text-rose-600" />}
+                              <span>{ev.device_name}</span>
+                            </div>
+                            {ev.ip_address && <span className="block text-[11px] text-slate-400 font-mono pl-4">{ev.ip_address}</span>}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                            {ev.started_at ? new Date(ev.started_at).toLocaleString("pt-BR") : "—"}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                            {ev.ended_at ? new Date(ev.ended_at).toLocaleString("pt-BR") : "Ainda Offline"}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">
+                            {ev.duration_formatted}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate" title={ev.trigger_reason}>
+                            {ev.trigger_reason || "Perda de comunicação"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
