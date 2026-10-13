@@ -1197,4 +1197,38 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Filtros e Busca**: Campo de busca textual por nome de usuário, login ou domínio e filtros rápidos por status (`Todos`, `Logados Agora`, `Desconectados`, `Histórico`).
       - **Tabela Detalhada**: Colaborador, Status da Sessão com badges coloridos, Data & Hora do Logon, Tipo de Acesso e Visto por Último.
 
+36. **Atalhos Rápidos de Acesso Remoto (AnyDesk & RustDesk)**:
+    - **Contexto e Operação de Suporte**:
+      - Para agilizar o atendimento aos colaboradores e permitir que os técnicos de TI conectem imediatamente à estação com 1 clique diretamente pelo painel de monitoramento, sem precisar perguntar o ID ao usuário.
+    - **Protocolos de URL Integrados**:
+      - **AnyDesk**: Disparo via URI scheme `anydesk:<ID>` (ou `anydesk://<ID>`), abrindo o AnyDesk instalado na máquina do suporte e iniciando a sessão remota automaticamente.
+      - **RustDesk**: Disparo via URI scheme `rustdesk://<ID>`, abrindo o RustDesk diretamente no ID de conexão da estação.
+    - **Detecção Automática pelo Agente (`Get-RemoteAccessIds`)**:
+      - O agente PowerShell instalado na estação inspeciona os arquivos de configuração locais dos softwares:
+        - AnyDesk: `C:\ProgramData\AnyDesk\service.conf` e `$env:APPDATA\AnyDesk\user.conf` (chave `ad.anynet.id`).
+        - RustDesk: `C:\ProgramData\RustDesk\config\RustDesk.toml` e `$env:APPDATA\RustDesk\config\RustDesk.toml` (chave `id`).
+      - Quando encontrados, os IDs são reportados automaticamente na telemetria sem necessidade de intervenção humana.
+    - **Gestão Manual e Persistência (`monitoring.py`)**:
+      - Colunas `anydesk_id VARCHAR(50)` e `rustdesk_id VARCHAR(50)` em `agent_checkins`.
+      - Endpoint `PATCH /api/v1/monitoring/agent/machines/{machine_id}/remote-access` protegido com permissão de técnico (`require_technician`), permitindo cadastrar ou sobrescrever manualmente os IDs a qualquer momento.
+    - **Interface Visual do Suporte**:
+      - **Cards de Estações (`StationMonitoringTab.jsx`)**: Seção visual destacada com botões personalizados nas identidades oficiais do AnyDesk (vermelho) e RustDesk (azul), botão de cópia de ID com feedback imediato ("Copiado!") e atalho "Configurar" para abrir o modal de edição manual (`RemoteAccessModal.jsx`).
+      - **Cabeçalho do Modal de Diagnóstico (`MachineHistoryModal.jsx`)**: Atalhos diretos de AnyDesk e RustDesk posicionados no topo do modal para que o técnico possa se conectar enquanto visualiza os gráficos de métricas e diagnósticos da máquina.
+
+37. **Correção e Sanitização do Histórico de Logons e "Visto por Último"**:
+    - **Diagnóstico da Causa Raiz da Anomalia**:
+      1. **Carimbos Falsos Coletivos no Domingo (`11/10/2026 07:29:10`)**: No Windows, rotinas agendadas de manutenção do sistema, antivírus corporativo ou indexador de arquivos varrem a pasta `C:\Users\*`. Essa varredura altera o atributo `LastUseTime` de todas as pastas de perfis locais no mesmo segundo. O agente interpretava cegamente esse timestamp como sendo a data do último logon de ex-funcionários que já haviam saído da empresa há meses.
+      2. **Atualização Indevida de `last_seen_at`**: A cada checkin periódico da máquina (a cada 60s), o backend executava `existing.last_seen_at = now` para todos os perfis reportados, inclusive para sessões em logoff. Isso fazia com que colaboradores desligados aparecessem como "Vistos por último: Hoje às 13:14".
+    - **Solução Definitiva no Backend (`monitoring.py`)**:
+      - `last_seen_at` **apenas** é atualizado para `now` se a sessão estiver comprovadamente ativa ou conectada no momento (`is_current = True` ou `session_state in ('active', 'disconnected')`). Sessões em `logged_off` mantêm seu carimbo estático da data real em que estiveram ativas.
+      - Detecção e descarte de carimbos de manutenção: se o payload contiver 2 ou mais perfis deslogados com timestamps idênticos ou dentro do mesmo minuto, o sistema descarta os timestamps espúrios de varredura.
+      - Filtragem de colaboradores inativos: perfis pertencentes a usuários já desativados no sistema/AD são ignorados para não poluir o histórico com contas inativas.
+      - Exclusão de contas de serviço e sistema (`ksnproxy`, `defaultapppool`, `iusr`, `wdagutilityaccount`, etc.).
+      - Novo endpoint `DELETE /api/v1/monitoring/agent/machines/{machine_id}/logon-history/{history_id}` para remoção manual de registros antigos com 1 clique pelo suporte.
+    - **Solução no Agente PowerShell (`Get-LogonHistory`)**:
+      - Captura do horário real de logon de sessões ativas via data de criação do processo gráfico (`CreationDate` de `explorer.exe`).
+      - Agrupamento por minuto de `Win32_UserProfile` e descarte automático de varreduras em lote.
+    - **Higienização da Base de Dados (`init_db.py`)**:
+      - Rotina `cleanup_corrupted_logon_history` que removeu os registros corrompidos gerados pelas varreduras de sistema e realinhou `last_seen_at` com o logon real para sessões passadas.
+
 

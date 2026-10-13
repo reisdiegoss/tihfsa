@@ -8,6 +8,7 @@ import {
 import api from "../../api/client";
 import AssignMachineModal from "./AssignMachineModal";
 import MachineHistoryModal from "./MachineHistoryModal";
+import RemoteAccessModal, { AnyDeskIcon, RustDeskIcon } from "./RemoteAccessModal";
 
 export default function StationMonitoringTab() {
   const [data, setData] = useState({
@@ -29,6 +30,10 @@ export default function StationMonitoringTab() {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [machineToAssign, setMachineToAssign] = useState(null);
+
+  const [showRemoteModal, setShowRemoteModal] = useState(false);
+  const [machineForRemote, setMachineForRemote] = useState(null);
+  const [copiedCardId, setCopiedCardId] = useState(null);
 
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [machineForHistory, setMachineForHistory] = useState(null);
@@ -75,6 +80,24 @@ export default function StationMonitoringTab() {
     navigator.clipboard.writeText(text);
     setCopiedCmd(true);
     setTimeout(() => setCopiedCmd(false), 3000);
+  };
+
+  const handleCopyCardId = (id, text, type) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedCardId({ id, type });
+    setTimeout(() => setCopiedCardId(null), 2500);
+  };
+
+  const handleRemoteSuccess = (updatedMachine) => {
+    setData((prev) => ({
+      ...prev,
+      machines: (prev.machines || []).map((m) =>
+        m.id === updatedMachine.id
+          ? { ...m, anydesk_id: updatedMachine.anydesk_id, rustdesk_id: updatedMachine.rustdesk_id }
+          : m
+      ),
+    }));
   };
 
   // Obter tipos únicos presentes na base
@@ -550,6 +573,95 @@ export default function StationMonitoringTab() {
                   </div>
                 </div>
 
+                {/* Acesso Remoto Rápido: AnyDesk & RustDesk */}
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
+                      <Monitor size={12} className="text-indigo-600" /> Acesso Remoto
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMachineForRemote(m);
+                        setShowRemoteModal(true);
+                      }}
+                      className="text-[10px] font-bold text-slate-500 hover:text-indigo-700 flex items-center gap-1 hover:underline cursor-pointer"
+                      title="Editar IDs de AnyDesk e RustDesk"
+                    >
+                      <span>Configurar</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* AnyDesk */}
+                    {m.anydesk_id ? (
+                      <div className="flex-1 min-w-[120px] flex items-center justify-between gap-1 px-2 py-1.5 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs shadow-2xs">
+                        <a
+                          href={`anydesk:${m.anydesk_id}`}
+                          className="flex items-center gap-1.5 font-black hover:underline truncate"
+                          title={`Conectar via AnyDesk (${m.anydesk_id})`}
+                        >
+                          <AnyDeskIcon size={14} className="shrink-0" />
+                          <span className="truncate font-mono">{m.anydesk_id}</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCardId(m.id, m.anydesk_id, "anydesk")}
+                          className="p-1 text-rose-600 hover:text-rose-900 rounded hover:bg-rose-100 cursor-pointer shrink-0"
+                          title="Copiar ID AnyDesk"
+                        >
+                          {copiedCardId?.id === m.id && copiedCardId?.type === "anydesk" ? (
+                            <Check size={12} className="text-emerald-600" />
+                          ) : (
+                            <Copy size={12} />
+                          )}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {/* RustDesk */}
+                    {m.rustdesk_id ? (
+                      <div className="flex-1 min-w-[120px] flex items-center justify-between gap-1 px-2 py-1.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 text-xs shadow-2xs">
+                        <a
+                          href={`rustdesk://${m.rustdesk_id}`}
+                          className="flex items-center gap-1.5 font-black hover:underline truncate"
+                          title={`Conectar via RustDesk (${m.rustdesk_id})`}
+                        >
+                          <RustDeskIcon size={14} className="shrink-0" />
+                          <span className="truncate font-mono">{m.rustdesk_id}</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCardId(m.id, m.rustdesk_id, "rustdesk")}
+                          className="p-1 text-sky-600 hover:text-sky-900 rounded hover:bg-sky-100 cursor-pointer shrink-0"
+                          title="Copiar ID RustDesk"
+                        >
+                          {copiedCardId?.id === m.id && copiedCardId?.type === "rustdesk" ? (
+                            <Check size={12} className="text-emerald-600" />
+                          ) : (
+                            <Copy size={12} />
+                          )}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {/* Se nenhum estiver cadastrado */}
+                    {!m.anydesk_id && !m.rustdesk_id && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMachineForRemote(m);
+                          setShowRemoteModal(true);
+                        }}
+                        className="w-full py-1.5 px-2 rounded-lg bg-white hover:bg-slate-100 border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        title="Cadastrar AnyDesk ou RustDesk desta máquina"
+                      >
+                        <span className="text-slate-400 font-normal">+</span> Cadastrar Acesso Remoto
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {/* Telemetria de Hardware em Tempo Real: CPU, RAM & Atividade de Disco */}
                 <div className="grid grid-cols-3 gap-2.5 text-xs">
                   {/* CPU */}
@@ -917,6 +1029,17 @@ sudo /usr/local/bin/tihfsa-agent.sh`}</pre>
         }}
         machine={machineForHistory}
         initialTab={historyInitialTab}
+      />
+
+      {/* ─── MODAL DE ACESSO REMOTO (ANYDESK & RUSTDESK) ─── */}
+      <RemoteAccessModal
+        isOpen={showRemoteModal}
+        onClose={() => {
+          setShowRemoteModal(false);
+          setMachineForRemote(null);
+        }}
+        machine={machineForRemote}
+        onSuccess={handleRemoteSuccess}
       />
     </div>
   );

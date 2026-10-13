@@ -4,18 +4,21 @@ import {
   AlertTriangle, AlertCircle, Info, Printer, X, RefreshCw,
   User, Building, Tag, ExternalLink, Activity, ArrowUpRight,
   TrendingUp, Calendar, Zap, Layers, BarChart2, Search, ArrowUpDown,
-  ArrowUp, ArrowDown, Filter, Users, UserCheck, Shield
+  ArrowUp, ArrowDown, Filter, Users, UserCheck, Shield, Trash2,
+  Copy, Check
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ReferenceLine
 } from "recharts";
 import api from "../../api/client";
+import { AnyDeskIcon, RustDeskIcon } from "./RemoteAccessModal";
 
 export default function MachineHistoryModal({ isOpen, onClose, machine, initialTab = "metrics" }) {
   const [activeTab, setActiveTab] = useState(initialTab); // 'metrics' | 'processes' | 'logon' | 'report' | 'tickets'
   const [loading, setLoading] = useState(true);
   const [historyData, setHistoryData] = useState(null);
+  const [copiedHeaderType, setCopiedHeaderType] = useState(null);
 
   // Estados do Gráfico Temporal & Degradação
   const [chartRange, setChartRange] = useState("24h"); // '24h', '7d', '30d', '90d', '1y', 'all'
@@ -31,6 +34,32 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
   // Estados do Histórico de Logons e Usuários
   const [logonSearch, setLogonSearch] = useState("");
   const [logonFilter, setLogonFilter] = useState("all"); // 'all' | 'online' | 'disconnected' | 'logged_off'
+
+  const handleCopyHeader = (text, type) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedHeaderType(type);
+    setTimeout(() => setCopiedHeaderType(null), 2500);
+  };
+
+  const handleDeleteLogonEntry = async (logonId, username) => {
+    if (!window.confirm(`Deseja remover o registro de histórico de logon do usuário "${username}" desta máquina?`)) return;
+    try {
+      await api.delete(`/monitoring/agent/machines/${machine.id}/logon-history/${logonId}`);
+      setHistoryData((prev) => {
+        if (!prev) return prev;
+        const updated = (prev.logon_history || []).filter((l) => l.id !== logonId);
+        return {
+          ...prev,
+          logon_history: updated,
+          logon_history_count: updated.length,
+        };
+      });
+    } catch (err) {
+      console.error("Erro ao remover registro de logon:", err);
+      alert("Erro ao excluir registro de logon.");
+    }
+  };
 
   const fetchHistory = () => {
     if (!machine) return;
@@ -299,7 +328,53 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 print:hidden">
+          <div className="flex items-center gap-2 shrink-0 print:hidden flex-wrap justify-end">
+            {/* AnyDesk Rápido */}
+            {(historyData?.anydesk_id || machine.anydesk_id) && (
+              <div className="flex items-center gap-1 bg-rose-50 border border-rose-200 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                <a
+                  href={`anydesk:${historyData?.anydesk_id || machine.anydesk_id}`}
+                  className="flex items-center gap-1.5 text-xs font-black text-rose-800 hover:text-rose-950 hover:underline"
+                  title={`Conectar via AnyDesk (${historyData?.anydesk_id || machine.anydesk_id})`}
+                >
+                  <AnyDeskIcon size={15} className="shrink-0" />
+                  <span>AnyDesk:</span>
+                  <span className="font-mono">{historyData?.anydesk_id || machine.anydesk_id}</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => handleCopyHeader(historyData?.anydesk_id || machine.anydesk_id, "anydesk")}
+                  className="p-1 text-rose-600 hover:text-rose-900 rounded hover:bg-rose-100 cursor-pointer shrink-0"
+                  title="Copiar AnyDesk ID"
+                >
+                  {copiedHeaderType === "anydesk" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                </button>
+              </div>
+            )}
+
+            {/* RustDesk Rápido */}
+            {(historyData?.rustdesk_id || machine.rustdesk_id) && (
+              <div className="flex items-center gap-1 bg-sky-50 border border-sky-200 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                <a
+                  href={`rustdesk://${historyData?.rustdesk_id || machine.rustdesk_id}`}
+                  className="flex items-center gap-1.5 text-xs font-black text-sky-800 hover:text-sky-950 hover:underline"
+                  title={`Conectar via RustDesk (${historyData?.rustdesk_id || machine.rustdesk_id})`}
+                >
+                  <RustDeskIcon size={15} className="shrink-0" />
+                  <span>RustDesk:</span>
+                  <span className="font-mono">{historyData?.rustdesk_id || machine.rustdesk_id}</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => handleCopyHeader(historyData?.rustdesk_id || machine.rustdesk_id, "rustdesk")}
+                  className="p-1 text-sky-600 hover:text-sky-900 rounded hover:bg-sky-100 cursor-pointer shrink-0"
+                  title="Copiar RustDesk ID"
+                >
+                  {copiedHeaderType === "rustdesk" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                </button>
+              </div>
+            )}
+
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
@@ -1383,6 +1458,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
                               <th className="px-3 py-3">Data & Hora do Logon</th>
                               <th className="px-3 py-3">Tipo de Acesso</th>
                               <th className="px-3 py-3 text-right">Visto por Último</th>
+                              <th className="px-3 py-3 text-center">Ações</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
@@ -1475,18 +1551,40 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
 
                                   {/* Visto por Último */}
                                   <td className="px-3 py-3 text-right">
-                                    {item.last_seen_at ? (
+                                    {item.is_current || item.is_online ? (
+                                      <div>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-md">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                          Ativo agora
+                                        </span>
+                                        <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                          {new Date(item.last_seen_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} {new Date(item.last_seen_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                                        </p>
+                                      </div>
+                                    ) : item.last_seen_at ? (
                                       <div>
                                         <p className="text-slate-700 font-bold">
-                                          {new Date(item.last_seen_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                                          {new Date(item.last_seen_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}
                                         </p>
                                         <p className="text-[11px] text-slate-400 font-mono">
                                           {new Date(item.last_seen_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                                         </p>
                                       </div>
                                     ) : (
-                                      <span className="text-slate-400">—</span>
+                                      <span className="text-slate-400 italic">Sessão encerrada</span>
                                     )}
+                                  </td>
+
+                                  {/* Ações */}
+                                  <td className="px-3 py-3 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteLogonEntry(item.id, item.display_name || item.username)}
+                                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                      title="Remover este registro de logon"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
                                   </td>
                                 </tr>
                               );

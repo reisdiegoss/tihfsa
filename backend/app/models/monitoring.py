@@ -45,6 +45,10 @@ class AgentCheckin(Base):
     asset_id = Column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
     asset = relationship("Asset")
 
+    # Acesso Remoto Rápido (AnyDesk e RustDesk)
+    anydesk_id = Column(String(50), nullable=True)
+    rustdesk_id = Column(String(50), nullable=True)
+
     @property
     def is_online(self) -> bool:
         """Considera online se enviou sinal nos últimos 1200 segundos (20 minutos), cobrindo o ciclo de 15 minutos da tarefa agendada."""

@@ -54,6 +54,8 @@ class AgentCheckinPayload(BaseModel):
     office_version: Optional[str] = None
     office_product_key: Optional[str] = None
     office_status: Optional[str] = None
+    anydesk_id: Optional[str] = None
+    rustdesk_id: Optional[str] = None
 
 
 class AgentMachineResponse(BaseModel):
@@ -86,12 +88,19 @@ class AgentMachineResponse(BaseModel):
     assigned_user_name: Optional[str] = None
     department_id: Optional[int] = None
     department_name: Optional[str] = None
+    anydesk_id: Optional[str] = None
+    rustdesk_id: Optional[str] = None
 
 
 class AgentAssignPayload(BaseModel):
     assigned_user_id: Optional[int] = None
     device_type: Optional[str] = None
     asset_name: Optional[str] = None
+
+
+class RemoteAccessPayload(BaseModel):
+    anydesk_id: Optional[str] = None
+    rustdesk_id: Optional[str] = None
 
 
 class MachineTicketHistoryItem(BaseModel):
@@ -154,6 +163,8 @@ class MachineHistoryResponse(BaseModel):
     last_seen_at: datetime
     disk_active_pct: Optional[int] = None
     top_processes: Optional[list[dict]] = None
+    anydesk_id: Optional[str] = None
+    rustdesk_id: Optional[str] = None
     tickets_count: int
     tickets: list[MachineTicketHistoryItem]
     metrics_count: int
@@ -518,6 +529,10 @@ def agent_checkin(
             last_seen_at=now,
             asset_id=asset.id,
         )
+        if data.anydesk_id and data.anydesk_id.strip():
+            checkin.anydesk_id = data.anydesk_id.strip()
+        if data.rustdesk_id and data.rustdesk_id.strip():
+            checkin.rustdesk_id = data.rustdesk_id.strip()
         db.add(checkin)
     else:
         # Atualização de máquina já cadastrada
@@ -536,6 +551,11 @@ def agent_checkin(
         checkin.status = calculated_status
         checkin.last_seen_at = now
         checkin.asset_id = asset.id
+
+        if data.anydesk_id and data.anydesk_id.strip():
+            checkin.anydesk_id = data.anydesk_id.strip()
+        if data.rustdesk_id and data.rustdesk_id.strip():
+            checkin.rustdesk_id = data.rustdesk_id.strip()
 
     db.commit()
     db.refresh(checkin)
@@ -576,7 +596,19 @@ def agent_checkin(
             AgentLogonHistory.hostname.ilike(hostname_clean)
         ).update({"is_current": False}, synchronize_session=False)
 
+        # Detecção de varredura coletiva de manutenção: agrupa timestamps de sessões deslogadas
+        ts_frequency = {}
+        for item in raw_logon_sessions:
+            if isinstance(item, dict) and not item.get("is_current") and item.get("logon_time"):
+                ts_str = str(item["logon_time"])[:16]  # Janela de minuto: 'YYYY-MM-DDTHH:MM'
+                ts_frequency[ts_str] = ts_frequency.get(ts_str, 0) + 1
+
         seen_usernames = set()
+        IGNORED_USERS = {
+            "system", "local service", "network service", "administrator", "administrador",
+            "ksnproxy", "defaultapppool", "iusr", "iwam", "sshd", "guest", "convidado",
+            "wdagutilityaccount", "aspnet", "trustedinstaller"
+        }
 
         for item in raw_logon_sessions:
             if not isinstance(item, dict):
@@ -586,7 +618,7 @@ def agent_checkin(
                 continue
 
             clean_u = u_name.split("\\")[-1].strip().lower()
-            if clean_u in ("system", "local service", "network service", "administrator", "administrador"):
+            if clean_u in IGNORED_USERS:
                 continue
 
             seen_usernames.add(clean_u)
@@ -596,9 +628,15 @@ def agent_checkin(
             l_type = str(item.get("logon_type") or "Local")
 
             parsed_logon_time = None
+            is_maintenance_batch = False
             if item.get("logon_time"):
                 try:
-                    parsed_logon_time = datetime.fromisoformat(str(item["logon_time"]).replace("Z", "+00:00"))
+                    ts_raw = str(item["logon_time"]).replace("Z", "+00:00")
+                    ts_min = ts_raw[:16]
+                    if not is_curr and ts_frequency.get(ts_min, 0) > 1:
+                        is_maintenance_batch = True
+                    else:
+                        parsed_logon_time = datetime.fromisoformat(ts_raw)
                 except Exception:
                     parsed_logon_time = None
 
@@ -609,6 +647,11 @@ def agent_checkin(
                     User.email.ilike(f"{clean_u}@%")
                 )
             ).first()
+
+            # Se o colaborador já foi desligado/desativado no sistema e não tem sessão ativa agora, não registra
+            if ad_user and ad_user.is_active is False and not is_curr:
+                continue
+
             disp_name = ad_user.display_name if ad_user else None
 
             # Busca se já existe um registro prévio deste usuário para esta máquina
@@ -620,16 +663,28 @@ def agent_checkin(
             if existing:
                 existing.is_current = is_curr
                 existing.session_state = s_state
-                existing.last_seen_at = now
                 if dom:
                     existing.domain = dom
                 if disp_name:
                     existing.display_name = disp_name
-                if parsed_logon_time:
-                    existing.logon_time = parsed_logon_time
                 if l_type:
                     existing.logon_type = l_type
+
+                # REGRA CRÍTICA: last_seen_at SÓ é atualizado para now se o usuário estiver ATIVO agora!
+                if is_curr or s_state in ("active", "disconnected"):
+                    existing.last_seen_at = now
+                    if parsed_logon_time:
+                        existing.logon_time = parsed_logon_time
+                else:
+                    # Sessão encerrada: preserva last_seen_at anterior (momento real em que deslogou)
+                    # Não sobrescreve com a data/hora do checkin da máquina
+                    if parsed_logon_time and not is_maintenance_batch and not existing.logon_time:
+                        existing.logon_time = parsed_logon_time
             else:
+                # Se for apenas perfil local órfão com timestamp coletivo de manutenção, não cria
+                if not is_curr and is_maintenance_batch:
+                    continue
+
                 new_entry = AgentLogonHistory(
                     hostname=hostname_clean,
                     username=clean_u,
@@ -637,8 +692,8 @@ def agent_checkin(
                     display_name=disp_name,
                     session_state=s_state,
                     is_current=is_curr,
-                    logon_time=parsed_logon_time or now,
-                    last_seen_at=now,
+                    logon_time=parsed_logon_time or (now if is_curr else None),
+                    last_seen_at=now if is_curr else (parsed_logon_time or now),
                     logon_type=l_type,
                     created_at=now,
                 )
@@ -648,7 +703,7 @@ def agent_checkin(
         if display_user:
             raw_logged = display_user.split("(")[-1].replace(")", "").strip() if "(" in display_user else display_user
             raw_logged = raw_logged.split("\\")[-1].strip().lower()
-            if raw_logged and raw_logged not in ("system", "administrator") and raw_logged not in seen_usernames:
+            if raw_logged and raw_logged not in IGNORED_USERS and raw_logged not in seen_usernames:
                 exist_logged = db.query(AgentLogonHistory).filter(
                     AgentLogonHistory.hostname.ilike(hostname_clean),
                     AgentLogonHistory.username.ilike(raw_logged)
@@ -758,6 +813,8 @@ def list_agent_machines(
                 assigned_user_name=r.asset.assigned_user.display_name if (r.asset and r.asset.assigned_user) else None,
                 department_id=dept_id,
                 department_name=dept_name,
+                anydesk_id=r.anydesk_id,
+                rustdesk_id=r.rustdesk_id,
             )
         )
 
@@ -811,6 +868,58 @@ def assign_agent_machine(
 
     db.commit()
     return {"status": "ok", "message": "Atribuição atualizada com sucesso."}
+
+
+@router.patch("/agent/machines/{machine_id}/remote-access", summary="Configurar IDs de Acesso Remoto (AnyDesk / RustDesk)")
+def update_machine_remote_access(
+    machine_id: int,
+    payload: RemoteAccessPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Permite aos técnicos cadastrar ou atualizar manualmente os IDs do AnyDesk e RustDesk
+    da estação de trabalho para conexão remota em 1 clique.
+    """
+    checkin = db.query(AgentCheckin).filter(AgentCheckin.id == machine_id).first()
+    if not checkin:
+        raise HTTPException(status_code=404, detail="Estação não encontrada.")
+
+    checkin.anydesk_id = payload.anydesk_id.strip() if payload.anydesk_id else None
+    checkin.rustdesk_id = payload.rustdesk_id.strip() if payload.rustdesk_id else None
+    db.commit()
+    return {
+        "status": "ok",
+        "message": "Acesso remoto atualizado com sucesso.",
+        "anydesk_id": checkin.anydesk_id,
+        "rustdesk_id": checkin.rustdesk_id,
+    }
+
+
+@router.delete("/agent/machines/{machine_id}/logon-history/{history_id}", summary="Remover registro órfão de histórico de logon")
+def delete_machine_logon_history_entry(
+    machine_id: int,
+    history_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Permite remover um registro espúrio ou de usuário desligado do histórico de logon da máquina.
+    """
+    checkin = db.query(AgentCheckin).filter(AgentCheckin.id == machine_id).first()
+    if not checkin:
+        raise HTTPException(status_code=404, detail="Estação não encontrada.")
+
+    entry = db.query(AgentLogonHistory).filter(
+        AgentLogonHistory.id == history_id,
+        AgentLogonHistory.hostname.ilike(checkin.hostname),
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Registro de logon não encontrado.")
+
+    db.delete(entry)
+    db.commit()
+    return {"status": "ok", "message": "Registro de histórico de logon removido com sucesso."}
 
 
 @router.get("/agent/machines/{machine_id}/history", response_model=MachineHistoryResponse, summary="Histórico de chamados, métricas e diagnóstico do equipamento")
@@ -1065,6 +1174,8 @@ def get_agent_machine_history(
         last_seen_at=checkin.last_seen_at,
         disk_active_pct=checkin.disk_active_pct,
         top_processes=checkin.top_processes,
+        anydesk_id=checkin.anydesk_id,
+        rustdesk_id=checkin.rustdesk_id,
         tickets_count=len(tickets_list),
         tickets=tickets_list,
         metrics_count=len(metrics_list),
@@ -1762,7 +1873,11 @@ function Test-IsAdminOrServiceAccount {{
     param([string]$AccountName)
     if ([string]::IsNullOrWhiteSpace($AccountName)) {{ return $true }}
     $clean = ($AccountName -split '\\\\')[-1].Trim().ToLower()
-    $blackList = @('system', 'local service', 'network service', 'administrator', 'administrador', 'root', 'defaultuser0', 'guest', 'convidado')
+    $blackList = @(
+        'system', 'local service', 'network service', 'administrator', 'administrador',
+        'root', 'defaultuser0', 'guest', 'convidado', 'ksnproxy', 'defaultapppool',
+        'iusr', 'iwam', 'sshd', 'wdagutilityaccount', 'aspnet', 'trustedinstaller'
+    )
     if ($blackList -contains $clean) {{ return $true }}
     if ($clean -like 'adm_*' -or $clean -like 'adm-*' -or $clean -like 'suporte*' -or $clean -like 'admin*') {{ return $true }}
     if ($clean -like '*$') {{ return $true }}
@@ -1824,6 +1939,51 @@ function Get-LoggedUser {{
     return $env:USERNAME
 }}
 
+function Get-RemoteAccessIds {{
+    $anyId = $null
+    $rustId = $null
+
+    try {{
+        # AnyDesk: service.conf (sistema) ou user.conf (perfil)
+        $adService = "C:/ProgramData/AnyDesk/service.conf"
+        if (Test-Path $adService) {{
+            $content = Get-Content $adService -Raw -ErrorAction SilentlyContinue
+            if ($content -match "ad\.anynet\.id\s*=\s*(\d+)") {{
+                $anyId = $matches[1].Trim()
+            }}
+        }}
+        if (-not $anyId -and (Test-Path "$env:APPDATA/AnyDesk/user.conf")) {{
+            $content = Get-Content "$env:APPDATA/AnyDesk/user.conf" -Raw -ErrorAction SilentlyContinue
+            if ($content -match "ad\.anynet\.id\s*=\s*(\d+)") {{
+                $anyId = $matches[1].Trim()
+            }}
+        }}
+    }} catch {{}}
+
+    try {{
+        # RustDesk: serviço central ou configuração local do usuário
+        $rdPaths = @(
+            "C:/ProgramData/RustDesk/config/RustDesk.toml",
+            "$env:APPDATA/RustDesk/config/RustDesk.toml",
+            "$env:LOCALAPPDATA/RustDesk/config/RustDesk.toml"
+        )
+        foreach ($rp in $rdPaths) {{
+            if (Test-Path $rp) {{
+                $content = Get-Content $rp -Raw -ErrorAction SilentlyContinue
+                if ($content -match "(?m)^\s*id\s*=\s*['""]?([a-zA-Z0-9_\-]+)['""]?") {{
+                    $rustId = $matches[1].Trim()
+                    break
+                }}
+            }}
+        }}
+    }} catch {{}}
+
+    return @{{
+        anydesk_id  = $anyId
+        rustdesk_id = $rustId
+    }}
+}}
+
 function Get-LogonHistory {{
     $activeSessions = @{{}}
     try {{
@@ -1847,6 +2007,15 @@ function Get-LogonHistory {{
     $historyList = @()
     $seenUsers = @{{}}
 
+    # Tenta descobrir o horário de início real da sessão gráfica a partir do processo explorer.exe
+    $realLogonTime = $null
+    try {{
+        $exp = Get-CimInstance Win32_Process -Filter "Name = 'explorer.exe'" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($exp -and $exp.CreationDate) {{
+            $realLogonTime = ([datetime]$exp.CreationDate).ToString("o")
+        }}
+    }} catch {{}}
+
     foreach ($k in $activeSessions.Keys) {{
         $item = $activeSessions[$k]
         $cleanU = $item.username
@@ -1857,34 +2026,58 @@ function Get-LogonHistory {{
                 domain        = "FASANOBR"
                 session_state = $item.session_state
                 is_current    = $item.is_current
-                logon_time    = (Get-Date).ToString("o")
+                logon_time    = if ($realLogonTime) {{ $realLogonTime }} else {{ (Get-Date).ToString("o") }}
                 logon_type    = $item.logon_type
             }}
         }}
     }}
 
+    # Perfis locais: apenas incluir se houver carimbo individual e sem evidência de varredura de sistema
     try {{
-        $profiles = Get-CimInstance Win32_UserProfile -ErrorAction SilentlyContinue | Where-Object {{
+        $rawProfiles = Get-CimInstance Win32_UserProfile -ErrorAction SilentlyContinue | Where-Object {{
             $_.Special -ne $true -and $_.LastUseTime
         }}
-        foreach ($p in $profiles) {{
+
+        # Agrupa timestamps de perfil por minuto para detectar varreduras em lote de manutenção/antivírus
+        $tsFrequency = @{{}}
+        foreach ($p in $rawProfiles) {{
+            if ($p.LastUseTime) {{
+                $tsKey = ([datetime]$p.LastUseTime).ToString("yyyy-MM-dd HH:mm")
+                if (-not $tsFrequency.ContainsKey($tsKey)) {{ $tsFrequency[$tsKey] = 0 }}
+                $tsFrequency[$tsKey] += 1
+            }}
+        }}
+
+        foreach ($p in $rawProfiles) {{
             $uName = Split-Path $p.LocalPath -Leaf
             $cleanU = ($uName -replace '\\.FASANOBR$', '').Trim()
             if (-not (Test-IsAdminOrServiceAccount $cleanU) -and -not $seenUsers.ContainsKey($cleanU.ToLower())) {{
                 $seenUsers[$cleanU.ToLower()] = $true
                 $lastTime = $null
+                $isBatchScan = $false
                 try {{
                     if ($p.LastUseTime) {{
-                        $lastTime = ([datetime]$p.LastUseTime).ToString("o")
+                        $dt = [datetime]$p.LastUseTime
+                        $tsKey = $dt.ToString("yyyy-MM-dd HH:mm")
+                        # Se mais de 1 perfil foi tocado no mesmo minuto, trata-se de varredura do Windows Defender/Indexador
+                        if ($tsFrequency[$tsKey] -gt 1) {{
+                            $isBatchScan = $true
+                        }} else {{
+                            $lastTime = $dt.ToString("o")
+                        }}
                     }}
                 }} catch {{}}
-                $historyList += @{{
-                    username      = $cleanU
-                    domain        = "FASANOBR"
-                    session_state = "logged_off"
-                    is_current    = $false
-                    logon_time    = $lastTime
-                    logon_type    = "Perfil Local"
+
+                # Apenas inclui se não for carimbo em lote de manutenção
+                if (-not $isBatchScan -and $lastTime) {{
+                    $historyList += @{{
+                        username      = $cleanU
+                        domain        = "FASANOBR"
+                        session_state = "logged_off"
+                        is_current    = $false
+                        logon_time    = $lastTime
+                        logon_type    = "Perfil Local"
+                    }}
                 }}
             }}
         }}
@@ -2220,6 +2413,8 @@ function Get-SystemMetrics {{
         }} catch {{}}
     }}
 
+    $remoteAccess = Get-RemoteAccessIds
+
     return @{{
         hostname            = $env:COMPUTERNAME
         logged_user         = Get-LoggedUser
@@ -2247,6 +2442,8 @@ function Get-SystemMetrics {{
         installed_apps      = [object[]]@($installedApps)
         top_processes       = [object[]]@($topProcesses)
         logon_history       = [object[]]@(Get-LogonHistory)
+        anydesk_id          = $remoteAccess.anydesk_id
+        rustdesk_id         = $remoteAccess.rustdesk_id
     }}
 }}
 

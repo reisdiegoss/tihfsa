@@ -200,6 +200,8 @@ def apply_migrations():
         """),
         ("agent_checkins.disk_active_pct", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS disk_active_pct INTEGER;"),
         ("agent_checkins.top_processes", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS top_processes JSONB;"),
+        ("agent_checkins.anydesk_id", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS anydesk_id VARCHAR(50);"),
+        ("agent_checkins.rustdesk_id", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS rustdesk_id VARCHAR(50);"),
 
         # Histórico de Métricas de Agente (CPU, RAM, Disco para Relatórios e Gráficos)
         ("agent_metrics_history", """
@@ -533,12 +535,53 @@ def main():
         seed_asset_types(db)
         seed_floors_and_locations(db)
         seed_root_admin(db)
+        cleanup_corrupted_logon_history()
     finally:
         db.close()
 
     print("=" * 60)
     print("  [OK] Banco de dados TIHFSA pronto para operação!")
     print("=" * 60)
+
+
+def cleanup_corrupted_logon_history():
+    """
+    Higieniza registros de logon espúrios gerados por varreduras de antivírus/manutenção
+    do Windows em diretórios de perfis locais antigos de ex-funcionários.
+    """
+    try:
+        with engine.begin() as conn:
+            # 1. Remove contas de serviços do sistema
+            conn.execute(text("""
+                DELETE FROM agent_logon_history
+                WHERE username IN ('ksnproxy', 'defaultapppool', 'iusr', 'iwam', 'sshd', 'guest', 'convidado', 'wdagutilityaccount');
+            """))
+            # 2. Remove registros gerados em lote por varreduras de manutenção
+            conn.execute(text("""
+                DELETE FROM agent_logon_history
+                WHERE is_current = FALSE
+                  AND logon_type = 'Perfil Local'
+                  AND (
+                      (logon_time >= '2026-10-11 07:28:00' AND logon_time <= '2026-10-11 07:30:00')
+                      OR (logon_time >= '2026-10-06 21:23:00' AND logon_time <= '2026-10-06 21:24:00')
+                      OR (logon_time >= '2026-10-08 08:32:00' AND logon_time <= '2026-10-08 08:33:00')
+                      OR (logon_time >= '2026-10-09 23:11:00' AND logon_time <= '2026-10-09 23:12:00')
+                      OR (logon_time >= '2026-10-12 18:46:00' AND logon_time <= '2026-10-12 18:47:00')
+                  );
+            """))
+            # 3. Alinha last_seen_at para registros que já estavam em logoff e tiveram last_seen_at
+            # erroneamente atualizado para a hora do checkin
+            conn.execute(text("""
+                UPDATE agent_logon_history
+                SET last_seen_at = logon_time
+                WHERE is_current = FALSE
+                  AND session_state = 'logged_off'
+                  AND logon_time IS NOT NULL
+                  AND last_seen_at > logon_time;
+            """))
+        print("[INIT_DB] Registros corrompidos de histórico de logon higienizados com sucesso.")
+    except Exception as e:
+        print(f"[INIT_DB] Aviso ao higienizar histórico de logon: {e}")
 
 
 if __name__ == "__main__":
