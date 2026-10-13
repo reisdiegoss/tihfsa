@@ -1335,7 +1335,7 @@ function Ensure-TihfsaRootCertificate {{
         $installed = Get-ChildItem Cert:\\LocalMachine\\Root -ErrorAction SilentlyContinue | Where-Object {{
             $_.Subject -like "*TIHFSA Root*" -or $_.Issuer -like "*TIHFSA Root*"
         }}
-        if ($installed) {{ return $true }}
+        if ($installed) {{ return }}
 
         # 2. Se não estiver instalado, tenta baixar do servidor
         $serverBase = ($TargetServerUrl -split '/api/')[0]
@@ -1373,12 +1373,12 @@ function Ensure-TihfsaRootCertificate {{
             }}
             Remove-Item $tempCa -Force -ErrorAction SilentlyContinue
             Log-AgentMessage "[OK] Certificado Raiz TIHFSA instalado com sucesso na Loja LocalMachine\\Root."
-            return $true
+            return
         }}
     }} catch {{
         Log-AgentMessage "[AVISO] Nao foi possivel verificar/instalar certificado SSL: $_"
     }}
-    return $false
+    return
 }}
 
 function Update-AgentScriptSelf {{
@@ -1390,10 +1390,11 @@ function Update-AgentScriptSelf {{
         $tempScript = "$installDir\\tihfsa-agent.new.ps1"
 
         try {{
-            Invoke-RestMethod -Uri $scriptUrl -OutFile $tempScript -TimeoutSec 10 -ErrorAction Stop
-        }} catch {{
-            curl.exe -k -s -m 10 $scriptUrl -o $tempScript 2>$null
-        }}
+            curl.exe -k -s -m 5 $scriptUrl -o $tempScript 2>$null
+            if (-not (Test-Path $tempScript) -or (Get-Item $tempScript).Length -lt 1500) {{
+                Invoke-RestMethod -Uri $scriptUrl -OutFile $tempScript -TimeoutSec 5 -ErrorAction Stop
+            }}
+        }} catch {{}}
 
         if (Test-Path $tempScript) {{
             $newSize = (Get-Item $tempScript).Length
@@ -1475,10 +1476,15 @@ function Install-SentinelTask {{
             if ($LASTEXITCODE -eq 0) {{ $created = $true }}
         }}
         if (-not $created) {{
-            schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) {{ $created = $true }}
+            $queryOut = (schtasks.exe /Query /TN $taskName 2>&1 | Out-String)
+            if ($queryOut -notlike "*não pode encontrar*" -and $queryOut -notlike "*cannot find*") {{
+                $created = $true
+            }} else {{
+                schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) {{ $created = $true }}
+            }}
         }}
-        if ($created) {{
+        if ($created -and $isAdmin) {{
             try {{
                 $tempXml = "$env:TEMP\\tihfsa_task.xml"
                 schtasks.exe /Query /TN $taskName /XML > $tempXml 2>$null
@@ -1495,6 +1501,12 @@ function Install-SentinelTask {{
         }}
     }}
 
+    # Executa o primeiro envio de telemetria imediatamente
+    try {{
+        Write-Host "[+] Enviando primeira telemetria agora..." -ForegroundColor Cyan
+        & powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "$targetScript" -ServerUrl "$TargetUrl" -AgentSecret "$Secret"
+    }} catch {{}}
+
     if ($created) {{
         try {{ schtasks.exe /Run /TN $taskName 2>$null | Out-Null }} catch {{}}
 
@@ -1507,11 +1519,10 @@ function Install-SentinelTask {{
         Write-Host " * Local do Script:  $targetScript" -ForegroundColor White
         Write-Host " * Servidor:         $TargetUrl" -ForegroundColor White
         Write-Host " * Comportamento:    100% invisivel em segundo plano." -ForegroundColor Cyan
-        Write-Host " * Fora da rede:     Silencioso sem janelas ou erros ao usuario." -ForegroundColor Cyan
         Write-Host "==========================================================================" -ForegroundColor Green
         Write-Host ""
     }} else {{
-        Write-Error "[ERRO] Nao foi possivel registrar a tarefa agendada no Windows. Tente executar o PowerShell como Administrador."
+        Write-Warning "[AVISO] Nao foi possivel registrar a tarefa agendada automatica. Execute como Administrador para agendamento continuo."
     }}
 }}
 
@@ -1977,7 +1988,7 @@ function Get-SystemMetrics {{
 }}
 
 # 1. Assegura a instalação silenciosa da Autoridade Certificadora Raiz TIHFSA (Trusted Root CA)
-Ensure-TihfsaRootCertificate -TargetServerUrl $SERVER_URL
+$null = Ensure-TihfsaRootCertificate -TargetServerUrl $SERVER_URL
 
 # 2. Verifica auto-atualização do script do agente
 Update-AgentScriptSelf -TargetServerUrl $SERVER_URL
@@ -1993,24 +2004,27 @@ $headers = @{{
 }}
 
 $sent = $false
+# Prioriza curl.exe nativo do Windows (resposta instantanea sem timeout de handshake .NET)
 try {{
-    $res = Invoke-RestMethod -Uri $SERVER_URL -Method POST -Body $payload -Headers $headers -TimeoutSec 5 -ErrorAction Stop
-    $sent = $true
-    if (-not $Silent) {{
-        Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $SERVER_URL ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
-    }} else {{
-        Log-AgentMessage "[OK] Telemetria enviada com sucesso ($($metrics.hostname) - $($metrics.logged_user))"
+    $curlOut = $payload | curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AGENT_SECRET" --data-binary "@-" $SERVER_URL 2>$null
+    if ($curlOut -like '*"status":"ok"*') {{
+        $sent = $true
+        if (-not $Silent) {{
+            Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $SERVER_URL ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
+        }} else {{
+            Log-AgentMessage "[OK] Telemetria enviada com sucesso ($($metrics.hostname) - $($metrics.logged_user))"
+        }}
     }}
-}} catch {{
+}} catch {{}}
+
+if (-not $sent) {{
     try {{
-        $curlOut = $payload | curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AGENT_SECRET" --data-binary "@-" $SERVER_URL 2>$null
-        if ($curlOut -like '*"status":"ok"*') {{
-            $sent = $true
-            if (-not $Silent) {{
-                Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via curl ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
-            }} else {{
-                Log-AgentMessage "[OK] Telemetria enviada com sucesso via curl ($($metrics.hostname))"
-            }}
+        $res = Invoke-RestMethod -Uri $SERVER_URL -Method POST -Body $payload -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+        $sent = $true
+        if (-not $Silent) {{
+            Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via Invoke-RestMethod ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
+        }} else {{
+            Log-AgentMessage "[OK] Telemetria enviada com sucesso via Invoke-RestMethod ($($metrics.hostname))"
         }}
     }} catch {{}}
 }}
@@ -2119,16 +2133,28 @@ if ($isAdmin) {{
 }}
 
 if (-not $created) {{
-    schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO {interval} /TR $actionArg 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {{ $created = $true }}
+    $queryOut = (schtasks.exe /Query /TN $taskName 2>&1 | Out-String)
+    if ($queryOut -notlike "*não pode encontrar*" -and $queryOut -notlike "*cannot find*") {{
+        $created = $true
+        Write-Host " [OK] Tarefa Agendada no nível de Sistema (SYSTEM) já está ativa nesta estação." -ForegroundColor Green
+    }} else {{
+        schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO {interval} /TR $actionArg 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {{ $created = $true }}
+    }}
 }}
+
+# Executa o primeiro envio de telemetria imediatamente
+Write-Host "[+] Executando o primeiro envio de telemetria agora..." -ForegroundColor Cyan
+try {{
+    & powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "$targetScript" -ServerUrl "$checkinUrl" -AgentSecret "$agentSecret"
+}} catch {{}}
 
 if ($created) {{
     try {{ schtasks.exe /Run /TN $taskName 2>$null | Out-Null }} catch {{}}
 
     Write-Host ""
     Write-Host "==========================================================================" -ForegroundColor Green
-    Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e agendado com sucesso!" -ForegroundColor Green
+    Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e sincronizado com sucesso!" -ForegroundColor Green
     Write-Host "==========================================================================" -ForegroundColor Green
     Write-Host " * Tarefa Agendada: '$taskName' (Executa a cada {interval} minutos)" -ForegroundColor White
     Write-Host " * Local do Script:  $targetScript" -ForegroundColor White
@@ -2139,7 +2165,7 @@ if ($created) {{
     Write-Host "==========================================================================" -ForegroundColor Green
     Write-Host ""
 }} else {{
-    Write-Error "[ERRO] Nao foi possivel registrar a tarefa agendada no Windows. Tente executar o PowerShell como Administrador."
+    Write-Warning "[AVISO] Nao foi possivel registrar a tarefa agendada automatica. Execute como Administrador para agendamento continuo."
 }}
 """
     return Response(content=installer_script, media_type="text/plain; charset=utf-8")
