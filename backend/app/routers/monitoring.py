@@ -37,6 +37,7 @@ class AgentCheckinPayload(BaseModel):
     ram_total_mb: Optional[int] = None
     ram_usage_pct: Optional[float] = None
     disks: Optional[list[dict] | dict] = None
+    disk_active_pct: Optional[int] = None
     physical_disks: Optional[list[dict] | dict] = None
     uptime_hours: Optional[float] = None
     os_name: Optional[str] = None
@@ -47,6 +48,7 @@ class AgentCheckinPayload(BaseModel):
     device_type: Optional[str] = None
     vcpu_count: Optional[int] = None
     installed_apps: Optional[list[dict]] = None
+    top_processes: Optional[list[dict]] = None
     windows_product_key: Optional[str] = None
     office_version: Optional[str] = None
     office_product_key: Optional[str] = None
@@ -64,6 +66,8 @@ class AgentMachineResponse(BaseModel):
     ram_total_mb: Optional[int] = None
     ram_usage_pct: Optional[float] = None
     disk_metrics: Optional[list[dict]] = None
+    disk_active_pct: Optional[int] = None
+    top_processes: Optional[list[dict]] = None
     uptime_hours: Optional[float] = None
     os_name: Optional[str] = None
     status: str
@@ -109,6 +113,7 @@ class MachineMetricsHistoryItem(BaseModel):
     ram_total_mb: Optional[int] = None
     ram_usage_pct: Optional[float] = None
     disk_metrics: Optional[list[dict]] = None
+    disk_active_pct: Optional[int] = None
     uptime_hours: Optional[float] = None
     status: str
     created_at: datetime
@@ -133,6 +138,8 @@ class MachineHistoryResponse(BaseModel):
     department_name: Optional[str] = None
     is_online: bool
     last_seen_at: datetime
+    disk_active_pct: Optional[int] = None
+    top_processes: Optional[list[dict]] = None
     tickets_count: int
     tickets: list[MachineTicketHistoryItem]
     metrics_count: int
@@ -149,6 +156,7 @@ class MetricPoint(BaseModel):
     ram_peak: float
     ram_used_mb: Optional[int] = None
     disk_pct: float
+    disk_active_pct: Optional[int] = None
     disk_free_gb: Optional[float] = None
     status: str
 
@@ -230,15 +238,30 @@ def agent_checkin(
         elif isinstance(data.physical_disks, list):
             physical_disks_normalized = data.physical_disks
 
-    # Avaliação do status de saúde (warning se disco > 90% ou CPU > 95%)
+    top_processes_normalized = []
+    if getattr(data, "top_processes", None) and isinstance(data.top_processes, list):
+        for proc in data.top_processes:
+            if isinstance(proc, dict):
+                top_processes_normalized.append({
+                    "pid": proc.get("pid"),
+                    "name": str(proc.get("name", "")).strip(),
+                    "cpu_pct": float(proc.get("cpu_pct", 0.0)),
+                    "ram_mb": float(proc.get("ram_mb", 0.0)),
+                    "disk_kbps": float(proc.get("disk_kbps", 0.0)),
+                })
+
+    # Avaliação do status de saúde (warning se disco > 90%, CPU > 95% ou atividade de disco >= 95% - gargalo de I/O)
     has_warning = False
     if data.cpu_usage_pct and data.cpu_usage_pct >= 95:
         has_warning = True
+    if data.disk_active_pct and data.disk_active_pct >= 95:
+        has_warning = True
     if disks_normalized:
         for d in disks_normalized:
-            if isinstance(d, dict) and d.get("used_pct", 0) >= 90:
-                has_warning = True
-                break
+            if isinstance(d, dict):
+                if d.get("used_pct", 0) >= 90 or d.get("active_pct", 0) >= 95:
+                    has_warning = True
+                    break
 
     calculated_status = "warning" if has_warning else "online"
 
@@ -378,6 +401,7 @@ def agent_checkin(
         "ram_used_mb": data.ram_used_mb,
         "ram_usage_pct": data.ram_usage_pct,
         "disks": disks_normalized,
+        "disk_active_pct": data.disk_active_pct,
         "physical_disks": physical_disks_normalized,
         "uptime_hours": data.uptime_hours,
         "mac_address": data.mac_address,
@@ -386,6 +410,7 @@ def agent_checkin(
         "office_product_key": data.office_product_key,
         "office_status": data.office_status,
         "installed_apps": data.installed_apps or [],
+        "top_processes": top_processes_normalized,
         "logged_user": clean_user or data.logged_user,
     }
 
@@ -469,6 +494,8 @@ def agent_checkin(
             ram_total_mb=data.ram_total_mb,
             ram_usage_pct=data.ram_usage_pct,
             disk_metrics=disks_normalized,
+            disk_active_pct=data.disk_active_pct,
+            top_processes=top_processes_normalized,
             uptime_hours=data.uptime_hours,
             os_name=data.os_name,
             status=calculated_status,
@@ -486,6 +513,8 @@ def agent_checkin(
         checkin.ram_total_mb = data.ram_total_mb
         checkin.ram_usage_pct = data.ram_usage_pct
         checkin.disk_metrics = disks_normalized
+        checkin.disk_active_pct = data.disk_active_pct
+        checkin.top_processes = top_processes_normalized
         checkin.uptime_hours = data.uptime_hours
         checkin.os_name = data.os_name
         checkin.status = calculated_status
@@ -511,6 +540,7 @@ def agent_checkin(
             ram_usage_pct=data.ram_usage_pct,
             disk_metrics=disks_normalized,
             disk_usage_pct=primary_disk_pct,
+            disk_active_pct=data.disk_active_pct,
             disk_free_gb=primary_disk_free,
             uptime_hours=data.uptime_hours,
             status=calculated_status,
@@ -585,6 +615,8 @@ def list_agent_machines(
                 ram_total_mb=r.ram_total_mb,
                 ram_usage_pct=r.ram_usage_pct,
                 disk_metrics=r.disk_metrics,
+                disk_active_pct=r.disk_active_pct,
+                top_processes=r.top_processes,
                 uptime_hours=r.uptime_hours,
                 os_name=r.os_name,
                 status=item_status,
@@ -730,6 +762,7 @@ def get_agent_machine_history(
                 ram_total_mb=m.ram_total_mb,
                 ram_usage_pct=m.ram_usage_pct,
                 disk_metrics=m.disk_metrics,
+                disk_active_pct=m.disk_active_pct,
                 uptime_hours=m.uptime_hours,
                 status=m.status,
                 created_at=m.created_at,
@@ -746,6 +779,7 @@ def get_agent_machine_history(
                 ram_total_mb=checkin.ram_total_mb,
                 ram_usage_pct=checkin.ram_usage_pct,
                 disk_metrics=checkin.disk_metrics,
+                disk_active_pct=checkin.disk_active_pct,
                 uptime_hours=checkin.uptime_hours,
                 status=checkin.status,
                 created_at=checkin.last_seen_at,
@@ -786,7 +820,17 @@ def get_agent_machine_history(
             )
         )
 
-    # Avaliação de Armazenamento / Disco
+    # Avaliação de Gargalo de I/O de Disco (100% Tempo Ativo - Task Manager)
+    if checkin.disk_active_pct and checkin.disk_active_pct >= 90:
+        recommendations.append(
+            MachineHardwareRecommendation(
+                type="danger",
+                title="Gargalo Severo de Atividade de Disco (Disco 100%)",
+                description=f"O disco opera com saturação de {checkin.disk_active_pct}% de tempo ativo (leitura/escrita contínua). Isso causa congelamentos graves no Windows. Recomenda-se auditar os processos ativos (vilões de E/S) ou substituir a unidade por SSD NVMe de alta velocidade.",
+            )
+        )
+
+    # Avaliação de Armazenamento / Espaço em Disco
     disks = checkin.disk_metrics or []
     has_critical_disk = False
     for d in disks:
@@ -871,6 +915,8 @@ def get_agent_machine_history(
         department_name=dept_name,
         is_online=is_online,
         last_seen_at=checkin.last_seen_at,
+        disk_active_pct=checkin.disk_active_pct,
+        top_processes=checkin.top_processes,
         tickets_count=len(tickets_list),
         tickets=tickets_list,
         metrics_count=len(metrics_list),
@@ -932,6 +978,7 @@ def get_agent_machine_metrics_chart(
             ram_peak=float(checkin.ram_usage_pct or 0),
             ram_used_mb=checkin.ram_used_mb,
             disk_pct=primary_disk_pct or 0.0,
+            disk_active_pct=checkin.disk_active_pct,
             disk_free_gb=primary_disk_free,
             status=checkin.status,
         )
@@ -951,6 +998,9 @@ def get_agent_machine_metrics_chart(
                 "current_disk": primary_disk_pct or 0,
                 "avg_disk": primary_disk_pct or 0,
                 "peak_disk": primary_disk_pct or 0,
+                "current_disk_active": checkin.disk_active_pct or 0,
+                "avg_disk_active": checkin.disk_active_pct or 0,
+                "peak_disk_active": checkin.disk_active_pct or 0,
                 "total_samples": 1,
             },
             degradation_events=[],
@@ -987,6 +1037,7 @@ def get_agent_machine_metrics_chart(
                 "rams": [],
                 "ram_mbs": [],
                 "disks": [],
+                "disk_actives": [],
                 "frees": [],
                 "statuses": [],
             }
@@ -1009,6 +1060,12 @@ def get_agent_machine_metrics_chart(
             buckets[b_key]["ram_mbs"].append(r.ram_used_mb)
         if disk_val is not None:
             buckets[b_key]["disks"].append(disk_val)
+        if r.disk_active_pct is not None:
+            buckets[b_key]["disk_actives"].append(float(r.disk_active_pct))
+        elif r.disk_metrics and len(r.disk_metrics) > 0 and isinstance(r.disk_metrics[0], dict):
+            act_val = r.disk_metrics[0].get("active_pct")
+            if act_val is not None:
+                buckets[b_key]["disk_actives"].append(float(act_val))
         if disk_free is not None:
             buckets[b_key]["frees"].append(disk_free)
         buckets[b_key]["statuses"].append(r.status)
@@ -1017,11 +1074,13 @@ def get_agent_machine_metrics_chart(
     all_cpus = []
     all_rams = []
     all_disks = []
+    all_disk_actives = []
 
     for b_key, b_data in buckets.items():
         cpus = b_data["cpus"]
         rams = b_data["rams"]
         disks = b_data["disks"]
+        disk_actives = b_data["disk_actives"]
         frees = b_data["frees"]
         dt = b_data["dt"]
 
@@ -1031,6 +1090,7 @@ def get_agent_machine_metrics_chart(
         peak_ram = round(max(rams), 1) if rams else 0.0
         mean_ram_mb = int(round(sum(b_data["ram_mbs"]) / len(b_data["ram_mbs"]))) if b_data["ram_mbs"] else None
         mean_disk = round(sum(disks) / len(disks), 1) if disks else 0.0
+        mean_disk_active = int(round(sum(disk_actives) / len(disk_actives))) if disk_actives else None
         mean_free = round(sum(frees) / len(frees), 1) if frees else None
 
         item_status = "warning" if "warning" in b_data["statuses"] else "online"
@@ -1038,6 +1098,7 @@ def get_agent_machine_metrics_chart(
         all_cpus.extend(cpus)
         all_rams.extend(rams)
         all_disks.extend(disks)
+        all_disk_actives.extend(disk_actives)
 
         data_points.append(
             MetricPoint(
@@ -1049,6 +1110,7 @@ def get_agent_machine_metrics_chart(
                 ram_peak=peak_ram,
                 ram_used_mb=mean_ram_mb,
                 disk_pct=mean_disk,
+                disk_active_pct=mean_disk_active,
                 disk_free_gb=mean_free,
                 status=item_status,
             )
@@ -1138,6 +1200,21 @@ def get_agent_machine_metrics_chart(
             )
         )
 
+    peak_disk_active_overall = max(all_disk_actives) if all_disk_actives else 0.0
+    if peak_disk_active_overall >= 95:
+        first_disk_high = next((pt for pt in data_points if pt.disk_active_pct and pt.disk_active_pct >= 95), None)
+        when_str = first_disk_high.label if first_disk_high else "recente"
+        degradation_events.append(
+            DegradationEvent(
+                metric="Atividade de Disco (Tempo Ativo / Gargalo)",
+                detected_at=when_str,
+                initial_value="0%",
+                current_value=f"Pico {int(peak_disk_active_overall)}%",
+                severity="danger",
+                message=f"Gargalo severo de I/O detectado: disco operando a {int(peak_disk_active_overall)}% de tempo ativo contínuo. Risco de congelamentos e lentidão extrema.",
+            )
+        )
+
     summary = {
         "current_cpu": checkin.cpu_usage_pct or (data_points[-1].cpu_pct if data_points else 0),
         "avg_cpu": round(sum(all_cpus) / len(all_cpus), 1) if all_cpus else 0,
@@ -1148,6 +1225,9 @@ def get_agent_machine_metrics_chart(
         "current_disk": latest_disk,
         "avg_disk": round(sum(all_disks) / len(all_disks), 1) if all_disks else 0,
         "peak_disk": max(all_disks) if all_disks else 0,
+        "current_disk_active": checkin.disk_active_pct or 0,
+        "avg_disk_active": round(sum(all_disk_actives) / len(all_disk_actives), 1) if all_disk_actives else 0,
+        "peak_disk_active": max(all_disk_actives) if all_disk_actives else 0,
         "total_samples": len(records),
     }
 
@@ -1597,12 +1677,47 @@ function Get-SystemMetrics {{
         $ramPct = [math]::Round(($ramUsedMB / $ramTotalMB) * 100, 1)
     }}
 
+    # ── Atividade de Disco (% Tempo Ativo / Disk Time igual ao Gerenciador de Tarefas do Windows) ──
+    $perfDisks = @{{}}
+    $maxDiskActive = 0
+    try {{
+        Get-CimInstance Win32_PerfFormattedData_PerfDisk_LogicalDisk -ErrorAction SilentlyContinue | ForEach-Object {{
+            if ($_.Name -and $_.Name -ne "_Total") {{
+                $act = 0
+                if ($null -ne $_.PercentIdleTime -and $_.PercentIdleTime -ge 0 -and $_.PercentIdleTime -le 100) {{
+                    $act = [math]::Max(0, 100 - [int]$_.PercentIdleTime)
+                }} elseif ($null -ne $_.PercentDiskTime) {{
+                    $act = [math]::Min(100, [int]$_.PercentDiskTime)
+                }}
+                $act = [math]::Min(100, [math]::Max(0, [int]$act))
+                $perfDisks[$_.Name.Trim().ToUpper()] = $act
+                if ($act -gt $maxDiskActive) {{ $maxDiskActive = $act }}
+            }}
+        }}
+    }} catch {{}}
+
+    if ($maxDiskActive -eq 0) {{
+        try {{
+            $totalPerf = Get-CimInstance Win32_PerfFormattedData_PerfDisk_LogicalDisk -Filter "Name='_Total'" -ErrorAction SilentlyContinue
+            if ($totalPerf) {{
+                if ($null -ne $totalPerf.PercentIdleTime -and $totalPerf.PercentIdleTime -le 100) {{
+                    $maxDiskActive = [math]::Min(100, [math]::Max(0, 100 - [int]$totalPerf.PercentIdleTime))
+                }} elseif ($null -ne $totalPerf.PercentDiskTime) {{
+                    $maxDiskActive = [math]::Min(100, [int]$totalPerf.PercentDiskTime)
+                }}
+            }}
+        }} catch {{}}
+    }}
+
     $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue | ForEach-Object {{
+        $dName = $_.DeviceID.Trim().ToUpper()
+        $driveAct = if ($perfDisks.ContainsKey($dName)) {{ $perfDisks[$dName] }} else {{ 0 }}
         @{{
-            drive = $_.DeviceID
-            total_gb = [math]::Round($_.Size / 1GB, 1)
-            free_gb = [math]::Round($_.FreeSpace / 1GB, 1)
-            used_pct = [math]::Round((($_.Size - $_.FreeSpace) / $_.Size) * 100, 1)
+            drive      = $_.DeviceID
+            total_gb   = [math]::Round($_.Size / 1GB, 1)
+            free_gb    = [math]::Round($_.FreeSpace / 1GB, 1)
+            used_pct   = [math]::Round((($_.Size - $_.FreeSpace) / $_.Size) * 100, 1)
+            active_pct = [int]$driveAct
         }}
     }})
 
@@ -1774,6 +1889,55 @@ function Get-SystemMetrics {{
         }}
     }} catch {{}}
 
+    # ── Top Processos Vilões de Consumo (CPU, Memória, Disco/E/S igual ao Gerenciador de Tarefas) ──
+    $topProcesses = @()
+    try {{
+        $vcpus = if ($vcpuCount -gt 0) {{ $vcpuCount }} else {{ [Environment]::ProcessorCount }}
+        $rawProcs = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -ErrorAction SilentlyContinue | Where-Object {{
+            $_.Name -and $_.Name -notmatch '^(_Total|Idle)$'
+        }}
+        if ($rawProcs) {{
+            $byCpu = @($rawProcs | Sort-Object PercentProcessorTime -Descending | Select-Object -First 8)
+            $byRam = @($rawProcs | Sort-Object WorkingSetPrivate -Descending | Select-Object -First 8)
+            $byDisk = @($rawProcs | Sort-Object IODataBytesPerSec -Descending | Select-Object -First 8)
+
+            $seenPids = @{{}}
+            $mergedProcs = @()
+            foreach ($p in ($byCpu + $byDisk + $byRam)) {{
+                $pidVal = [int]$p.IDProcess
+                if ($pidVal -gt 0 -and (-not $seenPids.ContainsKey($pidVal))) {{
+                    $seenPids[$pidVal] = $true
+                    $pName = ($p.Name -replace '#\\d+$','').Trim()
+                    $cpuP = [math]::Round([double]$p.PercentProcessorTime / $vcpus, 1)
+                    $ramM = [math]::Round([double]$p.WorkingSetPrivate / 1MB, 1)
+                    $diskK = [math]::Round([double]$p.IODataBytesPerSec / 1KB, 1)
+                    $mergedProcs += @{{
+                        pid       = $pidVal
+                        name      = $pName
+                        cpu_pct   = [double]$cpuP
+                        ram_mb    = [double]$ramM
+                        disk_kbps = [double]$diskK
+                    }}
+                }}
+            }}
+            $topProcesses = @($mergedProcs | Sort-Object @{{Expression={{ [double]($_.cpu_pct * 2 + ($_.disk_kbps / 100) + ($_.ram_mb / 50)) }}}} -Descending | Select-Object -First 15)
+        }}
+    }} catch {{}}
+
+    if ($topProcesses.Count -eq 0) {{
+        try {{
+            $topProcesses = @(Get-Process -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 10 | ForEach-Object {{
+                @{{
+                    pid       = [int]$_.Id
+                    name      = $_.ProcessName
+                    cpu_pct   = [double]0.0
+                    ram_mb    = [math]::Round([double]$_.WorkingSet64 / 1MB, 1)
+                    disk_kbps = [double]0.0
+                }}
+            }})
+        }} catch {{}}
+    }}
+
     return @{{
         hostname            = $env:COMPUTERNAME
         logged_user         = Get-LoggedUser
@@ -1785,6 +1949,7 @@ function Get-SystemMetrics {{
         ram_total_mb        = [int]$ramTotalMB
         ram_usage_pct       = [double]$ramPct
         disks               = [object[]]@($disks)
+        disk_active_pct     = [int]$maxDiskActive
         physical_disks      = [object[]]@($physicalDisks)
         uptime_hours        = $uptimeHours
         os_name             = if ($os -and $os.Caption) {{ $os.Caption }} else {{ "Windows" }}
@@ -1798,6 +1963,7 @@ function Get-SystemMetrics {{
         office_product_key  = $officeKey
         office_status       = $officeStatus
         installed_apps      = [object[]]@($installedApps)
+        top_processes       = [object[]]@($topProcesses)
     }}
 }}
 
@@ -2222,6 +2388,19 @@ if command -v dpkg-query >/dev/null 2>&1; then
 fi
 APPS_JSON="$APPS_JSON]"
 
+# 14. Top Processos Vilões de Consumo (CPU e Memória via ps)
+TOP_PROCS_JSON="["
+FIRST_PROC=1
+while read -r p_pid p_name p_cpu p_rss; do
+    [ -z "$p_pid" ] && continue
+    [ "$p_pid" = "PID" ] && continue
+    p_ram_mb=$(awk -v r="$p_rss" 'BEGIN {{ printf "%.1f", r/1024 }}')
+    if [ "$FIRST_PROC" -eq 0 ]; then TOP_PROCS_JSON="$TOP_PROCS_JSON,"; fi
+    TOP_PROCS_JSON="$TOP_PROCS_JSON{{\\"pid\\":$p_pid,\\"name\\":\\"$p_name\\",\\"cpu_pct\\":$p_cpu,\\"ram_mb\\":$p_ram_mb,\\"disk_kbps\\":0.0}}"
+    FIRST_PROC=0
+done < <(ps -eo pid,comm,%cpu,rss --sort=-%cpu 2>/dev/null | head -n 15 || true)
+TOP_PROCS_JSON="$TOP_PROCS_JSON]"
+
 # Payload JSON
 PAYLOAD=$(cat <<EOF
 {{
@@ -2235,6 +2414,7 @@ PAYLOAD=$(cat <<EOF
   "ram_total_mb": $RAM_TOTAL_MB,
   "ram_usage_pct": $RAM_USAGE_PCT,
   "disks": $DISKS_JSON,
+  "disk_active_pct": 0,
   "physical_disks": $PHYSICAL_DISKS_JSON,
   "uptime_hours": $UPTIME_HOURS,
   "os_name": "$OS_NAME",
@@ -2243,7 +2423,8 @@ PAYLOAD=$(cat <<EOF
   "serial_number": "$SERIAL",
   "mac_address": "$MAC_ADDRESS",
   "device_type": "$DEVICE_TYPE",
-  "installed_apps": $APPS_JSON
+  "installed_apps": $APPS_JSON,
+  "top_processes": $TOP_PROCS_JSON
 }}
 EOF
 )

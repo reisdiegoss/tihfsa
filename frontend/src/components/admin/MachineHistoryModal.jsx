@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   FileText, Cpu, HardDrive, Wrench, Clock, CheckCircle2,
   AlertTriangle, AlertCircle, Info, Printer, X, RefreshCw,
   User, Building, Tag, ExternalLink, Activity, ArrowUpRight,
-  TrendingUp, Calendar, Zap, Layers, BarChart2
+  TrendingUp, Calendar, Zap, Layers, BarChart2, Search, ArrowUpDown
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
@@ -11,8 +11,8 @@ import {
 } from "recharts";
 import api from "../../api/client";
 
-export default function MachineHistoryModal({ isOpen, onClose, machine }) {
-  const [activeTab, setActiveTab] = useState("metrics"); // 'metrics' | 'report' | 'tickets'
+export default function MachineHistoryModal({ isOpen, onClose, machine, initialTab = "metrics" }) {
+  const [activeTab, setActiveTab] = useState(initialTab); // 'metrics' | 'processes' | 'report' | 'tickets'
   const [loading, setLoading] = useState(true);
   const [historyData, setHistoryData] = useState(null);
 
@@ -20,6 +20,10 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
   const [chartRange, setChartRange] = useState("24h"); // '24h', '7d', '30d', '90d', '1y', 'all'
   const [chartLoading, setChartLoading] = useState(false);
   const [chartData, setChartData] = useState(null);
+
+  // Estados dos Processos Ativos (Task Manager)
+  const [procSearch, setProcSearch] = useState("");
+  const [procSort, setProcSort] = useState("cpu"); // 'cpu' | 'ram' | 'disk'
 
   const fetchHistory = () => {
     if (!machine) return;
@@ -49,10 +53,13 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
 
   useEffect(() => {
     if (isOpen && machine) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
       fetchHistory();
       fetchChartData(chartRange);
     }
-  }, [isOpen, machine]);
+  }, [isOpen, machine, initialTab]);
 
   const handleRangeChange = (range) => {
     setChartRange(range);
@@ -71,6 +78,43 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
   const degradationEvents = chartData?.degradation_events || [];
   const chartPoints = chartData?.data_points || [];
   const summary = chartData?.summary || {};
+  const rawProcesses = historyData?.top_processes || machine?.top_processes || [];
+
+  // Filtragem e ordenação dos processos ativos
+  const filteredProcesses = useMemo(() => {
+    let list = [...rawProcesses];
+    if (procSearch.trim()) {
+      const q = procSearch.toLowerCase();
+      list = list.filter((p) =>
+        (p.name || "").toLowerCase().includes(q) ||
+        String(p.pid || "").includes(q)
+      );
+    }
+    list.sort((a, b) => {
+      if (procSort === "ram") return (b.ram_mb || 0) - (a.ram_mb || 0);
+      if (procSort === "disk") return (b.disk_kbps || 0) - (a.disk_kbps || 0);
+      return (b.cpu_pct || 0) - (a.cpu_pct || 0);
+    });
+    return list;
+  }, [rawProcesses, procSearch, procSort]);
+
+  // Top vilões de consumo para cards de destaque
+  const topCpuProc = useMemo(() => {
+    if (!rawProcesses.length) return null;
+    return [...rawProcesses].sort((a, b) => (b.cpu_pct || 0) - (a.cpu_pct || 0))[0];
+  }, [rawProcesses]);
+
+  const topRamProc = useMemo(() => {
+    if (!rawProcesses.length) return null;
+    return [...rawProcesses].sort((a, b) => (b.ram_mb || 0) - (a.ram_mb || 0))[0];
+  }, [rawProcesses]);
+
+  const topDiskProc = useMemo(() => {
+    if (!rawProcesses.length) return null;
+    return [...rawProcesses].sort((a, b) => (b.disk_kbps || 0) - (a.disk_kbps || 0))[0];
+  }, [rawProcesses]);
+
+  const currentDiskActive = historyData?.disk_active_pct ?? machine?.disk_active_pct ?? 0;
 
   // Custom Tooltip para o Recharts
   const CustomTooltip = ({ active, payload, label }) => {
@@ -95,6 +139,12 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
               <span>RAM Média: <strong>{data.ram_pct}%</strong></span>
               <span className="text-[10px] text-slate-400">(Pico: {data.ram_peak}%)</span>
             </p>
+            {data.disk_active_pct !== undefined && data.disk_active_pct !== null && (
+              <p className="text-amber-400 flex items-center justify-between gap-4">
+                <span>Atividade Disco: <strong>{data.disk_active_pct}%</strong></span>
+                <span className="text-[10px] text-slate-400">Tempo Ativo</span>
+              </p>
+            )}
             <p className="text-pink-400 flex items-center justify-between gap-4">
               <span>Disco C: <strong>{data.disk_pct}%</strong></span>
               {data.disk_free_gb && <span className="text-[10px] text-slate-400">({data.disk_free_gb} GB livres)</span>}
@@ -162,11 +212,11 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
         </div>
 
         {/* ─── ABAS DE NAVEGAÇÃO (Ocultas na Impressão) ─── */}
-        <div className="flex items-center gap-2 border-b border-slate-100 py-3 shrink-0 print:hidden">
+        <div className="flex items-center gap-2 border-b border-slate-100 py-3 shrink-0 print:hidden overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab("metrics")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === "metrics"
                 ? "bg-indigo-600 text-white shadow-xs font-black"
                 : "text-slate-600 hover:bg-slate-100"
@@ -178,8 +228,21 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
 
           <button
             type="button"
+            onClick={() => setActiveTab("processes")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+              activeTab === "processes"
+                ? "bg-indigo-600 text-white shadow-xs font-black"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Zap size={15} />
+            <span>Processos Ativos (Task Manager) {rawProcesses.length > 0 ? `(${rawProcesses.length})` : ""}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab("report")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === "report"
                 ? "bg-indigo-600 text-white shadow-xs font-black"
                 : "text-slate-600 hover:bg-slate-100"
@@ -192,7 +255,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
           <button
             type="button"
             onClick={() => setActiveTab("tickets")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
               activeTab === "tickets"
                 ? "bg-indigo-600 text-white shadow-xs font-black"
                 : "text-slate-600 hover:bg-slate-100"
@@ -316,6 +379,10 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                               <stop offset="5%" stopColor="#ec4899" stopOpacity={0.4} />
                               <stop offset="95%" stopColor="#ec4899" stopOpacity={0.0} />
                             </linearGradient>
+                            <linearGradient id="colorDiskActive" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
+                            </linearGradient>
                           </defs>
 
                           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -360,8 +427,17 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                           />
                           <Area
                             type="monotone"
+                            dataKey="disk_active_pct"
+                            name="Atividade de Disco (%)"
+                            stroke="#f59e0b"
+                            strokeWidth={2}
+                            fillOpacity={1}
+                            fill="url(#colorDiskActive)"
+                          />
+                          <Area
+                            type="monotone"
                             dataKey="disk_pct"
-                            name="Disco Principal C: (%)"
+                            name="Disco C: Ocupação (%)"
                             stroke="#ec4899"
                             strokeWidth={2}
                             fillOpacity={1}
@@ -373,7 +449,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                   </div>
 
                   {/* ─── CARDS DE KPI E RESUMO ESTATÍSTICO DO PERÍODO ─── */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     <div className="p-3.5 bg-blue-50/60 border border-blue-200/80 rounded-2xl space-y-1">
                       <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider">CPU (Processador)</span>
                       <p className="text-2xl font-black text-blue-950">{summary.current_cpu ?? 0}%</p>
@@ -392,8 +468,19 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                       </div>
                     </div>
 
+                    <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-2xl space-y-1">
+                      <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Atividade Disco</span>
+                      <p className="text-2xl font-black text-amber-950">{summary.current_disk_active ?? currentDiskActive}%</p>
+                      <div className="flex justify-between text-[10px] text-amber-800 font-mono">
+                        <span>Média: {summary.avg_disk_active ?? 0}%</span>
+                        <span className={`font-bold ${(summary.peak_disk_active ?? 0) >= 90 ? "text-red-600" : ""}`}>
+                          Pico: {summary.peak_disk_active ?? 0}%
+                        </span>
+                      </div>
+                    </div>
+
                     <div className="p-3.5 bg-pink-50/60 border border-pink-200/80 rounded-2xl space-y-1">
-                      <span className="text-[10px] font-black uppercase text-pink-700 tracking-wider">Disco C:</span>
+                      <span className="text-[10px] font-black uppercase text-pink-700 tracking-wider">Disco C: Ocupação</span>
                       <p className="text-2xl font-black text-pink-950">{summary.current_disk ?? 0}%</p>
                       <div className="flex justify-between text-[10px] text-pink-800 font-mono">
                         <span>Média: {summary.avg_disk ?? 0}%</span>
@@ -401,10 +488,10 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
                       </div>
                     </div>
 
-                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
-                      <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Telemetria Auditada</span>
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1 col-span-2 lg:col-span-1">
+                      <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Amostras</span>
                       <p className="text-2xl font-black text-slate-800">{summary.total_samples ?? metrics.length}</p>
-                      <p className="text-[10px] text-slate-400">Medições de 15 em 15 min</p>
+                      <p className="text-[10px] text-slate-400">Medições (15 min)</p>
                     </div>
                   </div>
 
@@ -452,7 +539,358 @@ export default function MachineHistoryModal({ isOpen, onClose, machine }) {
               )}
 
               {/* ──────────────────────────────────────────────────────────
-                  ABA 2: RELATÓRIO TÉCNICO & DIAGNÓSTICO DE UPGRADE
+                  ABA 2: PROCESSOS ATIVOS (TASK MANAGER EM TEMPO REAL)
+                  ────────────────────────────────────────────────────────── */}
+              {activeTab === "processes" && (
+                <div className="space-y-5 animate-in fade-in duration-150">
+                  {/* Topo da Aba: Informação e Botão de Refresh */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Zap size={16} className="text-amber-500 shrink-0" />
+                        <h4 className="text-sm font-black text-slate-900">
+                          Gerenciador de Processos Ativos (Task Manager)
+                        </h4>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-100 text-indigo-700">
+                          Sentinel Agent
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Top processos em execução coletados periodicamente da estação para auditoria de gargalos de CPU, memória e saturação de disco (100% I/O).
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={fetchHistory}
+                      disabled={loading}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-300 text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 disabled:opacity-50"
+                      title="Recarregar telemetria e processos"
+                    >
+                      <RefreshCw size={13} className={loading ? "animate-spin text-indigo-600" : ""} />
+                      <span>Atualizar Processos</span>
+                    </button>
+                  </div>
+
+                  {/* Banner de Alerta Crítico se Disco estiver em 100% de atividade */}
+                  {currentDiskActive >= 90 && (
+                    <div className="p-4 bg-gradient-to-r from-red-500/10 via-amber-500/10 to-red-500/10 border border-red-300 rounded-2xl flex items-start gap-3 text-red-950">
+                      <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5 animate-pulse" />
+                      <div className="space-y-1">
+                        <h5 className="font-black text-xs uppercase tracking-wide text-red-800">
+                          🔥 Alerta Severo de Disco 100%: Atividade Instantânea em {currentDiskActive}%
+                        </h5>
+                        <p className="text-xs leading-relaxed text-red-900 font-medium">
+                          O subsistema de armazenamento da máquina está sofrendo saturação contínua de E/S.
+                          {topDiskProc ? (
+                            <> O processo <strong>{topDiskProc.name}</strong> (PID: <span className="font-mono">{topDiskProc.pid}</span>) é o principal responsável, movimentando cerca de <strong>{topDiskProc.disk_kbps >= 1024 ? `${(topDiskProc.disk_kbps / 1024).toFixed(1)} MB/s` : `${topDiskProc.disk_kbps} KB/s`}</strong>.</>
+                          ) : " Verifique abaixo os processos com alta taxa de KB/s."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cards de Vilões de Consumo (Top 3) */}
+                  {rawProcesses.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Top CPU */}
+                      <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider flex items-center gap-1">
+                            <Cpu size={12} /> Maior Carga de CPU
+                          </span>
+                          <span className="text-xs font-black text-blue-800 font-mono">
+                            {topCpuProc?.cpu_pct ?? 0}%
+                          </span>
+                        </div>
+                        <p className="text-sm font-black text-slate-900 truncate" title={topCpuProc?.name}>
+                          {topCpuProc?.name || "—"}
+                        </p>
+                        <p className="text-[11px] text-slate-500 font-mono">
+                          PID: {topCpuProc?.pid || "—"} • {topCpuProc?.ram_mb ?? 0} MB RAM
+                        </p>
+                      </div>
+
+                      {/* Top RAM */}
+                      <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-2xl space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase text-purple-700 tracking-wider flex items-center gap-1">
+                            <Layers size={12} /> Maior Consumo de RAM
+                          </span>
+                          <span className="text-xs font-black text-purple-800 font-mono">
+                            {topRamProc ? (topRamProc.ram_mb >= 1024 ? `${(topRamProc.ram_mb / 1024).toFixed(1)} GB` : `${topRamProc.ram_mb} MB`) : "—"}
+                          </span>
+                        </div>
+                        <p className="text-sm font-black text-slate-900 truncate" title={topRamProc?.name}>
+                          {topRamProc?.name || "—"}
+                        </p>
+                        <p className="text-[11px] text-slate-500 font-mono">
+                          PID: {topRamProc?.pid || "—"} • {topRamProc?.cpu_pct ?? 0}% CPU
+                        </p>
+                      </div>
+
+                      {/* Top Disk */}
+                      <div className={`p-3.5 rounded-2xl space-y-1.5 border transition-all ${
+                        currentDiskActive >= 90
+                          ? "bg-red-50/80 border-red-300 ring-1 ring-red-200"
+                          : "bg-amber-50/70 border-amber-200"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                            currentDiskActive >= 90 ? "text-red-700" : "text-amber-700"
+                          }`}>
+                            <HardDrive size={12} /> Maior E/S de Disco (I/O)
+                          </span>
+                          <span className={`text-xs font-black font-mono ${
+                            currentDiskActive >= 90 ? "text-red-700" : "text-amber-800"
+                          }`}>
+                            {topDiskProc ? (topDiskProc.disk_kbps >= 1024 ? `${(topDiskProc.disk_kbps / 1024).toFixed(1)} MB/s` : `${topDiskProc.disk_kbps} KB/s`) : "—"}
+                          </span>
+                        </div>
+                        <p className="text-sm font-black text-slate-900 truncate" title={topDiskProc?.name}>
+                          {topDiskProc?.name || "—"}
+                        </p>
+                        <p className="text-[11px] text-slate-500 font-mono">
+                          PID: {topDiskProc?.pid || "—"} • Atividade: {currentDiskActive}%
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Barra de Filtros e Ordenação de Processos */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+                    <div className="relative flex-1 max-w-sm">
+                      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={procSearch}
+                        onChange={(e) => setProcSearch(e.target.value)}
+                        placeholder="Buscar processo por nome ou PID..."
+                        className="w-full pl-9 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                      />
+                      {procSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setProcSearch("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mr-1">
+                        Ordenar por:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setProcSort("cpu")}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          procSort === "cpu"
+                            ? "bg-blue-600 text-white shadow-xs font-black"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        🔥 CPU (%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProcSort("ram")}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          procSort === "ram"
+                            ? "bg-purple-600 text-white shadow-xs font-black"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        🧠 Memória RAM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProcSort("disk")}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          procSort === "disk"
+                            ? "bg-amber-600 text-white shadow-xs font-black"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        💾 Disco (E/S)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tabela de Processos */}
+                  {rawProcesses.length === 0 ? (
+                    <div className="p-12 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+                        <Zap size={24} />
+                      </div>
+                      <div>
+                        <h5 className="font-black text-slate-800 text-sm">Nenhuma amostra de processos coletada ainda</h5>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+                          O TIHFSA Sentinel Agent atualizado reporta automaticamente os processos mais pesados de 15 em 15 minutos (ou ao executar o script localmente). A lista aparecerá aqui no próximo check-in.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={fetchHistory}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                      >
+                        Verificar Agora
+                      </button>
+                    </div>
+                  ) : filteredProcesses.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
+                      <p className="text-xs text-slate-500 font-semibold">
+                        Nenhum processo corresponde à busca "<strong>{procSearch}</strong>".
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                      <div className="max-h-96 overflow-y-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-200 z-10 backdrop-blur-xs">
+                            <tr>
+                              <th className="px-4 py-3">Processo (Imagem)</th>
+                              <th className="px-3 py-3">PID</th>
+                              <th className="px-3 py-3 w-44">Uso de CPU</th>
+                              <th className="px-3 py-3 w-40">Memória RAM</th>
+                              <th className="px-3 py-3 w-36">E/S de Disco</th>
+                              <th className="px-3 py-3 text-right">Impacto</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                            {filteredProcesses.map((p, idx) => {
+                              const cpuPct = Number(p.cpu_pct || 0);
+                              const ramMb = Number(p.ram_mb || 0);
+                              const diskKbps = Number(p.disk_kbps || 0);
+
+                              const isHighCpu = cpuPct >= 40;
+                              const isHighRam = ramMb >= 1500;
+                              const isHighDisk = diskKbps >= 5000;
+                              const isCritical = isHighCpu || isHighDisk || (isHighRam && cpuPct >= 20);
+
+                              const diskFormatted = diskKbps >= 1024
+                                ? `${(diskKbps / 1024).toFixed(1)} MB/s`
+                                : `${Math.round(diskKbps)} KB/s`;
+
+                              const ramFormatted = ramMb >= 1024
+                                ? `${(ramMb / 1024).toFixed(1)} GB`
+                                : `${Math.round(ramMb)} MB`;
+
+                              return (
+                                <tr
+                                  key={`${p.pid}-${idx}`}
+                                  className={`transition-colors ${
+                                    isCritical
+                                      ? "bg-red-50/40 hover:bg-red-50/70"
+                                      : isHighCpu || isHighDisk || isHighRam
+                                      ? "bg-amber-50/30 hover:bg-amber-50/60"
+                                      : "hover:bg-slate-50/80"
+                                  }`}
+                                >
+                                  {/* Nome do Processo */}
+                                  <td className="px-4 py-2.5">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                                        isCritical
+                                          ? "bg-red-100 text-red-700"
+                                          : isHighCpu || isHighDisk
+                                          ? "bg-amber-100 text-amber-700"
+                                          : "bg-slate-100 text-slate-600"
+                                      }`}>
+                                        <Zap size={12} />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="font-bold text-slate-900 truncate font-mono text-xs" title={p.name}>
+                                          {p.name}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* PID */}
+                                  <td className="px-3 py-2.5 font-mono text-[11px] text-slate-500">
+                                    {p.pid || "—"}
+                                  </td>
+
+                                  {/* CPU */}
+                                  <td className="px-3 py-2.5">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center justify-between text-[11px] font-mono">
+                                        <span className={`font-bold ${cpuPct >= 50 ? "text-red-600" : cpuPct >= 20 ? "text-amber-600" : "text-blue-700"}`}>
+                                          {cpuPct}%
+                                        </span>
+                                      </div>
+                                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full transition-all duration-300 ${
+                                            cpuPct >= 50 ? "bg-red-500" : cpuPct >= 20 ? "bg-amber-500" : "bg-blue-500"
+                                          }`}
+                                          style={{ width: `${Math.min(100, Math.max(3, cpuPct))}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* RAM */}
+                                  <td className="px-3 py-2.5">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center justify-between text-[11px] font-mono">
+                                        <span className={`font-bold ${ramMb >= 1500 ? "text-red-600" : ramMb >= 800 ? "text-purple-700" : "text-slate-700"}`}>
+                                          {ramFormatted}
+                                        </span>
+                                      </div>
+                                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full transition-all duration-300 ${
+                                            ramMb >= 1500 ? "bg-red-500" : ramMb >= 800 ? "bg-purple-500" : "bg-slate-400"
+                                          }`}
+                                          style={{ width: `${Math.min(100, Math.max(3, (ramMb / 4096) * 100))}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* Disco E/S */}
+                                  <td className="px-3 py-2.5 font-mono text-[11px]">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold ${
+                                      diskKbps >= 5000
+                                        ? "bg-red-100 text-red-800"
+                                        : diskKbps >= 1024
+                                        ? "bg-amber-100 text-amber-800"
+                                        : "bg-slate-100 text-slate-600"
+                                    }`}>
+                                      <HardDrive size={10} />
+                                      {diskFormatted}
+                                    </span>
+                                  </td>
+
+                                  {/* Impacto */}
+                                  <td className="px-3 py-2.5 text-right">
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                      isCritical
+                                        ? "bg-red-100 text-red-700 border border-red-200"
+                                        : isHighCpu || isHighDisk || isHighRam
+                                        ? "bg-amber-100 text-amber-700 border border-amber-200"
+                                        : "bg-slate-100 text-slate-600"
+                                    }`}>
+                                      {isCritical ? "Crítico" : isHighCpu || isHighDisk || isHighRam ? "Elevado" : "Normal"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ──────────────────────────────────────────────────────────
+                  ABA 3: RELATÓRIO TÉCNICO & DIAGNÓSTICO DE UPGRADE
                   ────────────────────────────────────────────────────────── */}
               {(activeTab === "report" || window.matchMedia("print").matches) && (
                 <div className="space-y-6 print:space-y-4">

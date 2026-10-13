@@ -424,8 +424,11 @@ async def lifespan(app: FastAPI):
                     status VARCHAR(20) DEFAULT 'online' NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
                 );
+                ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS disk_active_pct INTEGER;
+                ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS top_processes JSONB;
                 ALTER TABLE agent_metrics_history ADD COLUMN IF NOT EXISTS disk_usage_pct NUMERIC(5,2);
                 ALTER TABLE agent_metrics_history ADD COLUMN IF NOT EXISTS disk_free_gb NUMERIC(8,2);
+                ALTER TABLE agent_metrics_history ADD COLUMN IF NOT EXISTS disk_active_pct INTEGER;
                 CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_hostname ON agent_metrics_history(hostname);
                 CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_created_at ON agent_metrics_history(created_at);
                 CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_host_created ON agent_metrics_history(hostname, created_at DESC);

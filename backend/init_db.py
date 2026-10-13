@@ -198,6 +198,8 @@ def apply_migrations():
             CREATE INDEX IF NOT EXISTS idx_agent_checkins_hostname ON agent_checkins(hostname);
             CREATE INDEX IF NOT EXISTS idx_agent_checkins_ip ON agent_checkins(ip_address);
         """),
+        ("agent_checkins.disk_active_pct", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS disk_active_pct INTEGER;"),
+        ("agent_checkins.top_processes", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS top_processes JSONB;"),
 
         # Histórico de Métricas de Agente (CPU, RAM, Disco para Relatórios e Gráficos)
         ("agent_metrics_history", """
@@ -209,6 +211,9 @@ def apply_migrations():
                 ram_total_mb INTEGER,
                 ram_usage_pct NUMERIC(5,2),
                 disk_metrics JSONB,
+                disk_usage_pct NUMERIC(5,2),
+                disk_active_pct INTEGER,
+                disk_free_gb NUMERIC(8,2),
                 uptime_hours NUMERIC(8,1),
                 status VARCHAR(20) DEFAULT 'online' NOT NULL,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
@@ -216,6 +221,7 @@ def apply_migrations():
             CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_hostname ON agent_metrics_history(hostname);
             CREATE INDEX IF NOT EXISTS idx_agent_metrics_history_created_at ON agent_metrics_history(created_at);
         """),
+        ("agent_metrics_history.disk_active_pct", "ALTER TABLE agent_metrics_history ADD COLUMN IF NOT EXISTS disk_active_pct INTEGER;"),
 
         # Módulo de Contratos e Fornecedores
         ("suppliers", """

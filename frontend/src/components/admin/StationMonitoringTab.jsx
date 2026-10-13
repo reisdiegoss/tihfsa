@@ -3,7 +3,7 @@ import {
   Monitor, RefreshCw, Search, CheckCircle2, AlertTriangle,
   Clock, HardDrive, Cpu, Terminal, Copy, Check, Trash2,
   ExternalLink, User, Shield, Info, X, Zap, Download, Laptop, Tag,
-  RotateCcw, FileText, Building, UserCheck, Server
+  RotateCcw, FileText, Building, UserCheck, Server, Activity
 } from "lucide-react";
 import api from "../../api/client";
 import AssignMachineModal from "./AssignMachineModal";
@@ -32,6 +32,7 @@ export default function StationMonitoringTab() {
 
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [machineForHistory, setMachineForHistory] = useState(null);
+  const [historyInitialTab, setHistoryInitialTab] = useState("metrics");
 
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
@@ -427,12 +428,13 @@ export default function StationMonitoringTab() {
             const cpu = m.cpu_usage_pct ?? 0;
             const ramPct = m.ram_usage_pct ?? 0;
             const primaryDisk = (m.disk_metrics && m.disk_metrics.length > 0) ? m.disk_metrics[0] : null;
+            const diskActive = m.disk_active_pct ?? primaryDisk?.active_pct ?? 0;
 
             return (
               <div
                 key={m.id}
                 className={`bg-white rounded-2xl border transition-all p-5 space-y-4 relative overflow-hidden shadow-2xs hover:shadow-md ${
-                  m.status === "warning"
+                  m.status === "warning" || diskActive >= 90
                     ? "border-amber-300 ring-1 ring-amber-200"
                     : m.is_online
                     ? "border-slate-200 hover:border-blue-300"
@@ -443,7 +445,7 @@ export default function StationMonitoringTab() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      m.status === "warning"
+                      m.status === "warning" || diskActive >= 90
                         ? "bg-amber-100 text-amber-700"
                         : m.is_online
                         ? "bg-blue-100 text-blue-700"
@@ -468,18 +470,24 @@ export default function StationMonitoringTab() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                    {diskActive >= 90 && (
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-red-100 text-red-700 border border-red-300 animate-pulse flex items-center gap-1 shadow-xs" title="Disco em 100% de atividade (gargalo severo de E/S)">
+                        🔥 Disco 100%
+                      </span>
+                    )}
+
                     <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 ${
-                      m.status === "warning"
+                      m.status === "warning" || diskActive >= 90
                         ? "bg-amber-100 text-amber-800"
                         : m.is_online
                         ? "bg-emerald-100 text-emerald-800"
                         : "bg-slate-200 text-slate-600"
                     }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${
-                        m.status === "warning" ? "bg-amber-500" : m.is_online ? "bg-emerald-500" : "bg-slate-400"
+                        m.status === "warning" || diskActive >= 90 ? "bg-amber-500" : m.is_online ? "bg-emerald-500" : "bg-slate-400"
                       }`} />
-                      {m.status === "warning" ? "Atenção" : m.is_online ? "Online" : "Offline"}
+                      {m.status === "warning" || diskActive >= 90 ? "Atenção" : m.is_online ? "Online" : "Offline"}
                     </span>
 
                     <button
@@ -542,17 +550,17 @@ export default function StationMonitoringTab() {
                   </div>
                 </div>
 
-                {/* Telemetria de Hardware: CPU & RAM */}
-                <div className="grid grid-cols-2 gap-3 text-xs">
+                {/* Telemetria de Hardware em Tempo Real: CPU, RAM & Atividade de Disco */}
+                <div className="grid grid-cols-3 gap-2.5 text-xs">
                   {/* CPU */}
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
                       <span className="flex items-center gap-1">
-                        <Cpu size={12} className="text-blue-500" /> CPU
+                        <Cpu size={11} className="text-blue-500" /> CPU
                       </span>
                       <span className={cpu >= 90 ? "text-red-600 font-black" : ""}>{cpu}%</span>
                     </div>
-                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
                           cpu >= 90 ? "bg-red-500" : cpu >= 75 ? "bg-amber-500" : "bg-emerald-500"
@@ -564,11 +572,11 @@ export default function StationMonitoringTab() {
 
                   {/* RAM */}
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
                       <span>RAM</span>
                       <span className={ramPct >= 90 ? "text-red-600 font-black" : ""}>{ramPct}%</span>
                     </div>
-                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
                           ramPct >= 90 ? "bg-red-500" : ramPct >= 80 ? "bg-amber-500" : "bg-blue-500"
@@ -577,17 +585,35 @@ export default function StationMonitoringTab() {
                       />
                     </div>
                   </div>
+
+                  {/* Disco Atividade (%) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                      <span className="flex items-center gap-1" title="Percentual de tempo ativo do disco (Task Manager)">
+                        <Activity size={11} className="text-amber-500" /> Disco
+                      </span>
+                      <span className={diskActive >= 90 ? "text-red-600 font-black animate-pulse" : ""}>{diskActive}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          diskActive >= 90 ? "bg-red-500" : diskActive >= 75 ? "bg-amber-500" : "bg-purple-500"
+                        }`}
+                        style={{ width: `${Math.min(100, diskActive)}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Disco Primário (C:) */}
+                {/* Disco Primário (C:): Espaço e Taxa de Atividade */}
                 {primaryDisk && (
                   <div className="space-y-1 pt-1 border-t border-slate-100">
                     <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
                       <span className="flex items-center gap-1">
-                        <HardDrive size={12} className="text-purple-500" /> Disco {primaryDisk.drive}
+                        <HardDrive size={12} className="text-purple-500" /> Unidade {primaryDisk.drive}
                       </span>
                       <span className={primaryDisk.used_pct >= 90 ? "text-red-600 font-black" : ""}>
-                        {primaryDisk.free_gb} GB livres ({primaryDisk.used_pct}% usado)
+                        {primaryDisk.free_gb} GB livres ({primaryDisk.used_pct}%) • <strong className={diskActive >= 90 ? "text-red-600 font-black" : "text-slate-700"}>{diskActive}% ativo</strong>
                       </span>
                     </div>
                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -598,6 +624,35 @@ export default function StationMonitoringTab() {
                         style={{ width: `${Math.min(100, primaryDisk.used_pct)}%` }}
                       />
                     </div>
+                  </div>
+                )}
+
+                {/* Vilão de Consumo Instantâneo (Task Manager) */}
+                {m.top_processes && m.top_processes.length > 0 && (
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <div className={`p-1.5 rounded-lg shrink-0 ${diskActive >= 90 ? "bg-red-100 text-red-700" : "bg-indigo-100 text-indigo-700"}`}>
+                        <Zap size={13} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase text-slate-400">Maior Consumo (Processo)</p>
+                        <p className="text-xs font-mono font-bold text-slate-800 truncate" title={`${m.top_processes[0].name} (PID: ${m.top_processes[0].pid})`}>
+                          {m.top_processes[0].name} <span className="text-[10px] font-sans font-semibold text-slate-500">({m.top_processes[0].cpu_pct}% CPU • {m.top_processes[0].ram_mb} MB)</span>
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMachineForHistory(m);
+                        setHistoryInitialTab("processes");
+                        setShowHistoryModal(true);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black uppercase tracking-wide shrink-0 transition-all cursor-pointer shadow-2xs hover:scale-102"
+                      title="Abrir Gerenciador de Processos (Task Manager) da máquina"
+                    >
+                      Processos
+                    </button>
                   </div>
                 )}
 
@@ -630,6 +685,7 @@ export default function StationMonitoringTab() {
                     type="button"
                     onClick={() => {
                       setMachineForHistory(m);
+                      setHistoryInitialTab("metrics");
                       setShowHistoryModal(true);
                     }}
                     className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-black transition-all cursor-pointer shadow-2xs"
@@ -860,6 +916,7 @@ sudo /usr/local/bin/tihfsa-agent.sh`}</pre>
           setMachineForHistory(null);
         }}
         machine={machineForHistory}
+        initialTab={historyInitialTab}
       />
     </div>
   );

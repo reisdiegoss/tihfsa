@@ -27,7 +27,9 @@ class AgentCheckin(Base):
     ram_total_mb = Column(Integer, nullable=True)
     ram_usage_pct = Column(Float, nullable=True)
     
-    disk_metrics = Column(JSON, nullable=True)  # Lista com discos: [{"drive": "C:", "free_gb": 12.5, "total_gb": 256.0, "used_pct": 95.1}]
+    disk_metrics = Column(JSON, nullable=True)  # Lista com discos: [{"drive": "C:", "free_gb": 12.5, "total_gb": 256.0, "used_pct": 95.1, "active_pct": 100}]
+    disk_active_pct = Column(Integer, nullable=True)  # % de tempo ativo de disco (Task Manager - gargalo de I/O em tempo real)
+    top_processes = Column(JSON, nullable=True)  # Lista dos top processos consumidores de CPU, RAM e Disco
     uptime_hours = Column(Float, nullable=True)
     os_name = Column(String(150), nullable=True)
     status = Column(String(20), default="online", nullable=False)  # 'online', 'warning', 'offline'
@@ -67,8 +69,9 @@ class AgentMetricsHistory(Base):
     ram_total_mb = Column(Integer, nullable=True)
     ram_usage_pct = Column(Float, nullable=True)
     disk_metrics = Column(JSON, nullable=True)
-    disk_usage_pct = Column(Float, nullable=True)  # Percentual de uso do disco principal (ex: C:)
-    disk_free_gb = Column(Float, nullable=True)    # Espaço livre do disco principal em GB
+    disk_usage_pct = Column(Float, nullable=True)   # Percentual de uso do disco principal (ex: C:)
+    disk_active_pct = Column(Integer, nullable=True) # Percentual de atividade de disco (% Disk Time / Tempo Ativo)
+    disk_free_gb = Column(Float, nullable=True)     # Espaço livre do disco principal em GB
     uptime_hours = Column(Float, nullable=True)
     status = Column(String(20), default="online", nullable=False)
     created_at = Column(

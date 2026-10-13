@@ -1138,3 +1138,33 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Display de Mesa para Impressão**: Layout dedicado e estilizado para impressão direta de displays de mesa e placas acrílicas com moldura, cabeçalho oficial do Fasano, QR code ampliado e instruções amigáveis ao usuário.
       - **Gestão e Filtros no Painel Administrativo**: Métricas rápidas segregadas por tipo (Total, Links/URLs, Wi-Fi e Equipamentos), busca textual em tempo real e visualização contextual com link externo direto na tabela.
       - **Persistência e Backend**: Coluna `url VARCHAR(500)` na tabela `qrcodes` do PostgreSQL com migração idempotente em `init_db.py`, endpoints `/api/v1/qrcodes/` e schemas Pydantic atualizados.
+
+34. **TIHFSA Sentinel Agent — Telemetria de Atividade de Disco (% Tempo Ativo / Task Manager) e Identificação dos Processos Vilões de Consumo**:
+    - **Contexto Operacional e Detecção de "Disco 100%"**:
+      - Anteriormente, o monitoramento corporativo cobria apenas o percentual de *armazenamento/ocupação* do disco (espaço livre vs. usado em GB). Porém, a principal causa de travamentos súbitos e congelamento do Windows decorre do gargalo de *atividade de leitura/escrita* (E/S contínua saturada a 100%), equivalente à coluna "Disco" do Gerenciador de Tarefas do Windows (Task Manager).
+      - Foi adicionado ao Sentinel Agent a medição precisa da taxa de atividade instantânea dos discos (% Tempo Ativo / Disk Active Time) e a auditoria dos processos responsáveis pelo consumo.
+    - **Auto-Atualização Transparente das Máquinas em Produção**:
+      - As estações já implantadas executam a rotina via Agendador de Tarefas do Windows (`C:\ProgramData\TIHFSA-Agent\tihfsa-agent.ps1`) com a função nativa `Update-AgentScriptSelf`.
+      - A cada ciclo de 15 minutos, o script baixa a versão mais recente em `/api/v1/monitoring/agent/script` e atualiza o arquivo local de forma silenciosa e transparente, passando a reportar a nova telemetria sem necessidade de intervenção presencial ou comandos manuais da equipe de TI.
+    - **Mecanismo de Coleta Agnóstico de Idioma (WMI/CIM)**:
+      - O comando clássico `Get-Counter '\LogicalDisk(*)\% Disk Time'` falha em instalações do Windows pt-BR devido à localização dos nomes dos contadores.
+      - O agente utiliza a classe nativa WMI `Win32_PerfFormattedData_PerfDisk_LogicalDisk` (`PercentDiskTime` e `PercentIdleTime`), computando com alta precisão a atividade por partição lógica e elegendo o maior valor entre os discos/unidade C:.
+      - A coleta dos Top Processos utiliza `Win32_PerfFormattedData_PerfProc_Process` (filtrando `_Total` e `Idle`, com fallback via `Get-Process`), extraindo `PercentProcessorTime`, `WorkingSetPrivate` (MB de RAM) e `IODataBytesPerSec` (E/S de Disco em KB/s).
+    - **Persistência e Backend (`monitoring.py` & `init_db.py`)**:
+      - Colunas `disk_active_pct INTEGER` e `top_processes JSON` adicionadas às tabelas `agent_checkins` e `agent_metrics_history` com migração idempotente no PostgreSQL.
+      - Avaliação de alerta em tempo real: estações com `disk_active_pct >= 95%` ou unidades com `active_pct >= 95%` entram automaticamente em status `warning`.
+      - Agregação temporal de `disk_active_pct` no endpoint `/metrics-chart` e diagnóstico automático de "Gargalo Severo de Atividade de Disco (Disco 100%)" no relatório técnico de upgrade.
+    - **Interface do Usuário e Visualização Analítica**:
+      - **Cards de Estações (`StationMonitoringTab.jsx`)**:
+        - Grid de telemetria em tempo real com 3 colunas: CPU, RAM e **Disco Ativo (%)**.
+        - Badge pulsante de alta visibilidade `🔥 Disco 100%` quando a atividade ultrapassa 90%.
+        - Linha da unidade C: exibindo espaço livre/usado e taxa de atividade instantânea (`... • X% ativo`).
+        - Card de destaque *"Maior Consumo (Processo)"* exibindo o processo vilão no momento e atalho direto "Processos".
+      - **Gerenciador de Processos Ativos no Modal (`MachineHistoryModal.jsx`)**:
+        - Nova aba **"⚡ Processos Ativos (Task Manager)"** com tabela rica estilo Windows Task Manager.
+        - Três cartões de destaque no topo: Maior Carga de CPU, Maior Consumo de RAM e Maior E/S de Disco (I/O).
+        - Filtro de busca textual em tempo real por nome do processo ou PID.
+        - Ordenação dinâmica em 1 clique por: `🔥 CPU (%)`, `🧠 Memória RAM` e `💾 Disco (E/S)`.
+        - Barras visuais de ocupação proporcional, formatação dinâmica (MB/GB e KB/s/MB/s) e badges de severidade (Crítico, Elevado e Normal).
+      - **Gráficos Históricos (Recharts)**: Inclusão da área de evolução temporal da atividade de disco em âmbar (`#f59e0b`) e card de KPI dedicado no sumário do período.
+
