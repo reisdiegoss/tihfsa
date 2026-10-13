@@ -1169,5 +1169,11 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Barras visuais de ocupação proporcional, formatação dinâmica (MB/GB e KB/s/MB/s) e badges de severidade (Crítico, Elevado e Normal).
       - **Gráficos Históricos (Recharts)**: Inclusão da área de evolução temporal da atividade de disco em âmbar (`#f59e0b`) e card de KPI dedicado no sumário do período.
       - **Correção e Robustez do Auto-Update (`monitoring.py`)**: A rotina `Update-AgentScriptSelf` e `Install-SentinelTask` foi aprimorada com `[System.IO.File]::Copy` (`overwrite=true`), garantindo a substituição atômica de `tihfsa-agent.ps1` sem erro de arquivo existente ou bloqueio do PowerShell.
+      - **Resiliência do Agendador e Fallback de Worker Invisível (Sem Exigir Administrador)**:
+        - Em ambientes corporativos do Windows/Active Directory onde o usuário local não possui privilégios de Administrador ou elevação UAC imediata, comandos do Agendador de Tarefas (`schtasks.exe /Create` e `Register-ScheduledTask`) falham com `Acesso negado`.
+        - O instalador e o script do Sentinel Agent foram dotados de arquitetura híbrida de execução contínua:
+          1. **Modo Administrador (`NT AUTHORITY\SYSTEM`)**: Cria a tarefa no Agendador de Tarefas do Windows com prioridade máxima, execução persistente independente de logon e parâmetros de bateria/despertar.
+          2. **Modo Usuário Padrão (Fallback Transparente)**: Se a estação não estiver elevada e não possuir a tarefa SYSTEM prévia, cria um serviço de background invisível (`sentinel-worker.vbs`) no diretório do agente com atalho automático em `shell:startup` (`$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup`) e chave de registro `HKCU\...\Run`. O worker executa a cada 15 minutos de forma 100% oculta (`SW_HIDE`), impedindo processos duplicados e garantindo sincronização ininterrupta.
+        - **Disparo Imediato no Primeiro Segundo**: Tanto o instalador quanto o script executam a telemetria inicial síncrona imediatamente após a instalação, colocando o status da máquina em `ONLINE` no Hub de Monitoramento instantaneamente.
 
 

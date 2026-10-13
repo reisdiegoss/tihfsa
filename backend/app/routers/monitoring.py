@@ -1448,55 +1448,53 @@ function Install-SentinelTask {{
 
     $taskName = "TIHFSA Sentinel Agent"
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-    try {{
-        schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
-    }} catch {{}}
-
-    $actionArg = "-NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$TargetUrl`" -AgentSecret `"$Secret`" -Silent"
-
+    $actionArg = "powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$TargetUrl`" -AgentSecret `"$Secret`" -Silent"
     $created = $false
-    # 1. Registro nativo PowerShell (garante que notebooks rodem em bateria e ao despertar)
-    try {{
-        $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $actionArg
-        $taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $Interval) -RepetitionDuration ([TimeSpan]::MaxValue)
-        $taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
 
-        if ($isAdmin) {{
-            Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -User "NT AUTHORITY\\SYSTEM" -RunLevel Highest -Force -ErrorAction Stop | Out-Null
-        }} else {{
-            Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -Force -ErrorAction Stop | Out-Null
-        }}
-        $created = $true
-    }} catch {{
-        # Fallback via schtasks tradicional com correção de XML para bateria
-        $legacyCmd = "powershell.exe $actionArg"
-        if ($isAdmin) {{
-            schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\\SYSTEM" /RL HIGHEST /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) {{ $created = $true }}
-        }}
-        if (-not $created) {{
-            $queryOut = (schtasks.exe /Query /TN $taskName 2>&1 | Out-String)
-            if ($queryOut -notlike "*não pode encontrar*" -and $queryOut -notlike "*cannot find*") {{
+    if ($isAdmin) {{
+        try {{
+            schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
+            schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\\SYSTEM" /RL HIGHEST /SC MINUTE /MO $Interval /TR $actionArg 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {{
                 $created = $true
-            }} else {{
-                schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
-                if ($LASTEXITCODE -eq 0) {{ $created = $true }}
+                try {{
+                    $tempXml = "$env:TEMP\\tihfsa_task.xml"
+                    schtasks.exe /Query /TN $taskName /XML > $tempXml 2>$null
+                    if (Test-Path $tempXml) {{
+                        $xmlContent = [System.IO.File]::ReadAllText($tempXml)
+                        $xmlContent = $xmlContent.Replace("<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>")
+                        $xmlContent = $xmlContent.Replace("<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>")
+                        $xmlContent = $xmlContent.Replace("<StartWhenAvailable>false</StartWhenAvailable>", "<StartWhenAvailable>true</StartWhenAvailable>")
+                        [System.IO.File]::WriteAllText($tempXml, $xmlContent)
+                        schtasks.exe /Create /TN $taskName /XML $tempXml /F 2>$null | Out-Null
+                        Remove-Item $tempXml -Force -ErrorAction SilentlyContinue
+                    }}
+                }} catch {{}}
             }}
-        }}
-        if ($created -and $isAdmin) {{
+        }} catch {{}}
+    }}
+
+    # Fallback transparente para contas de usuário comum ou sem elevação administrativa
+    if (-not $created) {{
+        # 1. Verifica se já existe uma tarefa agendada funcional
+        $q = schtasks.exe /Query /TN $taskName 2>$null
+        if ($LASTEXITCODE -eq 0) {{
+            $created = $true
+            Write-Host " [OK] Tarefa Agendada no nível de Sistema (SYSTEM) ativa nesta estação." -ForegroundColor Green
+        }} else {{
+            # 2. Configura worker em segundo plano invisível a nível de usuário
+            $workerVbs = "$installDir\\sentinel-worker.vbs"
+            $sleepMs = [int]($Interval * 60 * 1000)
+            $vbsCode = "Option Explicit`r`nOn Error Resume Next`r`nDim objWMI, procs, myCount`r`nSet objWMI = GetObject(`"winmgmts:{{impersonationLevel=impersonate}}!\\.\\root\\cimv2`")`r`nSet procs = objWMI.ExecQuery(`"Select * from Win32_Process Where Name = 'wscript.exe' and CommandLine Like '%sentinel-worker.vbs%'`")`r`nmyCount = 0`r`nFor Each p in procs`r`nmyCount = myCount + 1`r`nNext`r`nIf myCount > 1 Then WScript.Quit 0`r`nDim WshShell, cmd`r`nSet WshShell = CreateObject(`"WScript.Shell`")`r`ncmd = `"powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"`"$targetScript`"`" -ServerUrl `"`"$TargetUrl`"`" -AgentSecret `"`"$Secret`"`" -Silent`"`r`nDo`r`nWshShell.Run cmd, 0, True`r`nWScript.Sleep $sleepMs`r`nLoop"
             try {{
-                $tempXml = "$env:TEMP\\tihfsa_task.xml"
-                schtasks.exe /Query /TN $taskName /XML > $tempXml 2>$null
-                if (Test-Path $tempXml) {{
-                    $xmlContent = [System.IO.File]::ReadAllText($tempXml)
-                    $xmlContent = $xmlContent.Replace("<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>")
-                    $xmlContent = $xmlContent.Replace("<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>")
-                    $xmlContent = $xmlContent.Replace("<StartWhenAvailable>false</StartWhenAvailable>", "<StartWhenAvailable>true</StartWhenAvailable>")
-                    [System.IO.File]::WriteAllText($tempXml, $xmlContent)
-                    schtasks.exe /Create /TN $taskName /XML $tempXml /F 2>$null | Out-Null
-                    Remove-Item $tempXml -Force -ErrorAction SilentlyContinue
-                }}
+                [System.IO.File]::WriteAllText($workerVbs, $vbsCode, [System.Text.Encoding]::ASCII)
+                $startupVbs = "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\TIHFSA-Sentinel-Agent.vbs"
+                $launcherCode = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.Run `"wscript.exe `"`"$workerVbs`"`"`", 0, False"
+                [System.IO.File]::WriteAllText($startupVbs, $launcherCode, [System.Text.Encoding]::ASCII)
+                Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" -Name "TIHFSASentinelAgent" -Value "wscript.exe `"$workerVbs`"" -Force -ErrorAction SilentlyContinue | Out-Null
+                Start-Process wscript.exe -ArgumentList "`"$workerVbs`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
+                $created = $true
+                Write-Host " [OK] Agendamento contínuo em segundo plano ativo (100% invisível sem exigir Admin)." -ForegroundColor Green
             }} catch {{}}
         }}
     }}
@@ -1512,17 +1510,16 @@ function Install-SentinelTask {{
 
         Write-Host ""
         Write-Host "==========================================================================" -ForegroundColor Green
-        Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e agendado com sucesso!" -ForegroundColor Green
+        Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e sincronizado com sucesso!" -ForegroundColor Green
         Write-Host "==========================================================================" -ForegroundColor Green
-        Write-Host " * Tarefa Agendada: '$taskName' (Executa a cada $Interval minutos)" -ForegroundColor White
-        Write-Host " * Suporte Bateria:  Ativado (executa normalmente em notebooks na bateria)" -ForegroundColor White
+        Write-Host " * Sincronizacao:    Executa a cada $Interval minutos automaticamente" -ForegroundColor White
         Write-Host " * Local do Script:  $targetScript" -ForegroundColor White
         Write-Host " * Servidor:         $TargetUrl" -ForegroundColor White
-        Write-Host " * Comportamento:    100% invisivel em segundo plano." -ForegroundColor Cyan
+        Write-Host " * Comportamento:    100% invisivel em segundo plano (Notebooks & Desktops)" -ForegroundColor Cyan
         Write-Host "==========================================================================" -ForegroundColor Green
         Write-Host ""
     }} else {{
-        Write-Warning "[AVISO] Nao foi possivel registrar a tarefa agendada automatica. Execute como Administrador para agendamento continuo."
+        Write-Warning "[AVISO] Nao foi possivel configurar o agendamento automatico. Execute o comando novamente."
     }}
 }}
 
@@ -1531,6 +1528,13 @@ function Uninstall-SentinelTask {{
     try {{
         schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
         Write-Host "[OK] Tarefa agendada '$taskName' removida com sucesso." -ForegroundColor Yellow
+    }} catch {{}}
+    try {{
+        Get-CimInstance Win32_Process -Filter "Name = 'wscript.exe'" -ErrorAction SilentlyContinue | Where-Object {{ $_.CommandLine -like "*sentinel-worker.vbs*" }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}
+        $startupVbs = "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\TIHFSA-Sentinel-Agent.vbs"
+        if (Test-Path $startupVbs) {{ Remove-Item $startupVbs -Force -ErrorAction SilentlyContinue }}
+        Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" -Name "TIHFSASentinelAgent" -Force -ErrorAction SilentlyContinue | Out-Null
+        Write-Host "[OK] Agendamento de inicialização do usuário removido." -ForegroundColor Yellow
     }} catch {{}}
     try {{
         $installDir = "C:\\ProgramData\\TIHFSA-Agent"
@@ -2119,27 +2123,52 @@ if (-not (Test-Path $targetScript)) {{
 
 $taskName = "TIHFSA Sentinel Agent"
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-try {{
-    schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
-}} catch {{}}
-
 $actionArg = "powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$checkinUrl`" -AgentSecret `"$agentSecret`" -Silent"
-
 $created = $false
+
 if ($isAdmin) {{
-    schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\\SYSTEM" /RL HIGHEST /SC MINUTE /MO {interval} /TR $actionArg 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {{ $created = $true }}
+    try {{
+        schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
+        schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\\SYSTEM" /RL HIGHEST /SC MINUTE /MO {interval} /TR $actionArg 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {{
+            $created = $true
+            try {{
+                $tempXml = "$env:TEMP\\tihfsa_task.xml"
+                schtasks.exe /Query /TN $taskName /XML > $tempXml 2>$null
+                if (Test-Path $tempXml) {{
+                    $xmlContent = [System.IO.File]::ReadAllText($tempXml)
+                    $xmlContent = $xmlContent.Replace("<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>")
+                    $xmlContent = $xmlContent.Replace("<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>")
+                    $xmlContent = $xmlContent.Replace("<StartWhenAvailable>false</StartWhenAvailable>", "<StartWhenAvailable>true</StartWhenAvailable>")
+                    [System.IO.File]::WriteAllText($tempXml, $xmlContent)
+                    schtasks.exe /Create /TN $taskName /XML $tempXml /F 2>$null | Out-Null
+                    Remove-Item $tempXml -Force -ErrorAction SilentlyContinue
+                }}
+            }} catch {{}}
+        }}
+    }} catch {{}}
 }}
 
+# Fallback transparente para contas de usuário comum ou sem elevação administrativa
 if (-not $created) {{
-    $queryOut = (schtasks.exe /Query /TN $taskName 2>&1 | Out-String)
-    if ($queryOut -notlike "*não pode encontrar*" -and $queryOut -notlike "*cannot find*") {{
+    $q = schtasks.exe /Query /TN $taskName 2>$null
+    if ($LASTEXITCODE -eq 0) {{
         $created = $true
-        Write-Host " [OK] Tarefa Agendada no nível de Sistema (SYSTEM) já está ativa nesta estação." -ForegroundColor Green
+        Write-Host " [OK] Tarefa Agendada no nível de Sistema (SYSTEM) ativa nesta estação." -ForegroundColor Green
     }} else {{
-        schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO {interval} /TR $actionArg 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) {{ $created = $true }}
+        $workerVbs = "$installDir\\sentinel-worker.vbs"
+        $sleepMs = [int]({interval} * 60 * 1000)
+        $vbsCode = "Option Explicit`r`nOn Error Resume Next`r`nDim objWMI, procs, myCount`r`nSet objWMI = GetObject(`"winmgmts:{{impersonationLevel=impersonate}}!\\.\\root\\cimv2`")`r`nSet procs = objWMI.ExecQuery(`"Select * from Win32_Process Where Name = 'wscript.exe' and CommandLine Like '%sentinel-worker.vbs%'`")`r`nmyCount = 0`r`nFor Each p in procs`r`nmyCount = myCount + 1`r`nNext`r`nIf myCount > 1 Then WScript.Quit 0`r`nDim WshShell, cmd`r`nSet WshShell = CreateObject(`"WScript.Shell`")`r`ncmd = `"powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"`"$targetScript`"`" -ServerUrl `"`"$checkinUrl`"`" -AgentSecret `"`"$agentSecret`"`" -Silent`"`r`nDo`r`nWshShell.Run cmd, 0, True`r`nWScript.Sleep $sleepMs`r`nLoop"
+        try {{
+            [System.IO.File]::WriteAllText($workerVbs, $vbsCode, [System.Text.Encoding]::ASCII)
+            $startupVbs = "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\TIHFSA-Sentinel-Agent.vbs"
+            $launcherCode = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.Run `"wscript.exe `"`"$workerVbs`"`"`", 0, False"
+            [System.IO.File]::WriteAllText($startupVbs, $launcherCode, [System.Text.Encoding]::ASCII)
+            Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" -Name "TIHFSASentinelAgent" -Value "wscript.exe `"$workerVbs`"" -Force -ErrorAction SilentlyContinue | Out-Null
+            Start-Process wscript.exe -ArgumentList "`"$workerVbs`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
+            $created = $true
+            Write-Host " [OK] Agendamento contínuo em segundo plano ativo (100% invisível sem exigir Admin)." -ForegroundColor Green
+        }} catch {{}}
     }}
 }}
 
@@ -2156,16 +2185,16 @@ if ($created) {{
     Write-Host "==========================================================================" -ForegroundColor Green
     Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e sincronizado com sucesso!" -ForegroundColor Green
     Write-Host "==========================================================================" -ForegroundColor Green
-    Write-Host " * Tarefa Agendada: '$taskName' (Executa a cada {interval} minutos)" -ForegroundColor White
+    Write-Host " * Sincronizacao:    Executa a cada {interval} minutos automaticamente" -ForegroundColor White
     Write-Host " * Local do Script:  $targetScript" -ForegroundColor White
     Write-Host " * Servidor:         $checkinUrl" -ForegroundColor White
     Write-Host " * Certificado SSL:  Instalado (Trusted Root CA - Navegadores confiam)" -ForegroundColor White
-    Write-Host " * Modo Silencioso:  100% invisivel em segundo plano." -ForegroundColor Cyan
+    Write-Host " * Modo Silencioso:  100% invisivel em segundo plano (Notebooks & Desktops)." -ForegroundColor Cyan
     Write-Host " * Fora da rede:     Silencioso sem janelas ou erros ao usuario." -ForegroundColor Cyan
     Write-Host "==========================================================================" -ForegroundColor Green
     Write-Host ""
 }} else {{
-    Write-Warning "[AVISO] Nao foi possivel registrar a tarefa agendada automatica. Execute como Administrador para agendamento continuo."
+    Write-Warning "[AVISO] Nao foi possivel registrar o agendamento automatico. Execute o comando novamente."
 }}
 """
     return Response(content=installer_script, media_type="text/plain; charset=utf-8")
