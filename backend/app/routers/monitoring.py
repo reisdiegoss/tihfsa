@@ -15,7 +15,7 @@ from app.auth.dependencies import get_current_user, require_technician
 from app.config import settings
 from app.database import get_db
 from app.models.asset import Asset
-from app.models.monitoring import AgentCheckin, AgentMetricsHistory
+from app.models.monitoring import AgentCheckin, AgentMetricsHistory, AgentLogonHistory
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.services.sla_service import get_helpdesk_monitoring_summary
@@ -49,6 +49,7 @@ class AgentCheckinPayload(BaseModel):
     vcpu_count: Optional[int] = None
     installed_apps: Optional[list[dict]] = None
     top_processes: Optional[list[dict]] = None
+    logon_history: Optional[list[dict]] = None
     windows_product_key: Optional[str] = None
     office_version: Optional[str] = None
     office_product_key: Optional[str] = None
@@ -125,6 +126,19 @@ class MachineHardwareRecommendation(BaseModel):
     description: str
 
 
+class MachineLogonHistoryItem(BaseModel):
+    id: int
+    username: str
+    domain: Optional[str] = None
+    display_name: Optional[str] = None
+    session_state: str  # 'active', 'disconnected', 'logged_off'
+    is_current: bool
+    is_online: bool
+    logon_time: Optional[datetime] = None
+    last_seen_at: datetime
+    logon_type: Optional[str] = None
+
+
 class MachineHistoryResponse(BaseModel):
     machine_id: int
     hostname: str
@@ -144,6 +158,8 @@ class MachineHistoryResponse(BaseModel):
     tickets: list[MachineTicketHistoryItem]
     metrics_count: int
     metrics_history: list[MachineMetricsHistoryItem]
+    logon_history_count: int = 0
+    logon_history: list[MachineLogonHistoryItem] = []
     hardware_recommendations: list[MachineHardwareRecommendation]
 
 
@@ -551,6 +567,114 @@ def agent_checkin(
     except Exception:
         db.rollback()
 
+    # 6. Salva/Atualiza histórico de sessões e usuários logados
+    try:
+        raw_logon_sessions = data.logon_history or []
+
+        # Desmarca is_current dos registros anteriores desta máquina
+        db.query(AgentLogonHistory).filter(
+            AgentLogonHistory.hostname.ilike(hostname_clean)
+        ).update({"is_current": False}, synchronize_session=False)
+
+        seen_usernames = set()
+
+        for item in raw_logon_sessions:
+            if not isinstance(item, dict):
+                continue
+            u_name = str(item.get("username") or "").strip()
+            if not u_name:
+                continue
+
+            clean_u = u_name.split("\\")[-1].strip().lower()
+            if clean_u in ("system", "local service", "network service", "administrator", "administrador"):
+                continue
+
+            seen_usernames.add(clean_u)
+            dom = item.get("domain") or ("FASANOBR" if "\\" in u_name else None)
+            is_curr = bool(item.get("is_current", False))
+            s_state = str(item.get("session_state") or ("active" if is_curr else "logged_off"))
+            l_type = str(item.get("logon_type") or "Local")
+
+            parsed_logon_time = None
+            if item.get("logon_time"):
+                try:
+                    parsed_logon_time = datetime.fromisoformat(str(item["logon_time"]).replace("Z", "+00:00"))
+                except Exception:
+                    parsed_logon_time = None
+
+            # Tenta resolver o display_name a partir dos usuários cadastrados no sistema
+            ad_user = db.query(User).filter(
+                or_(
+                    User.ad_username.ilike(clean_u),
+                    User.email.ilike(f"{clean_u}@%")
+                )
+            ).first()
+            disp_name = ad_user.display_name if ad_user else None
+
+            # Busca se já existe um registro prévio deste usuário para esta máquina
+            existing = db.query(AgentLogonHistory).filter(
+                AgentLogonHistory.hostname.ilike(hostname_clean),
+                AgentLogonHistory.username.ilike(clean_u)
+            ).first()
+
+            if existing:
+                existing.is_current = is_curr
+                existing.session_state = s_state
+                existing.last_seen_at = now
+                if dom:
+                    existing.domain = dom
+                if disp_name:
+                    existing.display_name = disp_name
+                if parsed_logon_time:
+                    existing.logon_time = parsed_logon_time
+                if l_type:
+                    existing.logon_type = l_type
+            else:
+                new_entry = AgentLogonHistory(
+                    hostname=hostname_clean,
+                    username=clean_u,
+                    domain=dom,
+                    display_name=disp_name,
+                    session_state=s_state,
+                    is_current=is_curr,
+                    logon_time=parsed_logon_time or now,
+                    last_seen_at=now,
+                    logon_type=l_type,
+                    created_at=now,
+                )
+                db.add(new_entry)
+
+        # Se houver display_user ou data.logged_user e ele não estava na lista, garante registro atual
+        if display_user:
+            raw_logged = display_user.split("(")[-1].replace(")", "").strip() if "(" in display_user else display_user
+            raw_logged = raw_logged.split("\\")[-1].strip().lower()
+            if raw_logged and raw_logged not in ("system", "administrator") and raw_logged not in seen_usernames:
+                exist_logged = db.query(AgentLogonHistory).filter(
+                    AgentLogonHistory.hostname.ilike(hostname_clean),
+                    AgentLogonHistory.username.ilike(raw_logged)
+                ).first()
+                if exist_logged:
+                    exist_logged.is_current = True
+                    exist_logged.session_state = "active"
+                    exist_logged.last_seen_at = now
+                else:
+                    db.add(AgentLogonHistory(
+                        hostname=hostname_clean,
+                        username=raw_logged,
+                        domain="FASANOBR",
+                        display_name=user.display_name if user else display_user,
+                        session_state="active",
+                        is_current=True,
+                        logon_time=now,
+                        last_seen_at=now,
+                        logon_type="Console",
+                        created_at=now,
+                    ))
+
+        db.commit()
+    except Exception:
+        db.rollback()
+
     return {
         "status": "ok",
         "hostname": checkin.hostname,
@@ -902,6 +1026,30 @@ def get_agent_machine_history(
             )
         )
 
+    # Consulta histórico de logons e sessões de usuários nesta estação
+    logon_records = (
+        db.query(AgentLogonHistory)
+        .filter(AgentLogonHistory.hostname.ilike(checkin.hostname))
+        .order_by(AgentLogonHistory.is_current.desc(), AgentLogonHistory.last_seen_at.desc())
+        .limit(50)
+        .all()
+    )
+    logon_history_list = [
+        MachineLogonHistoryItem(
+            id=lr.id,
+            username=lr.username,
+            domain=lr.domain,
+            display_name=lr.display_name,
+            session_state=lr.session_state,
+            is_current=lr.is_current,
+            is_online=lr.is_current and is_online,
+            logon_time=lr.logon_time,
+            last_seen_at=lr.last_seen_at,
+            logon_type=lr.logon_type,
+        )
+        for lr in logon_records
+    ]
+
     return MachineHistoryResponse(
         machine_id=checkin.id,
         hostname=checkin.hostname,
@@ -921,8 +1069,49 @@ def get_agent_machine_history(
         tickets=tickets_list,
         metrics_count=len(metrics_list),
         metrics_history=metrics_list,
+        logon_history_count=len(logon_history_list),
+        logon_history=logon_history_list,
         hardware_recommendations=recommendations,
     )
+
+
+@router.get("/agent/machines/{machine_id}/logon-history", response_model=list[MachineLogonHistoryItem], summary="Histórico detalhado de logons e sessões de usuários")
+def get_agent_machine_logon_history(
+    machine_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Retorna o histórico de sessões e usuários que logaram no computador,
+    indicando status atual (ativo/desconectado/logout), último visto e tipo de sessão.
+    """
+    checkin = db.query(AgentCheckin).filter(AgentCheckin.id == machine_id).first()
+    if not checkin:
+        raise HTTPException(status_code=404, detail="Estação não encontrada")
+
+    is_online = checkin.is_online
+    logon_records = (
+        db.query(AgentLogonHistory)
+        .filter(AgentLogonHistory.hostname.ilike(checkin.hostname))
+        .order_by(AgentLogonHistory.is_current.desc(), AgentLogonHistory.last_seen_at.desc())
+        .limit(100)
+        .all()
+    )
+    return [
+        MachineLogonHistoryItem(
+            id=lr.id,
+            username=lr.username,
+            domain=lr.domain,
+            display_name=lr.display_name,
+            session_state=lr.session_state,
+            is_current=lr.is_current,
+            is_online=lr.is_current and is_online,
+            logon_time=lr.logon_time,
+            last_seen_at=lr.last_seen_at,
+            logon_type=lr.logon_type,
+        )
+        for lr in logon_records
+    ]
 
 
 @router.get("/agent/machines/{machine_id}/metrics-chart", response_model=MachineMetricsChartResponse, summary="Evolução temporal de CPU, RAM e Disco e análise de degradação")
@@ -1635,6 +1824,75 @@ function Get-LoggedUser {{
     return $env:USERNAME
 }}
 
+function Get-LogonHistory {{
+    $activeSessions = @{{}}
+    try {{
+        $quser = query user 2>$null | Select-Object -Skip 1
+        foreach ($line in $quser) {{
+            $parts = $line.Trim() -split '\\s+'
+            if ($parts.Count -ge 2) {{
+                $rawU = $parts[0].Replace('>', '').Trim()
+                $state = "active"
+                if ($line -match "(Disc|Descon)") {{ $state = "disconnected" }}
+                $activeSessions[$rawU.ToLower()] = @{{
+                    username      = $rawU
+                    session_state = $state
+                    is_current    = ($state -eq "active")
+                    logon_type    = if ($line -match "console") {{ "Console" }} elseif ($line -match "rdp") {{ "RDP" }} else {{ "Interativo" }}
+                }}
+            }}
+        }}
+    }} catch {{}}
+
+    $historyList = @()
+    $seenUsers = @{{}}
+
+    foreach ($k in $activeSessions.Keys) {{
+        $item = $activeSessions[$k]
+        $cleanU = $item.username
+        if (-not (Test-IsAdminOrServiceAccount $cleanU)) {{
+            $seenUsers[$cleanU.ToLower()] = $true
+            $historyList += @{{
+                username      = $cleanU
+                domain        = "FASANOBR"
+                session_state = $item.session_state
+                is_current    = $item.is_current
+                logon_time    = (Get-Date).ToString("o")
+                logon_type    = $item.logon_type
+            }}
+        }}
+    }}
+
+    try {{
+        $profiles = Get-CimInstance Win32_UserProfile -ErrorAction SilentlyContinue | Where-Object {{
+            $_.Special -ne $true -and $_.LastUseTime
+        }}
+        foreach ($p in $profiles) {{
+            $uName = Split-Path $p.LocalPath -Leaf
+            $cleanU = ($uName -replace '\\.FASANOBR$', '').Trim()
+            if (-not (Test-IsAdminOrServiceAccount $cleanU) -and -not $seenUsers.ContainsKey($cleanU.ToLower())) {{
+                $seenUsers[$cleanU.ToLower()] = $true
+                $lastTime = $null
+                try {{
+                    if ($p.LastUseTime) {{
+                        $lastTime = ([datetime]$p.LastUseTime).ToString("o")
+                    }}
+                }} catch {{}}
+                $historyList += @{{
+                    username      = $cleanU
+                    domain        = "FASANOBR"
+                    session_state = "logged_off"
+                    is_current    = $false
+                    logon_time    = $lastTime
+                    logon_type    = "Perfil Local"
+                }}
+            }}
+        }}
+    }} catch {{}}
+
+    return @($historyList)
+}}
+
 function Get-SystemMetrics {{
     $cpu = 0
     $cpuModel = ""
@@ -1988,6 +2246,7 @@ function Get-SystemMetrics {{
         office_status       = $officeStatus
         installed_apps      = [object[]]@($installedApps)
         top_processes       = [object[]]@($topProcesses)
+        logon_history       = [object[]]@(Get-LogonHistory)
     }}
 }}
 
@@ -2465,6 +2724,22 @@ while read -r p_pid p_name p_cpu p_rss; do
 done < <(ps -eo pid,comm,%cpu,rss --sort=-%cpu 2>/dev/null | head -n 15 || true)
 TOP_PROCS_JSON="$TOP_PROCS_JSON]"
 
+# 15. Histórico de Sessões e Logons de Usuários (who e last)
+LOGON_HISTORY_JSON="[]"
+LOGONS_LIST=""
+if command -v who >/dev/null 2>&1; then
+    while read -r u line time; do
+        [ -z "$u" ] && continue
+        case "$u" in root|daemon|systemd*) continue ;; esac
+        entry="{{\\"username\\":\\"$u\\",\\"domain\\":\\"Linux\\",\\"session_state\\":\\"active\\",\\"is_current\\":true,\\"logon_type\\":\\"$line\\",\\"logon_time\\":\\"$(date --iso-8601=seconds)\\"}}"
+        [ -n "$LOGONS_LIST" ] && LOGONS_LIST="$LOGONS_LIST,"
+        LOGONS_LIST="$LOGONS_LIST$entry"
+    done < <(who 2>/dev/null | awk '{{print $1, $2, $3" "$4}}')
+fi
+if [ -n "$LOGONS_LIST" ]; then
+    LOGON_HISTORY_JSON="[$LOGONS_LIST]"
+fi
+
 # Payload JSON
 PAYLOAD=$(cat <<EOF
 {{
@@ -2488,7 +2763,8 @@ PAYLOAD=$(cat <<EOF
   "mac_address": "$MAC_ADDRESS",
   "device_type": "$DEVICE_TYPE",
   "installed_apps": $APPS_JSON,
-  "top_processes": $TOP_PROCS_JSON
+  "top_processes": $TOP_PROCS_JSON,
+  "logon_history": $LOGON_HISTORY_JSON
 }}
 EOF
 )

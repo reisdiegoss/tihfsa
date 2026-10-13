@@ -223,6 +223,26 @@ def apply_migrations():
         """),
         ("agent_metrics_history.disk_active_pct", "ALTER TABLE agent_metrics_history ADD COLUMN IF NOT EXISTS disk_active_pct INTEGER;"),
 
+        # Histórico de Logons e Usuários de Agentes
+        ("agent_logon_history", """
+            CREATE TABLE IF NOT EXISTS agent_logon_history (
+                id SERIAL PRIMARY KEY,
+                hostname VARCHAR(150) NOT NULL,
+                username VARCHAR(150) NOT NULL,
+                domain VARCHAR(100),
+                display_name VARCHAR(200),
+                session_state VARCHAR(50) DEFAULT 'active' NOT NULL,
+                is_current BOOLEAN DEFAULT FALSE NOT NULL,
+                logon_time TIMESTAMP WITH TIME ZONE,
+                last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                logon_type VARCHAR(50),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_logon_history_hostname ON agent_logon_history(hostname);
+            CREATE INDEX IF NOT EXISTS idx_agent_logon_history_username ON agent_logon_history(username);
+            CREATE INDEX IF NOT EXISTS idx_agent_logon_history_last_seen ON agent_logon_history(last_seen_at);
+        """),
+
         # Módulo de Contratos e Fornecedores
         ("suppliers", """
             CREATE TABLE IF NOT EXISTS suppliers (

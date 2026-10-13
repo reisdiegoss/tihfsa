@@ -4,7 +4,7 @@ import {
   AlertTriangle, AlertCircle, Info, Printer, X, RefreshCw,
   User, Building, Tag, ExternalLink, Activity, ArrowUpRight,
   TrendingUp, Calendar, Zap, Layers, BarChart2, Search, ArrowUpDown,
-  ArrowUp, ArrowDown, Filter
+  ArrowUp, ArrowDown, Filter, Users, UserCheck, Shield
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
@@ -13,7 +13,7 @@ import {
 import api from "../../api/client";
 
 export default function MachineHistoryModal({ isOpen, onClose, machine, initialTab = "metrics" }) {
-  const [activeTab, setActiveTab] = useState(initialTab); // 'metrics' | 'processes' | 'report' | 'tickets'
+  const [activeTab, setActiveTab] = useState(initialTab); // 'metrics' | 'processes' | 'logon' | 'report' | 'tickets'
   const [loading, setLoading] = useState(true);
   const [historyData, setHistoryData] = useState(null);
 
@@ -27,6 +27,10 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
   const [procSort, setProcSort] = useState("cpu"); // 'name' | 'pid' | 'cpu' | 'ram' | 'disk' | 'impact'
   const [procSortDir, setProcSortDir] = useState("desc"); // 'asc' | 'desc'
   const [procImpactFilter, setProcImpactFilter] = useState("all"); // 'all' | 'critical' | 'elevated' | 'normal'
+
+  // Estados do Histórico de Logons e Usuários
+  const [logonSearch, setLogonSearch] = useState("");
+  const [logonFilter, setLogonFilter] = useState("all"); // 'all' | 'online' | 'disconnected' | 'logged_off'
 
   const fetchHistory = () => {
     if (!machine) return;
@@ -173,6 +177,37 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
     return [...rawProcesses].sort((a, b) => (b.disk_kbps || 0) - (a.disk_kbps || 0))[0];
   }, [rawProcesses]);
 
+  // Lista e filtragem de Histórico de Logons
+  const rawLogons = useMemo(() => {
+    return historyData?.logon_history || [];
+  }, [historyData]);
+
+  const filteredLogons = useMemo(() => {
+    let list = [...rawLogons];
+    if (logonSearch.trim()) {
+      const q = logonSearch.toLowerCase();
+      list = list.filter(
+        (l) =>
+          (l.username || "").toLowerCase().includes(q) ||
+          (l.display_name || "").toLowerCase().includes(q) ||
+          (l.domain || "").toLowerCase().includes(q) ||
+          (l.logon_type || "").toLowerCase().includes(q)
+      );
+    }
+    if (logonFilter === "online") {
+      list = list.filter((l) => l.is_online);
+    } else if (logonFilter === "disconnected") {
+      list = list.filter((l) => l.session_state === "disconnected");
+    } else if (logonFilter === "logged_off") {
+      list = list.filter((l) => l.session_state === "logged_off");
+    }
+    return list;
+  }, [rawLogons, logonSearch, logonFilter]);
+
+  const currentLoggedUser = useMemo(() => {
+    return rawLogons.find((l) => l.is_current) || null;
+  }, [rawLogons]);
+
   if (!isOpen || !machine) return null;
 
   const handlePrint = () => {
@@ -283,7 +318,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
         </div>
 
         {/* ─── ABAS DE NAVEGAÇÃO PROPORCIONAIS (SEM ROLAGEM HORIZONTAL) ─── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 border-b border-slate-100 py-3 shrink-0 print:hidden">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 border-b border-slate-100 py-3 shrink-0 print:hidden">
           <button
             type="button"
             onClick={() => setActiveTab("metrics")}
@@ -308,6 +343,19 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
           >
             <Zap size={15} className="shrink-0" />
             <span className="truncate">Processos Ativos {rawProcesses.length > 0 ? `(${rawProcesses.length})` : ""}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("logon")}
+            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+              activeTab === "logon"
+                ? "bg-indigo-600 text-white shadow-xs font-black"
+                : "text-slate-600 hover:bg-slate-100 bg-slate-50/70 hover:text-slate-900 border border-slate-200/60"
+            }`}
+          >
+            <Users size={15} className="shrink-0" />
+            <span className="truncate">Histórico de Logon {rawLogons.length > 0 ? `(${rawLogons.length})` : ""}</span>
           </button>
 
           <button
@@ -1126,6 +1174,319 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
                                     }`}>
                                       {isCritical ? "Crítico" : isHighCpu || isHighDisk || isHighRam ? "Elevado" : "Normal"}
                                     </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ──────────────────────────────────────────────────────────
+                  ABA: HISTÓRICO DE LOGON & USUÁRIOS
+                  ────────────────────────────────────────────────────────── */}
+              {activeTab === "logon" && (
+                <div className="space-y-5 animate-in fade-in duration-150">
+                  {/* Topo da Aba */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Users size={16} className="text-indigo-600 shrink-0" />
+                        <h4 className="text-sm font-black text-slate-900">
+                          Histórico de Sessões & Usuários Logados
+                        </h4>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-100 text-indigo-700">
+                          Sentinel Agent
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Auditoria de colaboradores que acessaram este computador, identificando a sessão ativa em tempo real, horários de logon e perfis locais.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={fetchHistory}
+                      disabled={loading}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-300 text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 disabled:opacity-50"
+                      title="Recarregar histórico de logons"
+                    >
+                      <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+                      <span>Atualizar</span>
+                    </button>
+                  </div>
+
+                  {/* Cards de Resumo */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Card 1: Usuário Atual */}
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      currentLoggedUser
+                        ? "bg-gradient-to-br from-indigo-50/60 to-purple-50/40 border-indigo-200/80"
+                        : "bg-slate-50 border-slate-200"
+                    }`}>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                          Sessão Ativa Atual
+                        </span>
+                        {currentLoggedUser ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            {currentLoggedUser.is_online ? "Logado Agora" : "Sessão Aberta"}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-200/60 text-slate-500">
+                            Sem Sessão Ativa
+                          </span>
+                        )}
+                      </div>
+
+                      {currentLoggedUser ? (
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs uppercase">
+                            {(currentLoggedUser.display_name || currentLoggedUser.username).slice(0, 2)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-black text-slate-900 truncate">
+                              {currentLoggedUser.display_name || currentLoggedUser.username}
+                            </p>
+                            <p className="text-[11px] font-mono text-slate-500 truncate">
+                              {currentLoggedUser.domain ? `${currentLoggedUser.domain}\\` : ""}{currentLoggedUser.username}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-slate-400 py-1">
+                          <User size={18} className="shrink-0" />
+                          <span className="text-xs">Estação bloqueada ou na tela de boas-vindas.</span>
+                        </div>
+                      )}
+
+                      {currentLoggedUser && (
+                        <div className="mt-3 pt-2.5 border-t border-indigo-100/60 flex items-center justify-between text-[11px] text-slate-600">
+                          <span>Tipo: <strong>{currentLoggedUser.logon_type || "Console"}</strong></span>
+                          {currentLoggedUser.logon_time && (
+                            <span className="text-slate-400">
+                              {new Date(currentLoggedUser.logon_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card 2: Total de Colaboradores */}
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                          Perfis Registrados
+                        </span>
+                        <UserCheck size={16} className="text-indigo-600" />
+                      </div>
+                      <div className="my-2">
+                        <span className="text-2xl font-black text-slate-900">
+                          {rawLogons.length}
+                        </span>
+                        <span className="text-xs text-slate-500 ml-1.5 font-semibold">
+                          {rawLogons.length === 1 ? "usuário" : "usuários diferentes"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Histórico cumulativo de contas locais e do domínio vinculadas.
+                      </p>
+                    </div>
+
+                    {/* Card 3: Último Acesso */}
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                          Última Atividade
+                        </span>
+                        <Clock size={16} className="text-indigo-600" />
+                      </div>
+                      <div className="my-2">
+                        <p className="text-sm font-black text-slate-900 truncate">
+                          {rawLogons[0] ? (rawLogons[0].display_name || rawLogons[0].username) : "Nenhum registro"}
+                        </p>
+                        <p className="text-xs text-slate-500 font-semibold">
+                          {rawLogons[0]?.logon_time
+                            ? new Date(rawLogons[0].logon_time).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+                            : "Sem data registrada"}
+                        </p>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Último evento de telemetria ou logon capturado pelo Sentinel.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Barra de Filtro e Busca */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-2xl">
+                    {/* Input de Busca */}
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por usuário, nome, domínio ou tipo..."
+                        value={logonSearch}
+                        onChange={(e) => setLogonSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+
+                    {/* Filtros de Status */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 pb-1 sm:pb-0">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">
+                        Status:
+                      </span>
+                      {[
+                        { id: "all", label: `Todos (${rawLogons.length})` },
+                        { id: "online", label: "🟢 Logados Agora" },
+                        { id: "disconnected", label: "🟡 Desconectados" },
+                        { id: "logged_off", label: "⚪ Histórico" },
+                      ].map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setLogonFilter(f.id)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                            logonFilter === f.id
+                              ? "bg-indigo-600 text-white shadow-2xs font-black"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tabela de Logons */}
+                  {filteredLogons.length === 0 ? (
+                    <div className="p-12 text-center bg-slate-50 border border-dashed border-slate-300 rounded-2xl">
+                      <Users size={32} className="mx-auto text-slate-300 mb-2" />
+                      <p className="text-xs font-bold text-slate-600">Nenhum histórico de logon encontrado.</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {logonSearch ? "Nenhum usuário corresponde aos filtros aplicados." : "O agente coletará as sessões no próximo ciclo de sincronização."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+                      <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10 text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                            <tr>
+                              <th className="px-4 py-3">Colaborador / Usuário</th>
+                              <th className="px-3 py-3 text-center">Status da Sessão</th>
+                              <th className="px-3 py-3">Data & Hora do Logon</th>
+                              <th className="px-3 py-3">Tipo de Acesso</th>
+                              <th className="px-3 py-3 text-right">Visto por Último</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {filteredLogons.map((item) => {
+                              const isOnline = item.is_online;
+                              const isDisc = item.session_state === "disconnected";
+                              const initials = (item.display_name || item.username).slice(0, 2).toUpperCase();
+
+                              return (
+                                <tr
+                                  key={item.id}
+                                  className={`hover:bg-slate-50/80 transition-colors ${
+                                    item.is_current ? "bg-indigo-50/30" : ""
+                                  }`}
+                                >
+                                  {/* Colaborador */}
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-3">
+                                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-[11px] shrink-0 ${
+                                        item.is_current
+                                          ? "bg-indigo-600 text-white shadow-2xs"
+                                          : "bg-slate-100 text-slate-600 border border-slate-200"
+                                      }`}>
+                                        {initials}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <p className="font-bold text-slate-900 truncate">
+                                            {item.display_name || item.username}
+                                          </p>
+                                          {item.is_current && (
+                                            <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-indigo-100 text-indigo-700">
+                                              Atual
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-[11px] font-mono text-slate-400 truncate">
+                                          {item.domain ? `${item.domain}\\` : ""}{item.username}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* Status */}
+                                  <td className="px-3 py-3 text-center">
+                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                      isOnline
+                                        ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                        : isDisc
+                                        ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                        : "bg-slate-100 text-slate-600 border border-slate-200"
+                                    }`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${
+                                        isOnline
+                                          ? "bg-emerald-500 animate-pulse"
+                                          : isDisc
+                                          ? "bg-amber-500"
+                                          : "bg-slate-400"
+                                      }`} />
+                                      {isOnline
+                                        ? "Online (Sessão Ativa)"
+                                        : isDisc
+                                        ? "Sessão Desconectada"
+                                        : "Histórico (Logoff)"}
+                                    </span>
+                                  </td>
+
+                                  {/* Data/Hora do Logon */}
+                                  <td className="px-3 py-3 text-slate-700">
+                                    {item.logon_time ? (
+                                      <div>
+                                        <p className="font-bold">
+                                          {new Date(item.logon_time).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                                        </p>
+                                        <p className="text-[11px] text-slate-400 font-mono">
+                                          {new Date(item.logon_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 italic">Data não reportada</span>
+                                    )}
+                                  </td>
+
+                                  {/* Tipo de Acesso */}
+                                  <td className="px-3 py-3">
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80">
+                                      {item.logon_type || "Console"}
+                                    </span>
+                                  </td>
+
+                                  {/* Visto por Último */}
+                                  <td className="px-3 py-3 text-right">
+                                    {item.last_seen_at ? (
+                                      <div>
+                                        <p className="text-slate-700 font-bold">
+                                          {new Date(item.last_seen_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                                        </p>
+                                        <p className="text-[11px] text-slate-400 font-mono">
+                                          {new Date(item.last_seen_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400">—</span>
+                                    )}
                                   </td>
                                 </tr>
                               );

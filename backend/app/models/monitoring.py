@@ -3,7 +3,7 @@ Model Monitoring — Telemetria de Agentes e Monitoramento Nativo TIHFSA.
 """
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, ForeignKey, JSON
+    Column, Integer, String, Float, Boolean, DateTime, ForeignKey, JSON
 )
 from sqlalchemy.orm import relationship
 
@@ -108,6 +108,35 @@ class NetworkOutageEvent(Base):
     status = Column(String(20), default="ongoing", nullable=False, index=True)  # 'ongoing', 'resolved'
     trigger_reason = Column(String(255), nullable=True)
 
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class AgentLogonHistory(Base):
+    """
+    Armazena o histórico de sessões e usuários que logaram em cada estação ou servidor corporativo.
+    Permite auditar quem usou o computador, quando foi o último logon e se a sessão está ativa agora.
+    """
+    __tablename__ = "agent_logon_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    hostname = Column(String(150), index=True, nullable=False)
+    username = Column(String(150), index=True, nullable=False)
+    domain = Column(String(100), nullable=True)
+    display_name = Column(String(200), nullable=True)
+    session_state = Column(String(50), default="active", nullable=False)  # 'active', 'disconnected', 'logged_off'
+    is_current = Column(Boolean, default=False, nullable=False)
+    logon_time = Column(DateTime(timezone=True), nullable=True)
+    last_seen_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    logon_type = Column(String(50), nullable=True)  # 'Console', 'RDP', 'Perfil Local', 'SSH'
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

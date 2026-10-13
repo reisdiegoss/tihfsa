@@ -1176,4 +1176,25 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
           2. **Modo Usuário Padrão (Fallback Transparente)**: Se a estação não estiver elevada e não possuir a tarefa SYSTEM prévia, cria um serviço de background invisível (`sentinel-worker.vbs`) no diretório do agente com atalho automático em `shell:startup` (`$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup`) e chave de registro `HKCU\...\Run`. O worker executa a cada 15 minutos de forma 100% oculta (`SW_HIDE`), impedindo processos duplicados e garantindo sincronização ininterrupta.
         - **Disparo Imediato no Primeiro Segundo**: Tanto o instalador quanto o script executam a telemetria inicial síncrona imediatamente após a instalação, colocando o status da máquina em `ONLINE` no Hub de Monitoramento instantaneamente.
 
+35. **Histórico de Logons, Sessões Ativas e Auditoria de Usuários nas Estações**:
+    - **Contexto Operacional**:
+      - Em ambientes hoteleiros (Recepção, Concierge, Governança, Reservas e TI), é frequente que múltiplos colaboradores utilizem o mesmo computador em diferentes turnos ou plantões, além de acessos remotos via RDP.
+      - Para auditoria, governança e resolução rápida de problemas, foi implementado o rastreamento histórico de quem utilizou o computador, quando foi o último logon e se a sessão está ativa no momento.
+    - **Coleta de Telemetria no Agente (`Get-LogonHistory`)**:
+      - **Sessões Ativas**: Coleta via `query user` / `quser`, detectando estado da sessão (`Ativo` ou `Desconectado`), tipo de conexão (`Console Físico`, `Área de Trabalho Remota - RDP`) e horário de início da sessão.
+      - **Histórico de Perfis e Último Logon**: Coleta via WMI/CIM `Win32_UserProfile` (`LastUseTime`), identificando todos os colaboradores com perfis locais ou de domínio (`FASANOBR`) que acessaram a estação, registrando a data/hora exata do último logon mesmo após logoff.
+      - **Linux**: Coleta de sessões em tempo real via `who -u` e histórico de logins via `last`.
+    - **Persistência e Backend (`AgentLogonHistory` & `init_db.py`)**:
+      - Tabela `agent_logon_history` no PostgreSQL com índices em `hostname`, `username` e `last_seen_at`.
+      - Mapeamento automático de `display_name` a partir do cadastro de usuários do Active Directory e Helpdesk.
+      - Endpoints `/api/v1/monitoring/agent/machines/{machine_id}/history` e `/logon-history` retornando a lista estruturada com flags `is_current`, `is_online`, `session_state` e `logon_type`.
+    - **Interface do Usuário (`MachineHistoryModal.jsx`)**:
+      - Nova aba **"👤 Histórico de Logon"** no modal com contador dinâmico de colaboradores.
+      - Três cards de destaque:
+        1. **Sessão Ativa Atual**: Avatar com iniciais, nome de exibição, domínio corporativo, tipo de acesso e badge pulsante `🟢 Logado Agora` / `🟡 Sessão Aberta`.
+        2. **Perfis Registrados**: Total de usuários distintos que já utilizaram o computador.
+        3. **Última Atividade**: Data/hora relativa do acesso mais recente.
+      - **Filtros e Busca**: Campo de busca textual por nome de usuário, login ou domínio e filtros rápidos por status (`Todos`, `Logados Agora`, `Desconectados`, `Histórico`).
+      - **Tabela Detalhada**: Colaborador, Status da Sessão com badges coloridos, Data & Hora do Logon, Tipo de Acesso e Visto por Último.
+
 
