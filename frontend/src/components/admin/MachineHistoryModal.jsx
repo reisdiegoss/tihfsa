@@ -66,22 +66,11 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
     fetchChartData(range);
   };
 
-  if (!isOpen || !machine) return null;
+  const rawProcesses = (isOpen && machine) ? (historyData?.top_processes || machine?.top_processes || []) : [];
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const tickets = historyData?.tickets || [];
-  const metrics = historyData?.metrics_history || [];
-  const recommendations = historyData?.hardware_recommendations || [];
-  const degradationEvents = chartData?.degradation_events || [];
-  const chartPoints = chartData?.data_points || [];
-  const summary = chartData?.summary || {};
-  const rawProcesses = historyData?.top_processes || machine?.top_processes || [];
-
-  // Filtragem e ordenação dos processos ativos
+  // Filtragem e ordenação dos processos ativos (declarado no topo para respeitar as Rules of Hooks)
   const filteredProcesses = useMemo(() => {
+    if (!isOpen || !machine) return [];
     let list = [...rawProcesses];
     if (procSearch.trim()) {
       const q = procSearch.toLowerCase();
@@ -96,7 +85,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
       return (b.cpu_pct || 0) - (a.cpu_pct || 0);
     });
     return list;
-  }, [rawProcesses, procSearch, procSort]);
+  }, [rawProcesses, procSearch, procSort, isOpen, machine]);
 
   // Top vilões de consumo para cards de destaque
   const topCpuProc = useMemo(() => {
@@ -114,6 +103,18 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
     return [...rawProcesses].sort((a, b) => (b.disk_kbps || 0) - (a.disk_kbps || 0))[0];
   }, [rawProcesses]);
 
+  if (!isOpen || !machine) return null;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const tickets = historyData?.tickets || [];
+  const metrics = historyData?.metrics_history || [];
+  const recommendations = historyData?.hardware_recommendations || [];
+  const degradationEvents = chartData?.degradation_events || [];
+  const chartPoints = chartData?.data_points || [];
+  const summary = chartData?.summary || {};
   const currentDiskActive = historyData?.disk_active_pct ?? machine?.disk_active_pct ?? 0;
 
   // Custom Tooltip para o Recharts
