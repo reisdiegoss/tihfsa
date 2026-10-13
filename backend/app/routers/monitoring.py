@@ -1400,8 +1400,13 @@ function Update-AgentScriptSelf {{
             if ($newSize -gt 1500) {{
                 $content = Get-Content $tempScript -Raw -ErrorAction SilentlyContinue
                 if ($content -like "*TIHFSA Sentinel Agent*") {{
-                    Move-Item -Path $tempScript -Destination $targetScript -Force
-                    Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso."
+                    try {{
+                        [System.IO.File]::Copy($tempScript, $targetScript, $true)
+                        Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso via .NET."
+                    }} catch {{
+                        Copy-Item -Path $tempScript -Destination $targetScript -Force -ErrorAction SilentlyContinue
+                        Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso via Copy-Item."
+                    }}
                 }}
             }}
             Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
@@ -1426,8 +1431,12 @@ function Install-SentinelTask {{
 
     $targetScript = "$installDir\\tihfsa-agent.ps1"
     if ($PSCommandPath -and (Test-Path $PSCommandPath) -and ($PSCommandPath -ne $targetScript)) {{
-        Copy-Item -Path $PSCommandPath -Destination $targetScript -Force
-    }} elseif (-not (Test-Path $targetScript)) {{
+        try {{
+            [System.IO.File]::Copy($PSCommandPath, $targetScript, $true)
+        }} catch {{
+            Copy-Item -Path $PSCommandPath -Destination $targetScript -Force -ErrorAction SilentlyContinue
+        }}
+    }} else {{
         $scriptUrl = $TargetUrl.Replace("/checkin", "/script")
         try {{
             Invoke-RestMethod -Uri $scriptUrl -OutFile $targetScript -TimeoutSec 15

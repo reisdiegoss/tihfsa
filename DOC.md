@@ -1162,9 +1162,12 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Card de destaque *"Maior Consumo (Processo)"* exibindo o processo vilão no momento e atalho direto "Processos".
       - **Gerenciador de Processos Ativos no Modal (`MachineHistoryModal.jsx`)**:
         - Nova aba **"⚡ Processos Ativos (Task Manager)"** com tabela rica estilo Windows Task Manager.
-        - Três cartões de destaque no topo: Maior Carga de CPU, Maior Consumo de RAM e Maior E/S de Disco (I/O).
-        - Filtro de busca textual em tempo real por nome do processo ou PID.
-        - Ordenação dinâmica em 1 clique por: `🔥 CPU (%)`, `🧠 Memória RAM` e `💾 Disco (E/S)`.
+        - Três cartões de destaque no topo: Maior Carga de CPU, Maior Consumo de RAM e Maior E/S de Disco (I/O) — interativos e clicáveis para ordenar a tabela imediatamente.
+        - **Ordenação Interativa por Qualquer Coluna**: Todos os cabeçalhos de coluna (`Processo (Imagem)`, `PID`, `Uso de CPU`, `Memória RAM`, `E/S de Disco` e `Impacto`) são clicáveis com setas visuais de direção (`↑` e `↓`), alternando ordenação ascendente e descendente (A-Z/Z-A para nomes, maior/menor para consumo e gravidade para impacto).
+        - **Filtros Flexíveis**: Campo de busca textual em tempo real por nome do processo ou PID e barra de filtros por severidade (`Todos`, `Crítico`, `Elevado` e `Normal`).
+        - **Layout Proporcional sem Rolagem Horizontal**: O container de abas foi reestruturado em grid proporcional (`grid-cols-2 lg:grid-cols-4`), eliminando a barra de rolagem lateral (`overflow-x`) e expandindo a largura do modal para preenchimento equilibrado em qualquer resolução.
         - Barras visuais de ocupação proporcional, formatação dinâmica (MB/GB e KB/s/MB/s) e badges de severidade (Crítico, Elevado e Normal).
       - **Gráficos Históricos (Recharts)**: Inclusão da área de evolução temporal da atividade de disco em âmbar (`#f59e0b`) e card de KPI dedicado no sumário do período.
+      - **Correção e Robustez do Auto-Update (`monitoring.py`)**: A rotina `Update-AgentScriptSelf` e `Install-SentinelTask` foi aprimorada com `[System.IO.File]::Copy` (`overwrite=true`), garantindo a substituição atômica de `tihfsa-agent.ps1` sem erro de arquivo existente ou bloqueio do PowerShell.
+
 

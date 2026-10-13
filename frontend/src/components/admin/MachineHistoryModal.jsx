@@ -3,7 +3,8 @@ import {
   FileText, Cpu, HardDrive, Wrench, Clock, CheckCircle2,
   AlertTriangle, AlertCircle, Info, Printer, X, RefreshCw,
   User, Building, Tag, ExternalLink, Activity, ArrowUpRight,
-  TrendingUp, Calendar, Zap, Layers, BarChart2, Search, ArrowUpDown
+  TrendingUp, Calendar, Zap, Layers, BarChart2, Search, ArrowUpDown,
+  ArrowUp, ArrowDown, Filter
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
@@ -23,7 +24,9 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
 
   // Estados dos Processos Ativos (Task Manager)
   const [procSearch, setProcSearch] = useState("");
-  const [procSort, setProcSort] = useState("cpu"); // 'cpu' | 'ram' | 'disk'
+  const [procSort, setProcSort] = useState("cpu"); // 'name' | 'pid' | 'cpu' | 'ram' | 'disk' | 'impact'
+  const [procSortDir, setProcSortDir] = useState("desc"); // 'asc' | 'desc'
+  const [procImpactFilter, setProcImpactFilter] = useState("all"); // 'all' | 'critical' | 'elevated' | 'normal'
 
   const fetchHistory = () => {
     if (!machine) return;
@@ -68,10 +71,49 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
 
   const rawProcesses = (isOpen && machine) ? (historyData?.top_processes || machine?.top_processes || []) : [];
 
+  // Classificação do nível de impacto de um processo (1=Normal, 2=Elevado, 3=Crítico)
+  const getProcessImpactLevel = (p) => {
+    const cpuPct = Number(p.cpu_pct || 0);
+    const ramMb = Number(p.ram_mb || 0);
+    const diskKbps = Number(p.disk_kbps || 0);
+    const isHighCpu = cpuPct >= 40;
+    const isHighRam = ramMb >= 1500;
+    const isHighDisk = diskKbps >= 5000;
+    const isCritical = isHighCpu || isHighDisk || (isHighRam && cpuPct >= 20);
+    if (isCritical) return 3;
+    if (isHighCpu || isHighDisk || isHighRam) return 2;
+    return 1;
+  };
+
+  // Alternar coluna ou direção de ordenação
+  const handleSortColumn = (col) => {
+    if (procSort === col) {
+      setProcSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
+    } else {
+      setProcSort(col);
+      // Nomes e PID iniciam em ASC por padrão; métricas de consumo em DESC (maiores primeiro)
+      setProcSortDir(col === "name" || col === "pid" ? "asc" : "desc");
+    }
+  };
+
+  // Indicador visual interativo de ordenação na coluna
+  const renderSortIndicator = (col) => {
+    if (procSort !== col) {
+      return <ArrowUpDown size={11} className="text-slate-300 opacity-60 group-hover:opacity-100 shrink-0 transition-opacity" />;
+    }
+    return procSortDir === "asc" ? (
+      <ArrowUp size={12} className="text-blue-600 font-black shrink-0" />
+    ) : (
+      <ArrowDown size={12} className="text-blue-600 font-black shrink-0" />
+    );
+  };
+
   // Filtragem e ordenação dos processos ativos (declarado no topo para respeitar as Rules of Hooks)
   const filteredProcesses = useMemo(() => {
     if (!isOpen || !machine) return [];
     let list = [...rawProcesses];
+
+    // 1. Filtro textual (Nome da imagem ou PID)
     if (procSearch.trim()) {
       const q = procSearch.toLowerCase();
       list = list.filter((p) =>
@@ -79,13 +121,41 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
         String(p.pid || "").includes(q)
       );
     }
+
+    // 2. Filtro de Gravidade / Impacto
+    if (procImpactFilter !== "all") {
+      list = list.filter((p) => {
+        const level = getProcessImpactLevel(p);
+        if (procImpactFilter === "critical") return level === 3;
+        if (procImpactFilter === "elevated") return level === 2;
+        if (procImpactFilter === "normal") return level === 1;
+        return true;
+      });
+    }
+
+    // 3. Ordenação flexível por coluna
     list.sort((a, b) => {
-      if (procSort === "ram") return (b.ram_mb || 0) - (a.ram_mb || 0);
-      if (procSort === "disk") return (b.disk_kbps || 0) - (a.disk_kbps || 0);
-      return (b.cpu_pct || 0) - (a.cpu_pct || 0);
+      let diff = 0;
+      if (procSort === "name") {
+        diff = (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
+      } else if (procSort === "pid") {
+        diff = (Number(a.pid) || 0) - (Number(b.pid) || 0);
+      } else if (procSort === "ram") {
+        diff = (Number(a.ram_mb) || 0) - (Number(b.ram_mb) || 0);
+      } else if (procSort === "disk") {
+        diff = (Number(a.disk_kbps) || 0) - (Number(b.disk_kbps) || 0);
+      } else if (procSort === "impact") {
+        diff = getProcessImpactLevel(a) - getProcessImpactLevel(b);
+      } else {
+        // Padrão: 'cpu'
+        diff = (Number(a.cpu_pct) || 0) - (Number(b.cpu_pct) || 0);
+      }
+
+      return procSortDir === "asc" ? diff : -diff;
     });
+
     return list;
-  }, [rawProcesses, procSearch, procSort, isOpen, machine]);
+  }, [rawProcesses, procSearch, procSort, procSortDir, procImpactFilter, isOpen, machine]);
 
   // Top vilões de consumo para cards de destaque
   const topCpuProc = useMemo(() => {
@@ -159,7 +229,7 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:p-0 print:bg-white print:fixed print:inset-0 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-5xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200 max-h-[94vh] flex flex-col print:max-h-none print:h-auto print:border-none print:shadow-none print:p-6 print:rounded-none">
+      <div className="bg-white rounded-3xl max-w-6xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200 max-h-[94vh] flex flex-col print:max-h-none print:h-auto print:border-none print:shadow-none print:p-6 print:rounded-none">
         
         {/* ─── HEADER MODAL / RELATÓRIO ─── */}
         <div className="flex items-start justify-between pb-4 border-b border-slate-100 shrink-0 gap-4">
@@ -212,58 +282,58 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
           </div>
         </div>
 
-        {/* ─── ABAS DE NAVEGAÇÃO (Ocultas na Impressão) ─── */}
-        <div className="flex items-center gap-2 border-b border-slate-100 py-3 shrink-0 print:hidden overflow-x-auto">
+        {/* ─── ABAS DE NAVEGAÇÃO PROPORCIONAIS (SEM ROLAGEM HORIZONTAL) ─── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 border-b border-slate-100 py-3 shrink-0 print:hidden">
           <button
             type="button"
             onClick={() => setActiveTab("metrics")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeTab === "metrics"
                 ? "bg-indigo-600 text-white shadow-xs font-black"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 bg-slate-50/70 hover:text-slate-900 border border-slate-200/60"
             }`}
           >
-            <BarChart2 size={15} />
-            <span>Gráficos de Consumo & Degradação</span>
+            <BarChart2 size={15} className="shrink-0" />
+            <span className="truncate">Consumo & Degradação</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("processes")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeTab === "processes"
                 ? "bg-indigo-600 text-white shadow-xs font-black"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 bg-slate-50/70 hover:text-slate-900 border border-slate-200/60"
             }`}
           >
-            <Zap size={15} />
-            <span>Processos Ativos (Task Manager) {rawProcesses.length > 0 ? `(${rawProcesses.length})` : ""}</span>
+            <Zap size={15} className="shrink-0" />
+            <span className="truncate">Processos Ativos {rawProcesses.length > 0 ? `(${rawProcesses.length})` : ""}</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("report")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeTab === "report"
                 ? "bg-indigo-600 text-white shadow-xs font-black"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 bg-slate-50/70 hover:text-slate-900 border border-slate-200/60"
             }`}
           >
-            <FileText size={15} />
-            <span>Laudo & Diagnóstico de Upgrade</span>
+            <FileText size={15} className="shrink-0" />
+            <span className="truncate">Laudo de Upgrade</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("tickets")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeTab === "tickets"
                 ? "bg-indigo-600 text-white shadow-xs font-black"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 bg-slate-50/70 hover:text-slate-900 border border-slate-200/60"
             }`}
           >
-            <Wrench size={15} />
-            <span>Manutenções & Chamados ({tickets.length})</span>
+            <Wrench size={15} className="shrink-0" />
+            <span className="truncate">Chamados ({tickets.length})</span>
           </button>
         </div>
 
@@ -591,17 +661,33 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
                     </div>
                   )}
 
-                  {/* Cards de Vilões de Consumo (Top 3) */}
+                  {/* Cards de Vilões de Consumo (Top 3) — Clicáveis para Ordenação Rápida */}
                   {rawProcesses.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       {/* Top CPU */}
-                      <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-1.5">
+                      <div
+                        onClick={() => {
+                          if (procSort === "cpu") {
+                            setProcSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
+                          } else {
+                            setProcSort("cpu");
+                            setProcSortDir("desc");
+                          }
+                        }}
+                        className={`p-3.5 rounded-2xl space-y-1.5 border transition-all cursor-pointer hover:shadow-xs hover:scale-[1.01] ${
+                          procSort === "cpu"
+                            ? "bg-blue-50 border-blue-400 ring-2 ring-blue-300 shadow-xs"
+                            : "bg-blue-50/60 border-blue-200 hover:border-blue-300"
+                        }`}
+                        title="Clique para ordenar por Uso de CPU"
+                      >
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider flex items-center gap-1">
                             <Cpu size={12} /> Maior Carga de CPU
                           </span>
-                          <span className="text-xs font-black text-blue-800 font-mono">
+                          <span className="text-xs font-black text-blue-800 font-mono flex items-center gap-1">
                             {topCpuProc?.cpu_pct ?? 0}%
+                            {procSort === "cpu" && (procSortDir === "desc" ? <ArrowDown size={11} /> : <ArrowUp size={11} />)}
                           </span>
                         </div>
                         <p className="text-sm font-black text-slate-900 truncate" title={topCpuProc?.name}>
@@ -613,13 +699,29 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
                       </div>
 
                       {/* Top RAM */}
-                      <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-2xl space-y-1.5">
+                      <div
+                        onClick={() => {
+                          if (procSort === "ram") {
+                            setProcSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
+                          } else {
+                            setProcSort("ram");
+                            setProcSortDir("desc");
+                          }
+                        }}
+                        className={`p-3.5 rounded-2xl space-y-1.5 border transition-all cursor-pointer hover:shadow-xs hover:scale-[1.01] ${
+                          procSort === "ram"
+                            ? "bg-purple-50 border-purple-400 ring-2 ring-purple-300 shadow-xs"
+                            : "bg-purple-50/60 border-purple-200 hover:border-purple-300"
+                        }`}
+                        title="Clique para ordenar por Memória RAM"
+                      >
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-black uppercase text-purple-700 tracking-wider flex items-center gap-1">
                             <Layers size={12} /> Maior Consumo de RAM
                           </span>
-                          <span className="text-xs font-black text-purple-800 font-mono">
+                          <span className="text-xs font-black text-purple-800 font-mono flex items-center gap-1">
                             {topRamProc ? (topRamProc.ram_mb >= 1024 ? `${(topRamProc.ram_mb / 1024).toFixed(1)} GB` : `${topRamProc.ram_mb} MB`) : "—"}
+                            {procSort === "ram" && (procSortDir === "desc" ? <ArrowDown size={11} /> : <ArrowUp size={11} />)}
                           </span>
                         </div>
                         <p className="text-sm font-black text-slate-900 truncate" title={topRamProc?.name}>
@@ -631,21 +733,35 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
                       </div>
 
                       {/* Top Disk */}
-                      <div className={`p-3.5 rounded-2xl space-y-1.5 border transition-all ${
-                        currentDiskActive >= 90
-                          ? "bg-red-50/80 border-red-300 ring-1 ring-red-200"
-                          : "bg-amber-50/70 border-amber-200"
-                      }`}>
+                      <div
+                        onClick={() => {
+                          if (procSort === "disk") {
+                            setProcSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
+                          } else {
+                            setProcSort("disk");
+                            setProcSortDir("desc");
+                          }
+                        }}
+                        className={`p-3.5 rounded-2xl space-y-1.5 border transition-all cursor-pointer hover:shadow-xs hover:scale-[1.01] ${
+                          procSort === "disk"
+                            ? "bg-amber-50 border-amber-400 ring-2 ring-amber-300 shadow-xs"
+                            : currentDiskActive >= 90
+                            ? "bg-red-50/80 border-red-300 ring-1 ring-red-200"
+                            : "bg-amber-50/60 border-amber-200 hover:border-amber-300"
+                        }`}
+                        title="Clique para ordenar por E/S de Disco"
+                      >
                         <div className="flex items-center justify-between">
                           <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
                             currentDiskActive >= 90 ? "text-red-700" : "text-amber-700"
                           }`}>
                             <HardDrive size={12} /> Maior E/S de Disco (I/O)
                           </span>
-                          <span className={`text-xs font-black font-mono ${
+                          <span className={`text-xs font-black font-mono flex items-center gap-1 ${
                             currentDiskActive >= 90 ? "text-red-700" : "text-amber-800"
                           }`}>
                             {topDiskProc ? (topDiskProc.disk_kbps >= 1024 ? `${(topDiskProc.disk_kbps / 1024).toFixed(1)} MB/s` : `${topDiskProc.disk_kbps} KB/s`) : "—"}
+                            {procSort === "disk" && (procSortDir === "desc" ? <ArrowDown size={11} /> : <ArrowUp size={11} />)}
                           </span>
                         </div>
                         <p className="text-sm font-black text-slate-900 truncate" title={topDiskProc?.name}>
@@ -659,63 +775,119 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
                   )}
 
                   {/* Barra de Filtros e Ordenação de Processos */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
-                    <div className="relative flex-1 max-w-sm">
+                  <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                    {/* Busca por Nome ou PID */}
+                    <div className="relative flex-1 min-w-[240px]">
                       <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                       <input
                         type="text"
                         value={procSearch}
                         onChange={(e) => setProcSearch(e.target.value)}
                         placeholder="Buscar processo por nome ou PID..."
-                        className="w-full pl-9 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                        className="w-full pl-9 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-colors"
                       />
                       {procSearch && (
                         <button
                           type="button"
                           onClick={() => setProcSearch("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                         >
                           <X size={13} />
                         </button>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mr-1">
-                        Ordenar por:
+                    {/* Filtro de Gravidade / Impacto */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1 mr-1">
+                        <Filter size={10} /> Impacto:
                       </span>
                       <button
                         type="button"
-                        onClick={() => setProcSort("cpu")}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        onClick={() => setProcImpactFilter("all")}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          procImpactFilter === "all"
+                            ? "bg-slate-900 text-white shadow-xs font-black"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        Todos ({rawProcesses.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProcImpactFilter("critical")}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          procImpactFilter === "critical"
+                            ? "bg-red-600 text-white shadow-xs font-black"
+                            : "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
+                        }`}
+                      >
+                        Crítico
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProcImpactFilter("elevated")}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          procImpactFilter === "elevated"
+                            ? "bg-amber-600 text-white shadow-xs font-black"
+                            : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                        }`}
+                      >
+                        Elevado
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProcImpactFilter("normal")}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          procImpactFilter === "normal"
+                            ? "bg-emerald-600 text-white shadow-xs font-black"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        Normal
+                      </button>
+                    </div>
+
+                    {/* Atalhos de Ordenação Rápida */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mr-1">
+                        Ordenar:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSortColumn("cpu")}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           procSort === "cpu"
                             ? "bg-blue-600 text-white shadow-xs font-black"
                             : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                         }`}
                       >
-                        🔥 CPU (%)
+                        <span>🔥 CPU</span>
+                        {procSort === "cpu" && (procSortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setProcSort("ram")}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        onClick={() => handleSortColumn("ram")}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           procSort === "ram"
                             ? "bg-purple-600 text-white shadow-xs font-black"
                             : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                         }`}
                       >
-                        🧠 Memória RAM
+                        <span>🧠 RAM</span>
+                        {procSort === "ram" && (procSortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setProcSort("disk")}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        onClick={() => handleSortColumn("disk")}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           procSort === "disk"
                             ? "bg-amber-600 text-white shadow-xs font-black"
                             : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                         }`}
                       >
-                        💾 Disco (E/S)
+                        <span>💾 Disco</span>
+                        {procSort === "disk" && (procSortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
                       </button>
                     </div>
                   </div>
@@ -741,23 +913,99 @@ export default function MachineHistoryModal({ isOpen, onClose, machine, initialT
                       </button>
                     </div>
                   ) : filteredProcesses.length === 0 ? (
-                    <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
+                    <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                       <p className="text-xs text-slate-500 font-semibold">
-                        Nenhum processo corresponde à busca "<strong>{procSearch}</strong>".
+                        Nenhum processo corresponde aos filtros selecionados.
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProcSearch("");
+                          setProcImpactFilter("all");
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Limpar Filtros
+                      </button>
                     </div>
                   ) : (
                     <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
                       <div className="max-h-96 overflow-y-auto">
                         <table className="w-full text-left text-xs border-collapse">
-                          <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-200 z-10 backdrop-blur-xs">
+                          <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-wider sticky top-0 border-b border-slate-200 z-10 backdrop-blur-xs select-none">
                             <tr>
-                              <th className="px-4 py-3">Processo (Imagem)</th>
-                              <th className="px-3 py-3">PID</th>
-                              <th className="px-3 py-3 w-44">Uso de CPU</th>
-                              <th className="px-3 py-3 w-40">Memória RAM</th>
-                              <th className="px-3 py-3 w-36">E/S de Disco</th>
-                              <th className="px-3 py-3 text-right">Impacto</th>
+                              <th
+                                onClick={() => handleSortColumn("name")}
+                                className={`px-4 py-3 cursor-pointer transition-colors group ${
+                                  procSort === "name" ? "bg-slate-100/90 text-blue-700 font-black" : "hover:bg-slate-100 hover:text-slate-800"
+                                }`}
+                                title="Ordenar por Nome do Processo (clique para alternar A-Z / Z-A)"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span>Processo (Imagem)</span>
+                                  {renderSortIndicator("name")}
+                                </div>
+                              </th>
+                              <th
+                                onClick={() => handleSortColumn("pid")}
+                                className={`px-3 py-3 cursor-pointer transition-colors group w-24 ${
+                                  procSort === "pid" ? "bg-slate-100/90 text-blue-700 font-black" : "hover:bg-slate-100 hover:text-slate-800"
+                                }`}
+                                title="Ordenar por PID (ID do Processo)"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span>PID</span>
+                                  {renderSortIndicator("pid")}
+                                </div>
+                              </th>
+                              <th
+                                onClick={() => handleSortColumn("cpu")}
+                                className={`px-3 py-3 cursor-pointer transition-colors group w-44 ${
+                                  procSort === "cpu" ? "bg-slate-100/90 text-blue-700 font-black" : "hover:bg-slate-100 hover:text-slate-800"
+                                }`}
+                                title="Ordenar por % de Uso de CPU (clique para alternar Maior/Menor)"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span>Uso de CPU</span>
+                                  {renderSortIndicator("cpu")}
+                                </div>
+                              </th>
+                              <th
+                                onClick={() => handleSortColumn("ram")}
+                                className={`px-3 py-3 cursor-pointer transition-colors group w-40 ${
+                                  procSort === "ram" ? "bg-slate-100/90 text-blue-700 font-black" : "hover:bg-slate-100 hover:text-slate-800"
+                                }`}
+                                title="Ordenar por Memória RAM (clique para alternar Maior/Menor)"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span>Memória RAM</span>
+                                  {renderSortIndicator("ram")}
+                                </div>
+                              </th>
+                              <th
+                                onClick={() => handleSortColumn("disk")}
+                                className={`px-3 py-3 cursor-pointer transition-colors group w-36 ${
+                                  procSort === "disk" ? "bg-slate-100/90 text-blue-700 font-black" : "hover:bg-slate-100 hover:text-slate-800"
+                                }`}
+                                title="Ordenar por Taxa de E/S de Disco (clique para alternar Maior/Menor)"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span>E/S de Disco</span>
+                                  {renderSortIndicator("disk")}
+                                </div>
+                              </th>
+                              <th
+                                onClick={() => handleSortColumn("impact")}
+                                className={`px-3 py-3 text-right cursor-pointer transition-colors group w-28 ${
+                                  procSort === "impact" ? "bg-slate-100/90 text-blue-700 font-black" : "hover:bg-slate-100 hover:text-slate-800"
+                                }`}
+                                title="Ordenar por Gravidade do Impacto (Crítico > Elevado > Normal)"
+                              >
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span>Impacto</span>
+                                  {renderSortIndicator("impact")}
+                                </div>
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
