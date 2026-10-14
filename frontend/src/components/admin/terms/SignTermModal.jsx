@@ -604,7 +604,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
         </div>
 
         {/* 2. CORPO DO MODAL BASEADO NA ETAPA ATIVA */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1 text-slate-800">
+        <div className={`overflow-y-auto flex-1 text-slate-800 ${currentStep === 2 ? "p-3 sm:p-5 space-y-2 sm:space-y-4" : "p-4 sm:p-6 space-y-4 sm:space-y-5"}`}>
           {error && (
             <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-3">
               <AlertCircle size={20} className="shrink-0" />
@@ -688,67 +688,20 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
           {/* ETAPA 2: PROVA DE VIDA FACIAL COM DESAFIOS ALEATÓRIOS     */}
           {/* ========================================================= */}
           {currentStep === 2 && (
-            <div className="space-y-3 sm:space-y-4 animate-fadeIn">
+            <div className="animate-fadeIn flex flex-col items-center justify-center space-y-2 sm:space-y-3">
               
-              {/* Card de Instrução do Desafio Biométrico - 100% Responsivo e Sem Truncamento */}
-              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-amber-500/15 via-white to-amber-500/5 border-2 border-amber-400 shadow-sm space-y-2.5">
-                {/* Linha 1: Badges de Etapa e Status do Rosto */}
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-900 border border-amber-400/50 text-[11px] font-black uppercase tracking-wider">
-                    <Sparkles size={13} className="text-amber-600" />
-                    Desafio {currentChallengeIndex + 1} de {challenges.length}
-                  </span>
-
-                  <div>
-                    {challengeCompleted ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded-full shadow-sm animate-bounce">
-                        <Check size={14} /> Desafio Concluído!
-                      </span>
-                    ) : faceDetected ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-900 text-xs font-bold rounded-full border border-blue-200 shadow-xs">
-                        <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-                        Rosto Alinhado ({faceConfidence ? faceConfidence : 95}%)
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-900 text-xs font-semibold rounded-full border border-amber-300">
-                        👤 Centralize seu rosto
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Linha 2: Ação Principal em Destaque Absoluto (Sem truncate) */}
-                <div className="flex items-start gap-3 pt-0.5">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-md shadow-amber-500/25 shrink-0 mt-0.5">
-                    {activeChallenge ? (
-                      <activeChallenge.icon size={26} className="animate-pulse" />
-                    ) : (
-                      <Sparkles size={26} />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="text-base sm:text-lg font-black text-slate-900 leading-snug break-words">
-                      {activeChallenge ? activeChallenge.title : "Posicione o rosto na tela"}
-                    </h4>
-                    <p className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed mt-1 break-words">
-                      {activeChallenge ? activeChallenge.instruction : "Olhe fixamente para a câmera"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Linha 3: Barra de Progresso do Desafio */}
+              {/* Feed da Câmera com Guias e Instruções Integradas Diretamente no Enquadramento */}
+              <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-black border-2 border-slate-700 shadow-2xl w-full max-w-[310px] sm:max-w-sm md:max-w-md mx-auto aspect-[3/4] max-h-[48dvh] sm:max-h-[55dvh] flex items-center justify-center">
+                {/* Barra de Progresso do Desafio no Topo do Frame da Câmera */}
                 {challengeProgress > 0 && (
-                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-1">
+                  <div className="absolute top-0 inset-x-0 h-1.5 bg-slate-900/80 z-30 overflow-hidden">
                     <div 
-                      className="bg-amber-500 h-full transition-all duration-300 rounded-full" 
+                      className="bg-amber-400 h-full transition-all duration-200 rounded-r-full shadow-[0_0_10px_rgba(251,191,36,0.9)]" 
                       style={{ width: `${challengeProgress}%` }}
                     />
                   </div>
                 )}
-              </div>
 
-              {/* Feed da Câmera Adaptativo (Proporção 3:4 perfeita para iPad e iPhone) */}
-              <div className="relative rounded-3xl overflow-hidden bg-black border-2 border-slate-700 shadow-2xl w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto aspect-[3/4] flex items-center justify-center">
                 {cameraLoading && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 z-30 bg-slate-900/90 backdrop-blur-sm">
                     <RefreshCw size={32} className="animate-spin text-blue-500 mb-2" />
@@ -794,7 +747,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                     {/* Guia Oval de Centralização do Rosto Adaptativa */}
                     <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
                       <div
-                        className={`w-44 h-60 sm:w-52 sm:h-68 rounded-full border-4 transition-all duration-300 shadow-2xl ${
+                        className={`w-[62%] h-[72%] max-w-[210px] max-h-[280px] rounded-full border-4 transition-all duration-300 shadow-2xl ${
                           challengeCompleted
                             ? "border-emerald-400 bg-emerald-500/10 scale-105 shadow-[0_0_24px_rgba(52,211,153,0.5)]"
                             : faceDetected
@@ -804,61 +757,84 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                       />
                     </div>
 
-                    {/* Tarja de Instrução Flutuante Direta SOBRE o Feed da Câmera (Visibilidade Imediata nos Olhos) */}
-                    <div className="absolute top-3.5 left-3.5 right-24 z-20 pointer-events-none">
+                    {/* Tarja de Instrução Flutuante Direta SOBRE o Feed da Câmera (Foco Visual Ocular) */}
+                    <div className="absolute top-3 left-3 right-24 z-20 pointer-events-none">
                       <div className="bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/20 shadow-xl flex items-center gap-2">
-                        <span className="text-base shrink-0">{activeChallenge?.emoji || "✨"}</span>
+                        <span className="text-lg sm:text-xl shrink-0">{activeChallenge?.emoji || "✨"}</span>
                         <div className="min-w-0">
-                          <span className="text-[10px] uppercase font-bold text-amber-400 block leading-none">
-                            Ação {currentChallengeIndex + 1}/{challenges.length}
-                          </span>
-                          <span className="text-xs font-black text-white block leading-tight mt-0.5 break-words">
-                            {activeChallenge?.title}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] uppercase font-bold text-amber-400 block leading-none">
+                              Desafio {currentChallengeIndex + 1}/{challenges.length}
+                            </span>
+                            {challengeCompleted ? (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-500/30 text-emerald-300 rounded border border-emerald-400/40">
+                                ✓ Concluído
+                              </span>
+                            ) : faceDetected ? (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-500/30 text-blue-300 rounded border border-blue-400/40">
+                                {faceConfidence ? `${faceConfidence}%` : "OK"}
+                              </span>
+                            ) : null}
+                          </div>
+                          <span className="text-xs sm:text-sm font-black text-white block leading-tight mt-0.5 truncate">
+                            {activeChallenge ? activeChallenge.title : "Posicione o rosto"}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Dica Flutuante Inferior sobre a Moldura Facial */}
-                    <div className="absolute bottom-12 inset-x-4 flex justify-center pointer-events-none z-20 text-center">
-                      <span className={`px-3 py-1 rounded-full text-xs font-extrabold backdrop-blur-md shadow-lg transition-all ${
+                    {/* Dica Flutuante Inferior sobre a Moldura Facial (Onde o usuário está olhando) */}
+                    <div className="absolute bottom-11 inset-x-3 sm:inset-x-4 flex justify-center pointer-events-none z-20 text-center">
+                      <span className={`px-3.5 py-1.5 rounded-full text-xs font-black backdrop-blur-md shadow-xl transition-all max-w-[92%] break-words ${
                         challengeCompleted 
-                          ? "bg-emerald-600/90 text-white border border-emerald-400 animate-pulse" 
+                          ? "bg-emerald-600/95 text-white border border-emerald-400 shadow-emerald-900/50 animate-bounce" 
                           : faceDetected 
-                          ? "bg-slate-950/80 text-amber-300 border border-amber-400/50" 
-                          : "bg-slate-950/80 text-white/90 border border-white/20"
+                          ? "bg-slate-950/85 text-amber-300 border border-amber-400/50" 
+                          : "bg-slate-950/85 text-white/95 border border-white/20"
                       }`}>
                         {challengeCompleted 
                           ? "✓ Desafio Concluído!" 
                           : faceDetected 
-                          ? activeChallenge?.instruction || "Execute o movimento solicitado" 
-                          : "Enquadre seu rosto no círculo"}
+                          ? activeChallenge?.instruction || "Execute a ação solicitada" 
+                          : "👤 Centralize seu rosto no círculo"}
                       </span>
                     </div>
 
-                    {/* Botão de Alternar Câmera (Frontal / Traseira) para Tablets e Smartphones */}
+                    {/* Botão de Alternar Câmera (Frontal / Traseira) */}
                     <button
                       type="button"
                       onClick={toggleFacingMode}
-                      className="absolute top-3.5 right-3.5 z-20 pointer-events-auto px-2.5 py-1.5 bg-slate-900/80 hover:bg-slate-800 active:scale-95 text-white text-xs font-bold rounded-xl border border-slate-700/80 backdrop-blur-md shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
+                      className="absolute top-3 right-3 z-20 pointer-events-auto px-2.5 py-1.5 bg-slate-900/80 hover:bg-slate-800 active:scale-95 text-white text-xs font-bold rounded-xl border border-slate-700/80 backdrop-blur-md shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
                       title="Alternar entre câmera frontal e traseira"
                     >
                       <SwitchCamera size={14} className="text-blue-400" />
                       <span className="text-[11px]">{facingMode === "user" ? "Traseira" : "Frontal"}</span>
                     </button>
 
-                    {/* Badge flutuante inferior no box */}
-                    <div className="absolute bottom-3.5 left-3.5 z-20 pointer-events-none">
-                      <div className="bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-white text-[10px] font-semibold border border-slate-700/60 flex items-center gap-1.5 shadow">
-                        <Camera size={12} className="text-blue-400" />
+                    {/* Badge flutuante inferior esquerdo no box: Modo de Câmera */}
+                    <div className="absolute bottom-3 left-3 z-20 pointer-events-none">
+                      <div className="bg-slate-900/80 backdrop-blur-md px-2 py-0.5 rounded-lg text-white text-[10px] font-semibold border border-slate-700/60 flex items-center gap-1.5 shadow">
+                        <Camera size={11} className="text-blue-400" />
                         <span>{facingMode === "user" ? "Frontal" : "Traseira"}</span>
+                      </div>
+                    </div>
+
+                    {/* Badge flutuante inferior direito no box: Detecção de Rosto */}
+                    <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
+                      <div className={`backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-bold border flex items-center gap-1 shadow ${
+                        faceDetected
+                          ? "bg-blue-950/80 text-blue-300 border-blue-500/40"
+                          : "bg-slate-900/80 text-slate-400 border-slate-700/60"
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${faceDetected ? "bg-blue-400 animate-ping" : "bg-slate-500"}`} />
+                        <span>{faceDetected ? "Alinhado" : "Buscando"}</span>
                       </div>
                     </div>
                   </>
                 )}
               </div>
 
-              <p className="text-center text-[11px] sm:text-xs text-slate-500">
+              <p className="text-center text-[10px] sm:text-xs text-slate-500">
                 A foto biométrica é capturada automaticamente quando os desafios forem concluídos.
               </p>
             </div>

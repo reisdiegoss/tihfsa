@@ -1406,3 +1406,17 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Feedback em tempo real posicionado logo abaixo da moldura do rosto: sinaliza "Enquadre seu rosto no círculo", muda para a ação detalhada quando o rosto é detectado e pulsa em verde com "✓ Desafio Concluído!" assim que o movimento é validado.
     - **Eliminação do Bug `Alinhado (NaN%)`**:
       - Ajustada a extração do score neural do face-api.js para ler `detection.detection.score`, com fallback seguro e tratamento numérico (`Number.isFinite`), eliminando a exibição de `NaN%`.
+
+43. **Otimização Ergonômica Mobile da Câmera Biométrica e Eliminação de Rolagem (`SignTermModal.jsx`)**:
+    - **Eliminação do Card Externo Redundante**:
+      - **Problema de UX e Linha de Visão**: O card amarelo posicionado acima da câmera ocupava ~140px verticais e dispersava a atenção do usuário para fora da lente do dispositivo. Em smartphones (iPhone e Android), esse balão empurrava o feed de vídeo para baixo, gerando rolagem vertical indesejada e cortando a imagem da câmera e os botões de ação ("Voltar", "Cancelar", "Concluir Foto Facial").
+      - **Solução Adotada**: O balão externo foi completamente removido, eliminando a duplicação de informações. Toda a comunicação do desafio foi integrada diretamente no frame de visualização da câmera onde os olhos do usuário já estão focados.
+    - **Arquitetura Visual Integrada no Feed (HUD de Alta Performance)**:
+      - *Barra de Progresso Neon Superior*: Barra de 1.5px posicionada na borda superior do quadro de vídeo (`bg-amber-400` com glow), sem ocupar espaço vertical no layout.
+      - *Pílula Flutuante Superior*: Exibe emoji animado, contador `Desafio X/Y`, status neural (`Alinhado 80%` ou `✓ Concluído`) e o título da ação em vidro translúcido (`bg-slate-950/85 backdrop-blur-md`).
+      - *Pílula Dinâmica Inferior*: Posicionada sob a moldura oval com orientação em tempo real ("Centralize seu rosto", "Sorria naturalmente...", "Gire suavemente a cabeça...").
+      - *Moldura Oval Proporcional*: Dimensionada em porcentagens responsivas (`w-[62%] h-[72%] max-w-[210px] max-h-[280px]`), garantindo que caiba com perfeição em qualquer proporção de tela.
+      - *Badges de Canto Inferior*: Indicadores discretos de lente (`Frontal` / `Traseira`) e de rastreamento facial (`Alinhado` / `Buscando`).
+    - **Enquadramento em Viewport Único (Zero Scroll)**:
+      - A altura do frame de vídeo foi configurada com limites dinâmicos de viewport (`max-h-[48dvh] sm:max-h-[55dvh] max-w-[310px] sm:max-w-sm`), e o padding interno do modal ajustado para `p-3 sm:p-5`.
+      - Toda a Etapa 2 agora cabe confortavelmente em 100% dos smartphones sem nenhuma barra de rolagem, mantendo cabeçalho, vídeo com guias e botões de ação visíveis simultaneamente.
