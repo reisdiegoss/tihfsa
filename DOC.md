@@ -1229,6 +1229,41 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Captura do horário real de logon de sessões ativas via data de criação do processo gráfico (`CreationDate` de `explorer.exe`).
       - Agrupamento por minuto de `Win32_UserProfile` e descarte automático de varreduras em lote.
     - **Higienização da Base de Dados (`init_db.py`)**:
-      - Rotina `cleanup_corrupted_logon_history` que removeu os registros corrompidos gerados pelas varreduras de sistema e realinhou `last_seen_at` com o logon real para sessões passadas.
+38. **Módulo de Termos de Retirada & Responsabilidade de Equipamentos (100% Digital / Sem Papel)**:
+    - **Contexto e Eliminação do Processo Físico**:
+      - Substituição completa do fluxo manual (Word impresso, assinatura com caneta em papel, escaneamento manual em scanner de rede e arquivamento em pastas físicas ou de rede) por um processo 100% digital, ágil e seguro para uso no tablet ou computador pelo suporte de TI.
+    - **Cadastro Inteligente de Beneficiários**:
+      - **Com Conta de Rede (AD)**: Vinculação direta ao usuário do Active Directory com autopreenchimento imediato de nome completo, e-mail e departamento/setor.
+      - **Sem Conta de Rede (Prestadores / Terceirizados / Novos Contratados)**: Cadastro dinâmico com Nome Completo, Setor/Departamento, Documento (CPF/RG/Matrícula), Telefone/WhatsApp e E-mail.
+    - **Gestão de Equipamentos com Atalhos Rápidos**:
+      - Atalhos com 1 clique para os itens mais frequentes do hotel:
+        - 🎧 **Fone de Ouvido Estéreo** (Periférico / Comunicação)
+        - 📻 **Rádio Comunicador HT** (Comunicação / Rádio Operacional)
+        - 📱 **Celular Corporativo** (Telefonia Móvel)
+        - 💻 **Notebook Corporativo** (Computação / Laptop)
+        - 🔑 **Chave de Acesso / Chave Mestra / TAG** (Controle de Acesso)
+        - ⏰ **Relógio de Acesso / Crachá de Proximidade** (Controle de Acesso)
+        - ➕ **Equipamento Avulso / Customizado**
+      - Detalhamento de cada bem com Etiqueta de Patrimônio, Número de Série (S/N), Quantidade, Estado de Conservação ("Em perfeito estado", "Novo", etc.) e Acessórios Inclusos (carregador, fonte, cabo USB-C, capa, case/mochila).
+    - **Assinatura Digital Manuscrita em Tela (`signature_pad`)**:
+      - Canvas touch de alta definição compatível com telas sensíveis ao toque de tablets, smartphones e computadores.
+      - Traço suave com caneta digital ou dedo, suporte a limpeza rápida e gravação vetorial convertida para PNG em `/uploads/terms/signatures/`.
+    - **Validação Biométrica Facial com Inteligência Artificial Neural (`face-api.js` / `@vladmandic/face-api`)**:
+      - Detecção de rosto humano em tempo real diretamente na câmera frontal do tablet ou webcam.
+      - **Modelos Neurais 100% Locais (`/models/`)**: Operação offline sem depender de APIs externas ou internet, garantindo privacidade LGPD e resposta instantânea (< 1s).
+      - Moldura visual inteligente com detecção de enquadramento (retângulo/oval verde pulsante e cálculo de score de confiança biométrica).
+      - Registro da fotografia da face no momento exato do aceite do documento, armazenada em `/uploads/terms/facial_photos/`.
+    - **Auditoria, Segurança Jurídica e Rastreabilidade**:
+      - Numeração sequencial unificada: `TR-YYYY-XXXX` (ex: `TR-2026-0001`).
+      - Registro do IP do assinante, identificador do dispositivo/navegador, carimbo de data/hora oficial e técnico responsável pela entrega.
+      - Cláusulas e compromissos legais institucionais do Hotel Fasano Salvador para guarda, integridade e devolução de patrimônio corporativo.
+    - **Visualização Completa e Impressão em Formato A4 Institucional**:
+      - Modal com layout padrão A4 contendo timbre oficial do Hotel Fasano Salvador, dados cadastrais, tabela de bens entregues, cláusulas jurídicas e as duas evidências lado a lado (**Foto Biométrica Facial com Carimbo** e **Assinatura Digital Manuscrita**).
+      - Função "Imprimir Termo / Salvar PDF" via `window.print()` com folhas formatadas e botões da interface ocultos automaticamente na impressão.
+    - **Fluxo de Devolução e Baixa de Equipamentos**:
+      - Botão "Registrar Devolução" para dar baixa no termo quando o colaborador devolve os itens ao setor de TI, registrando o técnico recebedor, data da devolução, estado de conservação dos bens e observações.
+    - **Navegação e Controle de Acesso**:
+      - Novo menu **"Termos"** no menu lateral (`Sidebar.jsx`) e na barra de navegação móvel para tablets (`BottomNav.jsx`).
+      - Módulo `'terms'` integrado nas regras de permissão do sistema (`allowed_modules` e `require_technician`).
 
 

@@ -117,9 +117,10 @@ def check_user_module_access(user: User, module: str) -> bool:
         return True
     if user.allowed_modules is None:
         if "technician" in roles:
-            return module in {"tickets", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts"}
+            return module in {"tickets", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"}
         return module == "tickets"
     return module in (user.allowed_modules or [])
+
 
 
 def require_module(module: str):

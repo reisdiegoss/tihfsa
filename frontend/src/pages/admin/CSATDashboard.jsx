@@ -85,8 +85,9 @@ function getRatingLabel(rating) {
   return { text: "Muito Insatisfeito", bg: "bg-red-50 text-red-700 border-red-200" };
 }
 
-export default function CSATDashboard() {
+export default function CSATDashboard({ hideHeader = false }) {
   const navigate = useNavigate();
+
 
   // Estados de dados
   const [metrics, setMetrics] = useState(null);
@@ -175,37 +176,40 @@ export default function CSATDashboard() {
       {/* ========================================================
           CABEÇALHO
           ======================================================== */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-500 shadow-sm">
-            <Star size={26} className="fill-amber-400 text-amber-500" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-                Avaliações & CSAT
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                Qualidade de Atendimento
-              </span>
+      {!hideHeader && (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-500 shadow-sm">
+              <Star size={26} className="fill-amber-400 text-amber-500" />
             </div>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Acompanhe a percepção dos usuários, notas por chamado e o ranking de desempenho da equipe técnica.
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                  Avaliações & CSAT
+                </h1>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                  Qualidade de Atendimento
+                </span>
+              </div>
+              <p className="text-sm text-slate-500 mt-0.5">
+                Acompanhe a percepção dos usuários, notas por chamado e o ranking de desempenho da equipe técnica.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={refreshing ? "animate-spin text-blue-600" : "text-slate-500"} />
+              Atualizar
+            </button>
           </div>
         </div>
+      )}
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw size={16} className={refreshing ? "animate-spin text-blue-600" : "text-slate-500"} />
-            Atualizar
-          </button>
-        </div>
-      </div>
 
       {/* ========================================================
           CARDS DE RESUMO EXECUTIVO (TOP STATS)

@@ -1,19 +1,17 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, QrCode, LogOut, Settings, Star, Briefcase, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, QrCode, LogOut, Settings, Star, Briefcase, BarChart3, FileSignature } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin, isTechnician, isStaff } = useAuth();
 
-  const userRoles = user?.roles || (user?.role ? [user.role] : []);
-  const isAdmin = userRoles.some(r => r.toLowerCase() === "admin");
   const userModules = user?.allowed_modules || [];
 
   const rawMenuItems = [
     { name: "Dashboard", path: "/admin", icon: LayoutDashboard, module: "all" },
     { name: "Chamados", path: "/admin/tickets", icon: Ticket, module: "tickets" },
     { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle, module: "tickets" },
-    { name: "Avaliações & CSAT", path: "/admin/csat", icon: Star, module: "tickets" },
+    { name: "Termos", path: "/admin/terms", icon: FileSignature, module: "terms" },
     { name: "Contratos", path: "/admin/contracts", icon: Briefcase, module: "contracts" },
     { name: "Relatórios", path: "/admin/reports", icon: BarChart3, module: "reports" },
     { name: "Ativos", path: "/admin/assets", icon: Monitor, module: "assets" },
@@ -24,8 +22,16 @@ export default function Sidebar() {
 
   const menuItems = rawMenuItems.filter(item => {
     if (item.module === "all" || isAdmin) return true;
-    return userModules.includes(item.module);
+    if (item.module === "terms") {
+      // Garante visibilidade garantida para equipe técnica, gestores e admins
+      return isTechnician || isStaff || isAdmin || userModules.includes("terms");
+    }
+    if (userModules.length > 0) return userModules.includes(item.module);
+    if (isTechnician) return ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"].includes(item.module);
+    return item.module === "tickets";
   });
+
+
 
   return (
     <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 h-screen flex-col justify-between p-6 z-50">

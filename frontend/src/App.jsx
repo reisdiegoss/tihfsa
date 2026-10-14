@@ -17,6 +17,7 @@ import PublicTicketForm from "./pages/public/PublicTicketForm";
 import CSATDashboard from "./pages/admin/CSATDashboard";
 import Contracts from "./pages/admin/Contracts";
 import Reports from "./pages/admin/Reports";
+import Terms from "./pages/admin/Terms";
 
 // Client App Pages (Colaboradores / Vistorias)
 import ClientHome from "./pages/client/ClientHome";
@@ -100,12 +101,16 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="tickets" element={<TicketList />} />
             <Route path="tickets/new" element={<NewTicket />} />
-            <Route path="csat" element={<CSATDashboard />} />
-            <Route path="avaliacoes" element={<CSATDashboard />} />
+            <Route path="csat" element={<Navigate to="/admin/tickets?tab=csat" replace />} />
+            <Route path="avaliacoes" element={<Navigate to="/admin/tickets?tab=csat" replace />} />
+
             <Route path="contracts" element={<Contracts />} />
             <Route path="contratos" element={<Contracts />} />
+            <Route path="terms" element={<Terms />} />
+            <Route path="termos" element={<Terms />} />
             <Route path="reports" element={<Reports />} />
             <Route path="relatorios" element={<Reports />} />
+
             <Route path="assets" element={<Assets />} />
             <Route path="qrcodes" element={<QRCodeManager />} />
             <Route path="qrcodes/scan" element={<QRCodeScannerPage />} />

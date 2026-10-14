@@ -5,12 +5,15 @@ import {
   Filter, X, RotateCcw, SlidersHorizontal, Tag, 
   Layers, AlertTriangle, ChevronLeft, ChevronsLeft, 
   ChevronsRight, CheckCircle2, User, Radio, Activity, Wifi,
-  CheckSquare, Square, MinusSquare, ShieldCheck, MessageSquare, Send
+  CheckSquare, Square, MinusSquare, ShieldCheck, MessageSquare, Send,
+  Star, Ticket
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import TicketDetailDrawer from "../../components/admin/TicketDetailDrawer";
+import CSATDashboard from "./CSATDashboard";
+
 
 // Formatação robusta de Data e Hora
 function formatDateTime(dateStr) {
@@ -78,6 +81,30 @@ export default function TicketList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isStaff } = useAuth();
 
+  // Aba Principal: 'tickets' (Fila de Chamados) ou 'csat' (Avaliações & CSAT)
+  const tabParam = searchParams.get("tab");
+  const [activeMainTab, setActiveMainTab] = useState(tabParam === "csat" ? "csat" : "tickets");
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t === "csat") {
+      setActiveMainTab("csat");
+    } else if (t === "tickets") {
+      setActiveMainTab("tickets");
+    }
+  }, [searchParams]);
+
+  const handleSelectTab = (tab) => {
+    setActiveMainTab(tab);
+    const newParams = new URLSearchParams(searchParams);
+    if (tab === "csat") {
+      newParams.set("tab", "csat");
+    } else {
+      newParams.delete("tab");
+    }
+    setSearchParams(newParams);
+  };
+
   // Dados
   const [tickets, setTickets] = useState([]);
   const [categoriesList, setCategoriesList] = useState([]);
@@ -103,6 +130,7 @@ export default function TicketList() {
       setSearchParams(newParams, { replace: true });
     }
   };
+
 
   // Estados de Filtro
   const [searchTerm, setSearchTerm] = useState("");
@@ -540,8 +568,46 @@ export default function TicketList() {
         </div>
       )}
 
-      {/* Top Header & Actions */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* Abas Superiores: Fila de Atendimento vs Avaliações & CSAT */}
+      <div className="flex items-center gap-3 border-b border-slate-200/80 pb-3">
+        <button
+          type="button"
+          onClick={() => handleSelectTab("tickets")}
+          className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-sm font-extrabold transition-all cursor-pointer ${
+            activeMainTab === "tickets"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+              : "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200"
+          }`}
+        >
+          <Ticket size={18} />
+          <span>Fila de Chamados</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+            activeMainTab === "tickets" ? "bg-white/25 text-white" : "bg-blue-50 text-blue-700"
+          }`}>
+            {tickets.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectTab("csat")}
+          className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-sm font-extrabold transition-all cursor-pointer ${
+            activeMainTab === "csat"
+              ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+              : "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200"
+          }`}
+        >
+          <Star size={18} className={activeMainTab === "csat" ? "fill-white text-white" : "text-amber-500 fill-amber-400"} />
+          <span>Avaliações & CSAT</span>
+        </button>
+      </div>
+
+      {activeMainTab === "csat" ? (
+        <CSATDashboard hideHeader={false} />
+      ) : (
+        <>
+          {/* Top Header & Actions */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
             Fila de Chamados de TI
@@ -1417,6 +1483,8 @@ export default function TicketList() {
 
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* Slide-Over Detail Drawer */}

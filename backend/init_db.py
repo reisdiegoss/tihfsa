@@ -367,7 +367,70 @@ def apply_migrations():
             CREATE INDEX IF NOT EXISTS idx_outage_status ON network_outage_events(status);
             CREATE INDEX IF NOT EXISTS idx_outage_started_at ON network_outage_events(started_at);
         """),
+
+        # Módulo de Termos de Retirada e Responsabilidade de Equipamentos (Assinatura + Reconhecimento Facial)
+        ("equipment_terms", """
+            CREATE TABLE IF NOT EXISTS equipment_terms (
+                id SERIAL PRIMARY KEY,
+                term_number VARCHAR(50) UNIQUE NOT NULL,
+                status VARCHAR(30) DEFAULT 'pending_signature' NOT NULL,
+                term_type VARCHAR(50) DEFAULT 'retirada' NOT NULL,
+                beneficiary_type VARCHAR(20) DEFAULT 'ad_user' NOT NULL,
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                beneficiary_name VARCHAR(200) NOT NULL,
+                beneficiary_document VARCHAR(50),
+                department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+                department_name VARCHAR(150),
+                beneficiary_email VARCHAR(150),
+                beneficiary_phone VARCHAR(50),
+                has_ad_account BOOLEAN DEFAULT TRUE NOT NULL,
+                technician_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                technician_name VARCHAR(200) NOT NULL,
+                signed_at TIMESTAMP WITH TIME ZONE,
+                signature_url VARCHAR(350),
+                facial_photo_url VARCHAR(350),
+                facial_verified BOOLEAN DEFAULT FALSE NOT NULL,
+                facial_confidence DOUBLE PRECISION,
+                signer_ip VARCHAR(50),
+                signer_device VARCHAR(255),
+                returned_at TIMESTAMP WITH TIME ZONE,
+                return_technician_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                return_technician_name VARCHAR(200),
+                return_condition VARCHAR(100),
+                return_notes TEXT,
+                expected_return_date TIMESTAMP WITH TIME ZONE,
+                legal_text TEXT NOT NULL,
+                notes TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_equipment_terms_number ON equipment_terms(term_number);
+            CREATE INDEX IF NOT EXISTS idx_equipment_terms_status ON equipment_terms(status);
+            CREATE INDEX IF NOT EXISTS idx_equipment_terms_beneficiary ON equipment_terms(beneficiary_name);
+            CREATE INDEX IF NOT EXISTS idx_equipment_terms_user_id ON equipment_terms(user_id);
+            CREATE INDEX IF NOT EXISTS idx_equipment_terms_dept_id ON equipment_terms(department_id);
+        """),
+
+        ("equipment_term_items", """
+            CREATE TABLE IF NOT EXISTS equipment_term_items (
+                id SERIAL PRIMARY KEY,
+                term_id INTEGER NOT NULL REFERENCES equipment_terms(id) ON DELETE CASCADE,
+                asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+                item_name VARCHAR(200) NOT NULL,
+                category VARCHAR(100),
+                asset_tag VARCHAR(50),
+                serial_number VARCHAR(100),
+                quantity INTEGER DEFAULT 1 NOT NULL,
+                condition VARCHAR(100) DEFAULT 'Em perfeito estado de funcionamento' NOT NULL,
+                accessories VARCHAR(255),
+                is_returned BOOLEAN DEFAULT FALSE NOT NULL,
+                notes TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_equipment_term_items_term_id ON equipment_term_items(term_id);
+            CREATE INDEX IF NOT EXISTS idx_equipment_term_items_asset_id ON equipment_term_items(asset_id);
+        """),
     ]
+
 
     with engine.connect() as conn:
         for name, sql in migration_statements:

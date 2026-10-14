@@ -1,14 +1,15 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity } from "lucide-react";
+import { LayoutDashboard, Ticket, FileSignature, Monitor, Activity } from "lucide-react";
 
 export default function BottomNav() {
   const menuItems = [
     { name: "Início", path: "/admin", icon: LayoutDashboard },
     { name: "Fila", path: "/admin/tickets", icon: Ticket },
-    { name: "Novo", path: "/admin/tickets/new", icon: PlusCircle },
+    { name: "Termos", path: "/admin/terms", icon: FileSignature },
     { name: "Ativos", path: "/admin/assets", icon: Monitor },
-    { name: "Zabbix", path: "/admin/zabbix", icon: Activity },
+    { name: "Monitor", path: "/admin/monitoring", icon: Activity },
   ];
+
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 px-2 py-2 pb-safe z-50 flex items-center justify-around shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">

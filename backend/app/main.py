@@ -17,11 +17,13 @@ from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
     attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes,
-    sla, monitoring, public_tickets, rooms, floors, system_settings, surveys, notification_logs, contracts, reports
+    sla, monitoring, public_tickets, rooms, floors, system_settings, surveys, notification_logs, contracts, reports, terms
 )
 import app.models.network_map  # noqa: F401
 import app.models.qrcode       # noqa: F401
 import app.models.sla          # noqa: F401
+import app.models.term         # noqa: F401
+
 
 # Criar pasta uploads se não existir
 os.makedirs("uploads", exist_ok=True)
@@ -515,6 +517,7 @@ app.include_router(surveys.router)
 app.include_router(notification_logs.router)
 app.include_router(contracts.router)
 app.include_router(reports.router)
+app.include_router(terms.router)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

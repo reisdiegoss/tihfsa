@@ -57,7 +57,7 @@ def login(
                 display_name=admin.display_name,
                 role=admin.role.value,
                 roles=admin_roles,
-                allowed_modules=["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts"],
+                allowed_modules=["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts", "terms"],
                 can_change_password=True,
             )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
@@ -79,13 +79,17 @@ def login(
     # Determinar allowed_modules
     is_admin = user.role == UserRole.ADMIN or "admin" in user_roles
     if is_admin:
-        u_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts"]
+        u_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts", "terms"]
     elif user.allowed_modules is not None:
         u_modules = list(user.allowed_modules)
+        # Garante que termos esteja disponível para técnicos e gestores se não estiver bloqueado
+        if ("technician" in user_roles or user.role == UserRole.TECHNICIAN or "manager" in user_roles) and "terms" not in u_modules:
+            u_modules.append("terms")
     elif "technician" in user_roles or user.role == UserRole.TECHNICIAN:
-        u_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts"]
+        u_modules = ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"]
     else:
         u_modules = ["tickets"]
+
 
     return TokenResponse(
         access_token=token,
