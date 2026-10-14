@@ -1334,6 +1334,27 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - **Responsividade Adaptativa na Tela**: Padding dinâmico (`p-4 sm:p-8 md:p-12`) no visualizador para exibição confortável em smartphones, tablets e monitores ultrawide.
       - **Sincronização em Massa no Banco**: Rotina automatizada em `init_db.py` que migra tanto os templates padrão quanto os termos já emitidos no banco de dados.
 
-
-
-
+39. **Adaptação PWA para Tablets (iPad/Android) e Celulares, Câmera sem Zoom e Dossiê Biométrico**:
+    - **Instalação PWA (Progressive Web App)**:
+      - Arquivos criados: `frontend/public/manifest.webmanifest` e `frontend/public/sw.js`.
+      - Exibição `standalone` sem barras de navegação do browser, tema escuro e dourado Fasano, e suporte completo ao iOS/iPadOS (`apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`).
+      - Registro automático de Service Worker no `main.jsx`.
+      - Banner de instalação no topo de `/admin/terms` com suporte ao evento nativo `beforeinstallprompt` (Android/Chrome) e tutorial passo a passo para iPadOS/iOS (Safari: Compartilhar > Adicionar à Tela de Início).
+    - **Adaptação Touch & Menu Navbutton para Tablets e Smartphones**:
+      - `Sidebar.jsx`: Breakpoint ajustado de `hidden md:flex` para `hidden lg:flex`. Com isso, iPads e tablets Android (768px a 1024px) deixam de ter a tela esmagada pelos 256px da barra lateral fixa.
+      - `BottomNav.jsx`: Breakpoint atualizado para `lg:hidden`. Converte o menu lateral em uma barra inferior de botões (navbutton), com altura mínima touch de 44px, acesso direto destacado ao módulo "Termos" e gaveta retrátil "Mais" com os outros módulos e logout.
+      - `AdminLayout.jsx`: Compensação do padding inferior com `pb-24 lg:pb-8` para garantir que nenhum botão ou tabela fique sobreposta pelo navbutton móvel.
+      - `Terms.jsx`: Modo duplo de visualização com alternância rápida entre "Cards Touch" (`LayoutGrid`) e "Tabela Clássica" (`List`). No modo Cards Touch (padrão em tablets e celulares), os termos são organizados em cards com avatar do colaborador, badges de equipamentos, indicadores biométricos e botões touch amplos (mínimo 44px de altura) como "Assinar no Aparelho" e "Visualizar Termo & Biometria".
+    - **Eliminação do Zoom Digital Artificial na Câmera (`SignTermModal.jsx`)**:
+      - **Causa Raiz**: O container possuía a proporção fixa `aspect-4/3` com a propriedade CSS `object-cover`. Em sensores de tablets e smartphones na orientação vertical (proporção 9:16 ou 3:4), forçar `object-cover` em 4:3 fazia o navegador cortar e aproximar digitalmente a imagem em quase 50%. Além disso, constraints rígidas de 640x480 no `getUserMedia` forçavam drivers de câmera de tablets a usar crop digital.
+      - **Solução Definitiva**:
+        - Enquadramento nativo sem cortes com `object-contain` em canvas preto flexível (`max-h-[55vh]`), exibindo 100% do campo de visão (FOV) real do sensor da câmera.
+        - Resolução natural do sensor com constraints flexíveis `{ ideal: 1280, max: 1920 }` e `{ ideal: 720, max: 1080 }`.
+        - Botão de alternância entre câmera frontal e câmera traseira (`facingMode: "user" | "environment"`).
+        - Espelhamento inteligente (`scale-x-[-1]`) ativado exclusivamente quando a câmera frontal está em uso, preservando a orientação original caso a câmera traseira seja selecionada.
+        - Captura de fotos em resolução real no canvas através de `video.videoWidth` e `video.videoHeight`.
+    - **Dossiê Biométrico e Visualização em Alta Resolução (`ViewTermModal.jsx`)**:
+      - Abas de alternância no modal de visualização: "📄 Termo A4" vs "🛡️ Dossiê & Biometria".
+      - Dossiê detalhado exibindo a fotografia biométrica facial em alta definição (280x280px), a assinatura manuscrita touch e os metadados de auditoria (score de confiança da IA, IP de coleta, dispositivo/navegador, carimbo oficial de data/hora e técnico emissor).
+      - **Modal Lightbox Fullscreen com Zoom Interativo**: Ao tocar ou clicar na foto biométrica, abre-se um modal de ampliação em tela cheia com fundo translúcido escuro, controles de zoom e botão de download da imagem original em alta definição para auditoria.
+      - Controles de zoom in / zoom out (+, -, 100%) no visualizador do documento A4 para facilitar leitura em telas de iPads e smartphones.

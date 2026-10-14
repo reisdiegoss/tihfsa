@@ -6,7 +6,7 @@ import {
   Trash2, ShieldCheck, UserCheck, Smartphone, Laptop, 
   Radio, Headphones, Key, Clock, PackageCheck, AlertTriangle,
   ArrowRight, ArrowLeft, Sparkles, Smile, Eye, ArrowUp, 
-  RotateCw, Check, Volume2, Shield
+  RotateCw, Check, Volume2, Shield, SwitchCamera
 } from "lucide-react";
 import api from "../../../api/client";
 
@@ -100,6 +100,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
   // ETAPA 2: Câmera & Prova de Vida
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const [facingMode, setFacingMode] = useState("user"); // "user" (frontal) ou "environment" (traseira)
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -164,7 +165,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
   useEffect(() => {
     if (isOpen && currentStep === 2) {
       setupRandomChallenges();
-      startCamera();
+      startCamera(facingMode);
     } else {
       stopCamera();
     }
@@ -174,18 +175,28 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
     };
   }, [isOpen, currentStep]);
 
-  async function startCamera() {
+  async function startCamera(customFacingMode) {
+    const targetMode = customFacingMode || facingMode;
     try {
       setCameraError(null);
       setCameraLoading(true);
+
+      // Interrompe stream anterior caso exista
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+
+      // Constraints sem restrições que forçam crop/zoom digital no sensor
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: "user",
-          width: { ideal: 640 },
-          height: { ideal: 480 },
+          facingMode: { ideal: targetMode },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
         },
         audio: false,
       });
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -194,11 +205,28 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
       }
     } catch (err) {
       console.error("[Camera] Erro ao acessar webcam/câmera do tablet:", err);
-      setCameraError("Não foi possível acessar a câmera do dispositivo. Verifique as permissões do navegador.");
+      // Tentativa de fallback com constraints genéricos
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        streamRef.current = fallbackStream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = fallbackStream;
+          videoRef.current.play();
+          setCameraActive(true);
+        }
+      } catch (fallbackErr) {
+        setCameraError("Não foi possível acessar a câmera do dispositivo. Verifique as permissões do navegador.");
+      }
     } finally {
       setCameraLoading(false);
     }
   }
+
+  const toggleFacingMode = async () => {
+    const nextMode = facingMode === "user" ? "environment" : "user";
+    setFacingMode(nextMode);
+    await startCamera(nextMode);
+  };
 
   function stopCamera() {
     if (detectionIntervalRef.current) {
@@ -361,16 +389,18 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
     if (!videoRef.current) return;
     const video = videoRef.current;
     const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = video.videoWidth || 640;
-    tempCanvas.height = video.videoHeight || 480;
+    tempCanvas.width = video.videoWidth || 1280;
+    tempCanvas.height = video.videoHeight || 720;
     const ctx = tempCanvas.getContext("2d");
 
-    // Espelha horizontalmente para ficar natural como espelho
-    ctx.translate(tempCanvas.width, 0);
-    ctx.scale(-1, 1);
+    if (facingMode === "user") {
+      // Espelha horizontalmente apenas para câmera frontal (comportamento de espelho natural)
+      ctx.translate(tempCanvas.width, 0);
+      ctx.scale(-1, 1);
+    }
     ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
 
-    const dataUrl = tempCanvas.toDataURL("image/jpeg", 0.9);
+    const dataUrl = tempCanvas.toDataURL("image/jpeg", 0.92);
     setCapturedPhoto(dataUrl);
 
     // Para a câmera e avança para a etapa 3 após pequeno delay de celebração
@@ -671,12 +701,12 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                 </div>
               </div>
 
-              {/* Feed da Câmera com Moldura Oval Guia */}
-              <div className="relative rounded-3xl overflow-hidden bg-slate-950 border-2 border-slate-700 shadow-xl max-w-lg mx-auto aspect-4/3 flex items-center justify-center">
+              {/* Feed da Câmera com Imagem Real (Sem Zoom / Sem Corte) e Moldura Guia */}
+              <div className="relative rounded-3xl overflow-hidden bg-slate-950 border-2 border-slate-700 shadow-xl w-full max-w-xl mx-auto flex items-center justify-center min-h-[300px] max-h-[55vh]">
                 {cameraLoading && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 z-20 bg-slate-900">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 z-20 bg-slate-900/90 backdrop-blur-sm">
                     <RefreshCw size={32} className="animate-spin text-blue-500 mb-2" />
-                    <span className="text-xs font-semibold">Ativando câmera e analisador facial...</span>
+                    <span className="text-xs font-semibold">Ativando lente da câmera real...</span>
                   </div>
                 )}
 
@@ -686,8 +716,8 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                     <p className="text-xs">{cameraError}</p>
                     <button
                       type="button"
-                      onClick={startCamera}
-                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-700"
+                      onClick={() => startCamera(facingMode)}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-700 cursor-pointer"
                     >
                       Tentar Novamente
                     </button>
@@ -698,13 +728,15 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                       ref={videoRef}
                       playsInline
                       muted
-                      className="w-full h-full object-cover scale-x-[-1]"
+                      className={`w-full h-full max-h-[55vh] object-contain transition-transform duration-300 ${
+                        facingMode === "user" ? "scale-x-[-1]" : ""
+                      }`}
                     />
 
-                    {/* Guia Oval de Centralização do Rosto */}
+                    {/* Guia Oval de Centralização do Rosto Adaptativa */}
                     <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                       <div
-                        className={`w-52 h-72 rounded-full border-4 transition-all duration-300 shadow-2xl ${
+                        className={`w-44 h-60 sm:w-56 sm:h-72 rounded-full border-4 transition-all duration-300 shadow-2xl ${
                           challengeCompleted
                             ? "border-emerald-400 bg-emerald-500/10 scale-105"
                             : faceDetected
@@ -714,19 +746,32 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                       />
                     </div>
 
-                    {/* Badge flutuante do desafio */}
+                    {/* Botão de Alternar Câmera (Frontal / Traseira) para Tablets e Smartphones */}
+                    <button
+                      type="button"
+                      onClick={toggleFacingMode}
+                      className="absolute top-3.5 right-3.5 z-20 pointer-events-auto px-3 py-1.5 bg-slate-900/80 hover:bg-slate-800 text-white text-xs font-bold rounded-xl border border-slate-700 backdrop-blur-md shadow-md flex items-center gap-1.5 cursor-pointer transition-colors"
+                      title="Alternar entre câmera frontal e traseira"
+                    >
+                      <SwitchCamera size={14} className="text-blue-400" />
+                      <span className="text-[11px]">{facingMode === "user" ? "Câmera Traseira" : "Câmera Frontal"}</span>
+                    </button>
+
+                    {/* Badge flutuante do desafio e controle */}
                     <div className="absolute bottom-4 inset-x-4 flex items-center justify-between z-10 pointer-events-none">
-                      <div className="bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-xl text-white text-xs font-bold border border-slate-700 flex items-center gap-2">
+                      <div className="bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-xl text-white text-xs font-bold border border-slate-700 flex items-center gap-2 shadow-lg">
                         <Camera size={14} className="text-blue-400" />
-                        <span>Aguardando ação em tempo real...</span>
+                        <span className="text-[11px] truncate max-w-[170px] sm:max-w-none">
+                          {facingMode === "user" ? "Câmera Frontal (FOV Real)" : "Câmera Traseira (FOV Real)"}
+                        </span>
                       </div>
 
                       {/* Botão de fallback manual caso necessário */}
                       <button
                         type="button"
                         onClick={handleManualCapture}
-                        className="pointer-events-auto px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow cursor-pointer transition-all"
-                        title="Capturar foto sem esperar desafio caso o tablet apresente lentidão"
+                        className="pointer-events-auto px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg cursor-pointer transition-all"
+                        title="Capturar foto do colaborador imediatamente"
                       >
                         Capturar Foto
                       </button>

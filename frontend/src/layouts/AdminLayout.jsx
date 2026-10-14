@@ -18,8 +18,8 @@ export default function AdminLayout() {
       <div className="flex-1 flex flex-col h-screen min-w-0">
         <Header />
         
-        {/* Scrollable Content Area - Added pb-20 on mobile for BottomNav */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
+        {/* Scrollable Content Area - Added pb-24 on mobile/tablet for BottomNav */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-5 lg:p-8 pb-24 lg:pb-8">
           <div className="w-full max-w-[1920px] mx-auto space-y-6 sm:space-y-8">
             <Outlet />
           </div>
