@@ -135,7 +135,82 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
   if (!isOpen || !term) return null;
 
   const handlePrint = () => {
-    window.print();
+    const printArea = document.getElementById("printable-term");
+    if (!printArea) {
+      window.print();
+      return;
+    }
+
+    // Cria um iframe invisível para impressão 100% isolada, impedindo vazamento do dashboard ou tela de fundo
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.setAttribute("aria-hidden", "true");
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>${term.term_number || "Termo"} - Hotel Fasano Salvador</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 12mm 10mm 12mm 10mm;
+            }
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              background-color: #ffffff;
+              color: #0f172a;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              font-size: 10pt;
+              line-height: 1.5;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            img {
+              max-width: 100%;
+              height: auto;
+            }
+            .print\\:hidden, .no-print, button {
+              display: none !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div style="width: 100%; max-width: 210mm; margin: 0 auto; background: #ffffff;">
+            ${printArea.innerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    // Aguarda o carregamento das imagens (assinatura touch e biometria) no iframe antes de disparar o print
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 2500);
+    }, 400);
   };
 
   const handleConfirmReturn = async () => {

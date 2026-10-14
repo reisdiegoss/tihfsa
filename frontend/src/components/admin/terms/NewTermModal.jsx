@@ -29,6 +29,7 @@ export default function NewTermModal({ isOpen, onClose, onSuccess, onSaveAndSign
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [beneficiaryName, setBeneficiaryName] = useState("");
   const [beneficiaryDocument, setBeneficiaryDocument] = useState("");
   const [departmentId, setDepartmentId] = useState("");
@@ -387,49 +388,125 @@ export default function NewTermModal({ isOpen, onClose, onSuccess, onSaveAndSign
             {/* Campos se tiver Usuário AD */}
             {beneficiaryType === "ad_user" ? (
               <div className="space-y-3 pt-2">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Localizar Usuário do Active Directory (AD) *
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={selectedUserId}
-                        onChange={(e) => handleSelectAdUser(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Selecione o colaborador...</option>
-                        {filteredAdUsers.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.display_name || u.ad_username} ({u.ad_username}) — {u.department_name || "Sem Setor"}
-                          </option>
-                        ))}
-                      </select>
+                {selectedUserId ? (
+                  /* Card do Colaborador Selecionado */
+                  <div className="bg-white border-2 border-blue-500/30 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-11 h-11 rounded-2xl bg-blue-100 text-blue-700 font-extrabold text-base flex items-center justify-center shrink-0 border border-blue-200">
+                        {(beneficiaryName || "C").charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-sm text-slate-900">{beneficiaryName}</span>
+                          <span className="text-[11px] font-mono font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md border border-blue-200">
+                            {adUsers.find((u) => String(u.id) === String(selectedUserId))?.ad_username || "AD"}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-700 font-semibold rounded-md">
+                            {departmentName || "Geral"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                          {beneficiaryEmail && <span>E-mail: <strong className="text-slate-600">{beneficiaryEmail}</strong></span>}
+                          {beneficiaryPhone && <span>Tel: <strong className="text-slate-600">{beneficiaryPhone}</strong></span>}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedUserId("");
+                        setBeneficiaryName("");
+                        setBeneficiaryEmail("");
+                        setBeneficiaryPhone("");
+                        setUserSearch("");
+                        setIsUserDropdownOpen(false);
+                      }}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 hover:text-red-600"
+                    >
+                      <X size={15} />
+                      Trocar Colaborador
+                    </button>
+                  </div>
+                ) : (
+                  /* Campo Único de Busca e Autocomplete */
+                  <div className="relative">
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Filtro Rápido por Nome/Login
+                      Localizar e Selecionar Colaborador (Active Directory) *
                     </label>
                     <div className="relative">
-                      <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                      <Search size={18} className="absolute left-3.5 top-3 text-slate-400" />
                       <input
                         type="text"
-                        placeholder="Filtrar colaboradores..."
+                        placeholder="Digite o nome, login ou setor para pesquisar..."
                         value={userSearch}
-                        onChange={(e) => setUserSearch(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => {
+                          setUserSearch(e.target.value);
+                          setIsUserDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsUserDropdownOpen(true)}
+                        className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-10 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm font-medium"
                       />
+                      {userSearch && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUserSearch("");
+                            setIsUserDropdownOpen(true);
+                          }}
+                          className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-1"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
                     </div>
-                  </div>
-                </div>
 
-                {selectedUserId && (
-                  <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl text-xs text-blue-900 flex flex-wrap items-center gap-x-6 gap-y-1">
-                    <span>Nome: <strong>{beneficiaryName}</strong></span>
-                    <span>Setor: <strong>{departmentName || "Não informado"}</strong></span>
-                    {beneficiaryEmail && <span>E-mail: <strong>{beneficiaryEmail}</strong></span>}
+                    {/* Dropdown Flutuante de Colaboradores */}
+                    {isUserDropdownOpen && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-30" 
+                          onClick={() => setIsUserDropdownOpen(false)} 
+                        />
+                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-2xl z-40 max-h-64 overflow-y-auto divide-y divide-slate-100">
+                        {filteredAdUsers.length > 0 ? (
+                          filteredAdUsers.map((u) => (
+                            <div
+                              key={u.id}
+                              onClick={() => {
+                                handleSelectAdUser(u.id);
+                                setIsUserDropdownOpen(false);
+                                setUserSearch("");
+                              }}
+                              className="p-3 hover:bg-blue-50/80 cursor-pointer transition-colors flex items-center justify-between gap-3 text-left"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
+                                  {(u.display_name || u.ad_username || "U").charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-900 leading-tight">
+                                    {u.display_name || u.ad_username}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                                    {u.ad_username} {u.email ? `• ${u.email}` : ""}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <span className="text-[10px] font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md shrink-0">
+                                {u.department_name || "Geral"}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-4 text-center text-xs text-slate-400">
+                            Nenhum colaborador encontrado para "{userSearch}"
+                          </div>
+                        )}
+                      </div>
+                    </>
+                    )}
                   </div>
                 )}
               </div>

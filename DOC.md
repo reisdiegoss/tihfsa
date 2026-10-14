@@ -1308,12 +1308,16 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Editor Visual Wordcraft com Ribbon Toolbar (`WordRibbonEditor.jsx`)**:
       - Barra de ferramentas estilo Microsoft Word com guias de Formatação, Inserção de Tags Dinâmicas, Importação de arquivos `.docx` via `mammoth.js` e Pré-configuração de itens padrão.
       - Tags inteligentes interpoladas dinamicamente: `{{hotel_fasano}}`, `{{numero_termo}}`, `{{data_emissao}}`, `{{nome_colaborador}}`, `{{documento_cpf_rg}}`, `{{setor_departamento}}`, `{{tecnico_responsavel}}`, `{{tabela_equipamentos}}`, `{{assinatura_beneficiario}}`, `{{foto_biometria}}`.
-    - **Visualização Instantânea Sem Downloads & Impressão Limpa A4**:
+    - **Visualização Instantânea Sem Downloads & Impressão Isolada A4 (`ViewTermModal.jsx`)**:
       - **Visualização 100% In-Page**: Abertura instantânea do termo montado em modal com modo leitura em tela cheia opcional para tablets, eliminando downloads indesejados ao apenas consultar o documento.
-      - **Impressão A4 Executiva (`index.css` & `ViewTermModal.jsx`)**:
-        - Regras estritas de `@media print` no CSS global.
-        - Supressão absoluta de elementos de tela: barra de navegação inferior móvel (`BottomNav.jsx`), barra lateral (`Sidebar.jsx`), cabeçalho superior (`Header.jsx`), botões de ação e fundos translúcidos/backdrop de modais.
-        - Interpolação nativa de templates HTML substituindo todas as tags dinâmicas por imagens e dados reais, sem qualquer vazamento de código HTML cru na folha impressa.
+      - **Impressão A4 Isolada via Iframe Dedicado**:
+        - A impressão agora é executada dentro de um iframe sandboxed invisível contendo **exclusivamente** o documento A4 do Fasano.
+        - Elimina 100% qualquer possibilidade de o dashboard, cards de estatísticas, filtros, tabela de termos ou botões de tela saírem na folha impressa.
+        - Funciona com fidelidade máxima de cores e resolução em qualquer impressora física de rede ou ao salvar PDF.
+        - Regras estritas de `@media print` no CSS global como redundância.
+    - **Seletor Único e Pesquisável de Colaboradores AD (`NewTermModal.jsx`)**:
+      - Eliminação da duplicidade entre select estático e barra de filtro rápido separada.
+      - Componente unificado de busca com autocomplete em tempo real: busca instantânea por Nome, Login AD ou Setor, exibição em dropdown suspenso inteligente e card executivo de colaborador selecionado com botão para trocar com 1 clique.
     - **Fluxo de Devolução e Baixa de Equipamentos**:
       - Botão "Registrar Devolução" para dar baixa no termo quando o colaborador devolve os itens ao setor de TI, registrando o técnico recebedor, data da devolução, estado de conservação dos bens e observações.
     - **Navegação e Controle de Acesso**:
