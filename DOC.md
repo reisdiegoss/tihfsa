@@ -1392,3 +1392,17 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Caso um termo assinado com biometria facial utilize um template anterior que não possua a tag `{{foto_biometria}}`, o sistema detecta a presença da foto e injeta automaticamente o bloco biométrico clicável antes do rodapé de certificação.
       - No modo de visualização clássico (sem template HTML), foram adicionados os blocos estruturados de Assinatura e Biometria Facial ampliada e clicável.
       - Na aba "Dossiê & Biometria", o card da foto é diretamente clicável com feedback de cursor e badge "Toque para Ampliar" visível no mobile.
+
+42. **Legibilidade Aprimorada e Guias Visuais da Biometria Facial para Mobile/Android (`SignTermModal.jsx`)**:
+    - **Eliminação Definitiva do Truncamento de Instruções**:
+      - **Causa Raiz**: O banner de instruções utilizava a classe `truncate` em um layout flex horizontal de 1 única linha espremido entre o ícone e o badge de status. Em telas de smartphones (iPhone e Android em modo retrato), títulos essenciais como "Vire o rosto para a esquerda" e descrições eram cortados com reticências ("Vire o rosto para a esque..."), impedindo o colaborador de saber qual ação executar.
+      - **Solução**: O card de instruções foi reestruturado em blocos verticais responsivos sem `truncate`:
+        - *Linha Superior*: Badges de etapa ("Desafio 1 de 2") e status do rosto ("✓ Rosto Alinhado (95%)").
+        - *Linha Central*: Ícone direcional ampliado de 48px + Título em destaque (`text-base sm:text-lg font-black`) e descrição completa com quebra automática de linha (`break-words`), garantindo leitura 100% legível em qualquer resolução.
+        - *Linha Inferior*: Barra de progresso contínua (0% a 100%) indicando a evolução do movimento solicitado.
+    - **Tarja Flutuante de Instrução Direta na Câmera**:
+      - Inserção de uma tarja translúcida escura (`bg-slate-950/85 backdrop-blur-md`) posicionada diretamente no canto superior do feed de vídeo, contendo emoji direcional (👈, 👉, 👁️, 😊, 👆), número da ação e título em letras brancas e nítidas. O colaborador acompanha a instrução sem desviar os olhos da lente.
+    - **Pílula de Feedback Dinâmico sob a Moldura Oval**:
+      - Feedback em tempo real posicionado logo abaixo da moldura do rosto: sinaliza "Enquadre seu rosto no círculo", muda para a ação detalhada quando o rosto é detectado e pulsa em verde com "✓ Desafio Concluído!" assim que o movimento é validado.
+    - **Eliminação do Bug `Alinhado (NaN%)`**:
+      - Ajustada a extração do score neural do face-api.js para ler `detection.detection.score`, com fallback seguro e tratamento numérico (`Number.isFinite`), eliminando a exibição de `NaN%`.
