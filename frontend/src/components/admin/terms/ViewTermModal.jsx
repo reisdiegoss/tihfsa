@@ -26,21 +26,21 @@ function formatDate(dateStr) {
  */
 function buildItemsHtmlTable(items = []) {
   if (!items || items.length === 0) {
-    return `<p style="font-size: 9.5pt; color: #64748b; font-style: italic; margin: 8px 0;">Nenhum equipamento registrado.</p>`;
+    return `<p style="font-size: 7.5pt; color: #64748b; font-style: italic; margin: 3px 0;">Nenhum equipamento registrado.</p>`;
   }
 
   const rowsHtml = items.map((it, idx) => `
-    <tr style="border-bottom: 1px solid #e2e8f0; font-size: 9.5pt;">
-      <td style="padding: 8px 10px; font-weight: 600; color: #0f172a;">
+    <tr style="border-bottom: 1px solid #e2e8f0; font-size: 7.5pt;">
+      <td style="padding: 2.5px 6px; font-weight: 600; color: #0f172a;">
         ${it.item_name || "—"}
-        ${it.accessories ? `<div style="font-size: 8pt; color: #64748b; font-weight: normal;">Acessórios: ${it.accessories}</div>` : ""}
+        ${it.accessories ? `<div style="font-size: 6.5pt; color: #64748b; font-weight: normal;">Acessórios: ${it.accessories}</div>` : ""}
       </td>
-      <td style="padding: 8px 10px; font-family: monospace; color: #334155;">${it.asset_tag || "—"}</td>
-      <td style="padding: 8px 10px; font-family: monospace; color: #334155;">${it.serial_number || "—"}</td>
-      <td style="padding: 8px 10px; text-align: center; font-weight: bold; color: #1e293b;">${it.quantity || 1}</td>
-      <td style="padding: 8px 10px; color: #475569;">${it.condition || "Em perfeito estado"}</td>
-      <td style="padding: 8px 10px; text-align: center;">
-        <span style="font-size: 8pt; font-weight: bold; padding: 2px 6px; border-radius: 4px; ${
+      <td style="padding: 2.5px 6px; font-family: monospace; color: #334155;">${it.asset_tag || "—"}</td>
+      <td style="padding: 2.5px 6px; font-family: monospace; color: #334155;">${it.serial_number || "—"}</td>
+      <td style="padding: 2.5px 6px; text-align: center; font-weight: bold; color: #1e293b;">${it.quantity || 1}</td>
+      <td style="padding: 2.5px 6px; color: #475569;">${it.condition || "Em perfeito estado"}</td>
+      <td style="padding: 2.5px 6px; text-align: center;">
+        <span style="font-size: 6.5pt; font-weight: bold; padding: 1px 4px; border-radius: 3px; ${
           it.is_returned 
             ? "background-color: #dcfce7; color: #166534;" 
             : "background-color: #dbeafe; color: #1e40af;"
@@ -52,15 +52,15 @@ function buildItemsHtmlTable(items = []) {
   `).join("");
 
   return `
-    <table style="width: 100%; border-collapse: collapse; margin: 12px 0 18px 0; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; font-family: inherit;">
+    <table style="width: 100%; border-collapse: collapse; margin: 3px 0 5px 0; border: 1px solid #cbd5e1; border-radius: 5px; overflow: hidden; font-family: inherit; page-break-inside: avoid !important; break-inside: avoid !important;">
       <thead>
-        <tr style="background-color: #f1f5f9; color: #334155; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #cbd5e1;">
-          <th style="padding: 8px 10px; text-align: left;">Item / Descrição</th>
-          <th style="padding: 8px 10px; text-align: left;">Patrimônio</th>
-          <th style="padding: 8px 10px; text-align: left;">Nº Série</th>
-          <th style="padding: 8px 10px; text-align: center;">Qtd</th>
-          <th style="padding: 8px 10px; text-align: left;">Estado / Conservação</th>
-          <th style="padding: 8px 10px; text-align: center;">Status</th>
+        <tr style="background-color: #f1f5f9; color: #334155; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #cbd5e1;">
+          <th style="padding: 2.5px 6px; text-align: left;">Item / Descrição</th>
+          <th style="padding: 2.5px 6px; text-align: left;">Patrimônio</th>
+          <th style="padding: 2.5px 6px; text-align: left;">Nº Série</th>
+          <th style="padding: 2.5px 6px; text-align: center;">Qtd</th>
+          <th style="padding: 2.5px 6px; text-align: left;">Estado</th>
+          <th style="padding: 2.5px 6px; text-align: center;">Status</th>
         </tr>
       </thead>
       <tbody>
@@ -79,21 +79,21 @@ function interpolateTermHtml(htmlTemplate, term) {
   const formattedDate = formatDate(term.created_at);
   const itemsTable = buildItemsHtmlTable(term.items);
 
-  // Assinatura do colaborador
+  // Assinatura do colaborador (compacta para folha A4 única)
   const signatureBlock = term.signature_url
-    ? `<div style="text-align: center; margin: 4px 0;">
-         <img src="${term.signature_url}" alt="Assinatura Digital" style="max-height: 75px; max-width: 220px; object-fit: contain; margin: 0 auto; display: block;" />
-         <span style="font-size: 7.5pt; color: #059669; font-weight: bold; display: block; margin-top: 2px;">✓ Assinatura Touch em Tela</span>
+    ? `<div style="text-align: center; margin: 1px 0;">
+         <img src="${term.signature_url}" alt="Assinatura Digital" style="max-height: 42px; max-width: 160px; object-fit: contain; margin: 0 auto; display: block;" />
+         <span style="font-size: 6.5pt; color: #059669; font-weight: bold; display: block; margin-top: 1px;">✓ Assinatura Touch em Tela</span>
        </div>`
-    : `<div style="border: 1px dashed #cbd5e1; border-radius: 6px; padding: 12px; background: #f8fafc; color: #94a3b8; font-size: 8pt; text-align: center; margin: 4px 0;">[ Pendente de Assinatura ]</div>`;
+    : `<div style="border: 1px dashed #cbd5e1; border-radius: 4px; padding: 4px; background: #f8fafc; color: #94a3b8; font-size: 7pt; text-align: center; margin: 1px 0;">[ Pendente de Assinatura ]</div>`;
 
-  // Biometria facial do colaborador
+  // Biometria facial do colaborador (compacta para folha A4 única)
   const biometricsBlock = term.facial_photo_url
-    ? `<div style="text-align: center; margin: 4px 0;">
-         <img src="${term.facial_photo_url}" alt="Biometria Facial" style="max-height: 95px; max-width: 130px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; margin: 0 auto; display: block;" />
-         <span style="font-size: 7.5pt; color: #059669; font-weight: bold; display: block; margin-top: 2px;">✓ Prova de Vida Validada (${term.facial_confidence ? Math.round(term.facial_confidence * 100) : 95}%)</span>
+    ? `<div style="text-align: center; margin: 1px 0;">
+         <img src="${term.facial_photo_url}" alt="Biometria Facial" style="max-height: 46px; max-width: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #cbd5e1; margin: 0 auto; display: block;" />
+         <span style="font-size: 6.5pt; color: #059669; font-weight: bold; display: block; margin-top: 1px;">✓ Prova de Vida Validada (${term.facial_confidence ? Math.round(term.facial_confidence * 100) : 95}%)</span>
        </div>`
-    : `<div style="border: 1px dashed #cbd5e1; border-radius: 6px; padding: 12px; background: #f8fafc; color: #94a3b8; font-size: 8pt; text-align: center; margin: 4px 0;">[ Biometria Facial Pendente ]</div>`;
+    : `<div style="border: 1px dashed #cbd5e1; border-radius: 4px; padding: 4px; background: #f8fafc; color: #94a3b8; font-size: 7pt; text-align: center; margin: 1px 0;">[ Biometria Facial Pendente ]</div>`;
 
   let rendered = htmlTemplate;
 
@@ -163,7 +163,7 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
           <style>
             @page {
               size: A4 portrait;
-              margin: 12mm 10mm 12mm 10mm;
+              margin: 4mm 6mm 3mm 6mm;
             }
             * {
               box-sizing: border-box;
@@ -175,17 +175,68 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
               padding: 0;
               background-color: #ffffff;
               color: #0f172a;
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-              font-size: 10pt;
-              line-height: 1.5;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+              font-size: 8pt;
+              line-height: 1.3;
+            }
+            /* BLOQUEIO ABSOLUTO DE QUEBRA DE PÁGINA EM TABELAS E BLOCOS DE VALIDAÇÃO */
+            table, tr, td, th, tbody, thead {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            /* Converte qualquer flexbox de assinatura legado em tabela no print para evitar fratura */
+            div[style*="display: flex"][style*="justify-content: space-between"] {
+              display: table !important;
+              width: 100% !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            div[style*="display: flex"][style*="justify-content: space-between"] > div {
+              display: table-cell !important;
+              vertical-align: bottom !important;
+              width: 50% !important;
+            }
+            /* Todos os cartões de borda e blocos institucionais são atômicos */
+            div[style*="border"], 
+            div[style*="background-color"],
+            table[style*="border"],
+            .term-document-body > div,
+            .signature-block,
+            .certification-block,
+            .institutional-footer {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            /* Otimização vertical rigorosa para folha A4 única */
+            h1, h2, h3, h4 {
+              margin-top: 3px !important;
+              margin-bottom: 2px !important;
+              line-height: 1.15 !important;
+            }
+            p {
+              margin-top: 1.5px !important;
+              margin-bottom: 1.5px !important;
+            }
+            ol, ul {
+              margin-top: 2px !important;
+              margin-bottom: 3px !important;
+              padding-left: 16px !important;
+            }
+            li {
+              margin-bottom: 1px !important;
+              line-height: 1.25 !important;
             }
             table {
-              width: 100%;
-              border-collapse: collapse;
+              margin: 3px 0 5px 0 !important;
+            }
+            th, td {
+              padding: 2.5px 5px !important;
             }
             img {
-              max-width: 100%;
-              height: auto;
+              max-height: 42px !important;
+              width: auto !important;
+              display: block !important;
+              margin: 0 auto !important;
             }
             .print\\:hidden, .no-print, button {
               display: none !important;
@@ -193,7 +244,7 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
           </style>
         </head>
         <body>
-          <div style="width: 100%; max-width: 210mm; margin: 0 auto; background: #ffffff;">
+          <div style="width: 100%; max-width: 210mm; margin: 0 auto; background: #ffffff; transform: scale(0.95); transform-origin: top center;">
             ${printArea.innerHTML}
           </div>
         </body>
@@ -367,7 +418,7 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
         >
           {isHtmlTemplate ? (
             /* RENDERIZAÇÃO DIRETA DO DOCUMENTO FORMATAÇÃO WORD COM INTERPOLAÇÃO DAS TAGS */
-            <div className="term-document-body space-y-6">
+            <div className="term-document-body space-y-3">
               <div 
                 dangerouslySetInnerHTML={{ __html: interpolatedHtml }}
                 className="leading-relaxed"
@@ -375,7 +426,10 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
 
               {/* Registro de Devolução / Baixa (Se houver) */}
               {term.returned_at && (
-                <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl text-xs space-y-1 mt-6">
+                <div 
+                  style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+                  className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs space-y-1 mt-3"
+                >
                   <p className="font-bold text-blue-900 flex items-center gap-1.5">
                     <RotateCcw size={14} />
                     Registro de Devolução e Baixa do Termo
@@ -388,22 +442,32 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
                 </div>
               )}
 
-              {/* Certificação Digital & Fé Pública */}
+              {/* Certificação Digital & Fé Pública (Tabela atômica anti-quebra) */}
               {term.status === "signed" && (
-                <div className="pt-4 border-t border-slate-300 text-[10px] text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                  <div>
-                    <strong className="text-slate-800">Validação Digital sob Fé Pública:</strong> Documento autenticado internamente pelo sistema TIHFSA
-                    {term.signer_ip && <span className="block text-[9px] text-slate-400 font-mono">Endereço IP: {term.signer_ip}</span>}
-                  </div>
-                  <div className="text-center sm:text-right">
-                    <span>Assinado e fotografado em: <strong>{formatDate(term.signed_at)}</strong></span>
-                    {term.signer_device && <span className="block text-[9px] text-slate-400">Dispositivo: {term.signer_device}</span>}
-                  </div>
-                </div>
+                <table 
+                  style={{ width: '100%', borderCollapse: 'collapse', pageBreakInside: 'avoid', breakInside: 'avoid', marginTop: '5px' }}
+                  className="certification-block text-[7.5pt] bg-slate-50 border border-slate-200 rounded-lg leading-tight"
+                >
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: '3px 8px', verticalAlign: 'middle', borderRight: '1px solid #e2e8f0', width: '58%' }}>
+                        <strong className="text-slate-800">Validação Digital sob Fé Pública:</strong> Documento autenticado internamente pelo sistema TIHFSA
+                        {term.signer_ip && <span className="block text-[7pt] text-slate-400 font-mono">Endereço IP: {term.signer_ip}</span>}
+                      </td>
+                      <td style={{ padding: '3px 8px', verticalAlign: 'middle', textAlign: 'right', width: '42%' }}>
+                        <span>Assinado e fotografado em: <strong>{formatDate(term.signed_at)}</strong></span>
+                        {term.signer_device && <span className="block text-[6.5pt] text-slate-400 truncate max-w-[260px] ml-auto">Dispositivo: {term.signer_device}</span>}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               )}
 
               {/* Rodapé institucional para impressão */}
-              <div className="pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400">
+              <div 
+                style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+                className="institutional-footer pt-1 mt-1 border-t border-slate-200 text-center text-[7pt] text-slate-400 leading-tight"
+              >
                 Hotel Fasano Salvador • Praça Castro Alves, 5 - Centro Histórico, Salvador - BA, 40020-160
                 <br />
                 Documento eletrônico autenticado internamente pelo sistema TIHFSA

@@ -1323,6 +1323,11 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Navegação e Controle de Acesso**:
       - Novo menu **"Termos"** no menu lateral (`Sidebar.jsx`) e na barra de navegação móvel para tablets (`BottomNav.jsx`).
       - Módulo `'terms'` integrado nas regras de permissão do sistema (`allowed_modules` e `require_technician`).
+    - **Garantia de Folha A4 Única e Prevenção Absoluta de Quebra de Página (`ViewTermModal.jsx` / `init_db.py`)**:
+      - **Estrutura Atômica em Tabelas Nativas (Zero Fratura)**: Substituição de containers `display: flex` por tabelas HTML nativas nos blocos de Aceite do Beneficiário (Dupla Validação), Testemunha TI e Certificação Digital sob Fé Pública. Motores de impressão de navegadores (Chromium/WebKit) tratam tabelas nativas com `page-break-inside: avoid !important; break-inside: avoid !important;` de forma atômica, eliminando 100% o risco de separar a assinatura do nome ou quebrar o card no meio.
+      - **Conversor Inteligente de Compatibilidade**: Regra de impressão que intercepta e converte automaticamente layouts legados baseados em flexbox em tabelas estruturadas no momento do print.
+      - **Compactação Milimétrica A4**: Proporções executivas otimizadas (título 13.5pt, entrelinhas 1.25 a 1.35, células da tabela de itens em 2.5px 6px, rubrica touch em 42px e foto facial em 46px), reduzindo a altura total do documento em ~235px e assegurando margem de folga superior a 250px para caber com elegância em **exatamente 1 folha A4**.
+      - **Sincronização em Massa no Banco**: Rotina automatizada em `init_db.py` que migra tanto os templates padrão quanto os termos já emitidos no banco de dados.
 
 
 
