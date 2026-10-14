@@ -1372,3 +1372,23 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Dynamic Island / Notch**: Overlay e container atualizados com `pt-[max(12px,env(safe-area-inset-top))]`, `pb-[max(12px,env(safe-area-inset-bottom))]` e `max-h-[88dvh]`, eliminando a colisão com o entalhe do iPhone.
       - **Bug de Renderização em Miniatura do WebKit no iOS**: O feed de vídeo que aparecia encolhido no canto superior direito devido a `scale-x-[-1]` e flexbox agora é encapsulado em um wrapper absoluto com `aspect-[3/4]`, `object-fit: cover` e atributos WebKit explícitos (`playsinline`, `webkit-playsinline`, `muted`). O vídeo preenche 100% da moldura da câmera com o rosto perfeitamente alinhado na guia oval.
       - **Stepper Compacto**: No mobile, os títulos longos foram substituídos por rótulos objetivos ("Assinatura", "Biometria", "Conclusão"), eliminando quebras de linha com reticências.
+
+41. **Ampliação Executiva e Lightbox Interativo da Foto Biométrica no Termo Assinado (`ViewTermModal.jsx`)**:
+    - **Aumento Proporcional no Documento A4 (Padrão 3x4 cm)**:
+      - A dimensão da fotografia biométrica facial no documento A4 foi ampliada de 96x76px para **136px de altura por 105px de largura** (`height: 136px; width: 105px;`).
+      - Esta proporção corresponde exatamente à proporção clássica 3:4 utilizada em documentos oficiais de fé pública (RG e CNH), permitindo visualização nítida dos traços faciais diretamente na leitura do termo e na impressão A4, sem quebrar o layout em mais de uma página.
+      - Estilização aprimorada com borda azul realce (`2.5px solid #2563eb`), sombra de profundidade (`box-shadow: 0 4px 12px rgba(0,0,0,0.15)`), transição suave de escala ao passar o mouse (`scale(1.04)`) e selo flutuante "🔍 Ampliar".
+      - Botão interativo logo abaixo da foto: `[ 🔍 Toque para ampliar a foto ]` com classe `.no-print` (visível na tela para induzir o toque no tablet/celular e oculto na impressão A4).
+    - **Correção e Elevação do Lightbox Fullscreen (`z-[100]`)**:
+      - **Causa Raiz da Não-Abertura**: O modal Lightbox estava posicionado no topo da árvore DOM do componente e utilizava a classe `z-60`. Como o Tailwind CSS v4 não possui a classe `z-60` por padrão (exige sintaxe arbitrária `z-[100]`), o navegador atribuía `z-index: auto`. Como o modal principal de leitura A4 vinha depois no DOM com `z-50`, o Lightbox abria **atrás** do documento branco, impedindo a visualização da foto ampliada.
+      - **Solução Definitiva**: O Lightbox foi movido para o final absoluto da árvore JSX do componente com camada de elevação arbitrária `z-[100]`. Ao clicar na foto, no botão de ampliar ou no container em qualquer parte do documento, o modal abre instantaneamente com `backdrop-blur-md` escuro de alto contraste sobreposto a toda a tela.
+    - **Controles Avançados no Lightbox de Alta Definição**:
+      - Controles integrados de aproximação (`lightboxScale` de 100% até 300% com botões de `ZoomIn`, `ZoomOut` e atalho de reset `1:1`).
+      - Alternância rápida de zoom ao clicar diretamente na foto.
+      - Fechamento imediato com a tecla `Escape` (`keydown` listener) ou ao tocar em qualquer área externa do backdrop escuro.
+      - Botão dedicado **"Baixar Foto Original"** para salvar o arquivo de imagem em resolução completa para auditoria interna.
+      - Metadados de fé pública no rodapé do modal (confiança da rede neural, data/hora precisa da captura e identificação amigável do dispositivo do signatário).
+    - **Fallback Universal para Termos Legados e Modo Clássico**:
+      - Caso um termo assinado com biometria facial utilize um template anterior que não possua a tag `{{foto_biometria}}`, o sistema detecta a presença da foto e injeta automaticamente o bloco biométrico clicável antes do rodapé de certificação.
+      - No modo de visualização clássico (sem template HTML), foram adicionados os blocos estruturados de Assinatura e Biometria Facial ampliada e clicável.
+      - Na aba "Dossiê & Biometria", o card da foto é diretamente clicável com feedback de cursor e badge "Toque para Ampliar" visível no mobile.

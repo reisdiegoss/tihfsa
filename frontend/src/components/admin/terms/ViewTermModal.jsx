@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   X, Printer, CheckCircle2, Clock, AlertCircle, 
   ShieldCheck, UserCheck, PackageCheck, Camera, 
@@ -119,16 +119,31 @@ function interpolateTermHtml(htmlTemplate, term) {
   // Assinatura do colaborador (proporção executiva equilibrada)
   const signatureBlock = term.signature_url
     ? `<div style="text-align: center; margin: 2px 0;">
-         <img src="${term.signature_url}" alt="Assinatura Digital" style="max-height: 52px; max-width: 180px; object-fit: contain; margin: 0 auto; display: block;" />
+         <img src="${term.signature_url}" alt="Assinatura Digital" style="max-height: 56px; max-width: 200px; object-fit: contain; margin: 0 auto; display: block;" />
          <span style="font-size: 7.5pt; color: #059669; font-weight: bold; display: block; margin-top: 2px;">✓ Assinatura Touch em Tela</span>
        </div>`
     : `<div style="border: 1px dashed #cbd5e1; border-radius: 4px; padding: 6px; background: #f8fafc; color: #94a3b8; font-size: 8pt; text-align: center; margin: 2px 0;">[ Pendente de Assinatura ]</div>`;
 
-  // Biometria facial do colaborador (proporção executiva 3x4 equilibrada)
+  // Biometria facial do colaborador (proporção executiva 3x4 expandida, nítida e clicável)
   const biometricsBlock = term.facial_photo_url
-    ? `<div style="text-align: center; margin: 2px 0;">
-         <img src="${term.facial_photo_url}" alt="Biometria Facial" style="max-height: 64px; max-width: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #cbd5e1; margin: 0 auto; display: block;" />
-         <span style="font-size: 7.5pt; color: #059669; font-weight: bold; display: block; margin-top: 2px;">✓ Prova de Vida Validada (${term.facial_confidence ? Math.round(term.facial_confidence * 100) : 95}%)</span>
+    ? `<div style="text-align: center; margin: 4px 0;" class="biometrics-card-container">
+         <div style="position: relative; display: inline-block; cursor: pointer;" data-lightbox-trigger="true" title="Toque ou clique para visualizar a foto ampliada">
+           <img 
+             src="${term.facial_photo_url}" 
+             alt="Biometria Facial" 
+             data-lightbox-trigger="true" 
+             style="height: 136px; width: 105px; object-fit: cover; border-radius: 8px; border: 2.5px solid #2563eb; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin: 0 auto; display: block; cursor: pointer; transition: transform 0.2s ease;" 
+           />
+           <div data-lightbox-trigger="true" style="position: absolute; bottom: 4px; right: 4px; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(4px); color: #ffffff; border-radius: 4px; padding: 2px 6px; font-size: 7pt; font-weight: 700; display: flex; align-items: center; gap: 2px; pointer-events: none;">
+             🔍 Ampliar
+           </div>
+         </div>
+         <span style="font-size: 7.5pt; color: #059669; font-weight: bold; display: block; margin-top: 4px;">✓ Prova de Vida Validada (${term.facial_confidence ? Math.round(term.facial_confidence * 100) : 95}%)</span>
+         <div class="no-print" style="margin-top: 4px;">
+           <span data-lightbox-trigger="true" style="display: inline-flex; align-items: center; gap: 4px; font-size: 7.5pt; color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; font-weight: 700; padding: 3px 10px; border-radius: 6px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+             🔍 Toque para ampliar a foto
+           </span>
+         </div>
        </div>`
     : `<div style="border: 1px dashed #cbd5e1; border-radius: 4px; padding: 6px; background: #f8fafc; color: #94a3b8; font-size: 8pt; text-align: center; margin: 2px 0;">[ Biometria Facial Pendente ]</div>`;
 
@@ -158,6 +173,16 @@ function interpolateTermHtml(htmlTemplate, term) {
   rendered = rendered.replace(/\{\{assinatura_beneficiario\}\}/gi, signatureBlock);
   rendered = rendered.replace(/\{\{foto_biometria\}\}/gi, biometricsBlock);
 
+  // Fallback: se o termo tiver foto biométrica mas o template não contiver a tag {{foto_biometria}}
+  if (term.facial_photo_url && !rendered.includes(term.facial_photo_url)) {
+    rendered += `
+      <div style="margin-top: 14px; padding: 10px 14px; border: 1.5px solid #cbd5e1; border-radius: 8px; background-color: #f8fafc; page-break-inside: avoid !important; break-inside: avoid !important;">
+        <div style="font-size: 8.5pt; font-weight: bold; color: #0f172a; margin-bottom: 6px; text-align: center;">Autenticação Biométrica Facial Registrada:</div>
+        ${biometricsBlock}
+      </div>
+    `;
+  }
+
   return rendered;
 }
 
@@ -170,7 +195,19 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
   const [error, setError] = useState(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isPhotoZoomOpen, setIsPhotoZoomOpen] = useState(false);
+  const [lightboxScale, setLightboxScale] = useState(1);
   const [zoomLevel, setZoomLevel] = useState(1); // 0.85, 1, 1.15
+
+  // Fechar lightbox com a tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && isPhotoZoomOpen) {
+        setIsPhotoZoomOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPhotoZoomOpen]);
 
   if (!isOpen || !term) return null;
 
@@ -318,76 +355,6 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
 
   return (
     <>
-      {/* Lightbox / Zoom em Alta Definição da Biometria Facial */}
-      {isPhotoZoomOpen && term.facial_photo_url && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn">
-          <div className="relative bg-slate-900 border border-slate-700 rounded-3xl p-5 max-w-lg w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-white">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                  <Camera size={18} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm">Evidência Biométrica Facial</h4>
-                  <p className="text-[11px] text-slate-400">{term.beneficiary_name}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsPhotoZoomOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Imagem em Resolução Original */}
-            <div className="rounded-2xl overflow-hidden bg-black border border-slate-800 flex items-center justify-center p-2">
-              <img
-                src={term.facial_photo_url}
-                alt="Biometria Facial Alta Resolução"
-                className="max-h-[60vh] max-w-full object-contain rounded-xl"
-              />
-            </div>
-
-            {/* Metadados Técnicos de Fé Pública */}
-            <div className="grid grid-cols-2 gap-2 text-xs text-slate-300 bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60">
-              <div>
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Confiança Facial</span>
-                <span className="font-bold text-emerald-400">
-                  {term.facial_confidence ? Math.round(term.facial_confidence * 100) : 95}% (Face Validada)
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Data & Hora</span>
-                <span className="font-medium">{formatDate(term.signed_at)}</span>
-              </div>
-              <div className="col-span-2 pt-1 border-t border-slate-700/60 text-[11px] text-slate-400 font-mono">
-                Dispositivo: {formatSignerDevice(term.signer_device)}
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-2">
-              <a
-                href={term.facial_photo_url}
-                download={`biometria-${term.term_number}.jpg`}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-700 transition-colors"
-              >
-                <Download size={14} />
-                Baixar Foto Original
-              </a>
-              <button
-                type="button"
-                onClick={() => setIsPhotoZoomOpen(false)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal Principal de Visualização */}
       <div className={`fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm overflow-y-auto print:static print:p-0 print:bg-white print:overflow-visible ${isFullScreen ? "p-0" : ""}`}>
         
@@ -573,9 +540,47 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
               {isHtmlTemplate ? (
                 /* RENDERIZAÇÃO DIRETA DO DOCUMENTO FORMATAÇÃO WORD COM INTERPOLAÇÃO DAS TAGS */
                 <div className="term-document-body space-y-3">
+                  <style>{`
+                    .term-document-body img[alt*="Biometria"],
+                    .term-document-body img[data-lightbox-trigger="true"],
+                    .term-document-body [data-lightbox-trigger="true"] {
+                      cursor: pointer !important;
+                    }
+                    .term-document-body img[alt*="Biometria"]:hover,
+                    .term-document-body img[data-lightbox-trigger="true"]:hover {
+                      transform: scale(1.04) !important;
+                      box-shadow: 0 8px 20px rgba(0,0,0,0.2) !important;
+                    }
+                  `}</style>
+
                   <div 
                     dangerouslySetInnerHTML={{ __html: interpolatedHtml }}
                     className="leading-relaxed"
+                    onClick={(e) => {
+                      if (!term.facial_photo_url) return;
+                      const target = e.target;
+                      if (!target) return;
+
+                      const isImg = target.tagName === "IMG";
+                      const isBiometricImg = isImg && (
+                        target.getAttribute("data-lightbox-trigger") === "true" ||
+                        target.getAttribute("alt")?.toLowerCase().includes("biometria") ||
+                        target.getAttribute("src")?.includes("facial") ||
+                        target.getAttribute("src")?.includes("face_") ||
+                        target.getAttribute("src") === term.facial_photo_url
+                      );
+                      const isTrigger = 
+                        target.getAttribute("data-lightbox-trigger") === "true" ||
+                        Boolean(target.closest && target.closest("[data-lightbox-trigger='true']")) ||
+                        Boolean(target.closest && target.closest(".biometrics-card-container"));
+
+                      if (isBiometricImg || isTrigger) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setLightboxScale(1);
+                        setIsPhotoZoomOpen(true);
+                      }
+                    }}
                   />
 
                   {/* Registro de Devolução / Baixa (Se houver) */}
@@ -750,6 +755,52 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
                     </div>
                   </div>
 
+                  {/* Assinatura e Biometria no Modo Clássico (se assinado) */}
+                  {term.status === "signed" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-200">
+                      <div className="text-center p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                        <p className="text-[11px] font-bold text-slate-600 mb-2">ASSINATURA DO BENEFICIÁRIO</p>
+                        {term.signature_url ? (
+                          <img 
+                            src={term.signature_url} 
+                            alt="Assinatura Touch" 
+                            className="max-h-16 mx-auto object-contain" 
+                          />
+                        ) : (
+                          <p className="text-xs text-slate-400 italic">Pendente</p>
+                        )}
+                        <p className="text-xs font-bold text-slate-800 mt-2">{term.beneficiary_name}</p>
+                        <p className="text-[10px] text-emerald-600 font-bold mt-0.5">✓ Assinatura Digital Touch</p>
+                      </div>
+
+                      <div className="text-center p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                        <p className="text-[11px] font-bold text-slate-600 mb-2">BIOMETRIA FACIAL (PROVA DE VIDA)</p>
+                        {term.facial_photo_url ? (
+                          <div 
+                            className="inline-block relative cursor-pointer group"
+                            onClick={() => { setLightboxScale(1); setIsPhotoZoomOpen(true); }}
+                            title="Clique para ampliar a foto facial"
+                          >
+                            <img 
+                              src={term.facial_photo_url} 
+                              alt="Biometria Facial" 
+                              style={{ height: "136px", width: "105px" }}
+                              className="object-cover rounded-lg border-2 border-blue-600 shadow-md mx-auto group-hover:scale-105 transition-transform" 
+                            />
+                            <div className="mt-1 text-[11px] text-blue-600 font-bold flex items-center justify-center gap-1 cursor-pointer">
+                              🔍 Toque para ampliar
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 italic">Não coletada</p>
+                        )}
+                        <p className="text-xs font-bold text-emerald-600 mt-1">
+                          ✓ Prova de Vida Validada ({term.facial_confidence ? Math.round(term.facial_confidence * 100) : 95}%)
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Rodapé institucional para impressão */}
                   <div className="pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400">
                     Hotel Fasano Salvador • Praça Castro Alves, 5 - Centro Histórico, Salvador - BA, 40020-160
@@ -783,7 +834,7 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
                 {term.facial_photo_url && (
                   <button
                     type="button"
-                    onClick={() => setIsPhotoZoomOpen(true)}
+                    onClick={() => { setLightboxScale(1); setIsPhotoZoomOpen(true); }}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-colors"
                   >
                     <ZoomIn size={15} />
@@ -807,7 +858,15 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
                     </span>
                   </div>
 
-                  <div className="relative group rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-200 aspect-square max-w-[280px] mx-auto flex items-center justify-center shadow-md">
+                  <div 
+                    onClick={() => {
+                      if (term.facial_photo_url) {
+                        setLightboxScale(1);
+                        setIsPhotoZoomOpen(true);
+                      }
+                    }}
+                    className={`relative group rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-200 aspect-square max-w-[280px] mx-auto flex items-center justify-center shadow-md ${term.facial_photo_url ? "cursor-pointer" : ""}`}
+                  >
                     {term.facial_photo_url ? (
                       <>
                         <img
@@ -817,12 +876,16 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
                         />
                         <button
                           type="button"
-                          onClick={() => setIsPhotoZoomOpen(true)}
+                          onClick={(e) => { e.stopPropagation(); setLightboxScale(1); setIsPhotoZoomOpen(true); }}
                           className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity cursor-pointer gap-1"
                         >
                           <ZoomIn size={28} />
                           <span className="text-xs font-bold">Clique para Ampliar</span>
                         </button>
+                        {/* Indicador persistente para mobile/touch */}
+                        <div className="absolute bottom-2 right-2 sm:hidden bg-slate-950/80 backdrop-blur text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                          <ZoomIn size={12} /> Toque para Ampliar
+                        </div>
                       </>
                     ) : (
                       <div className="text-center p-6 text-slate-500 text-xs">
@@ -958,6 +1021,124 @@ export default function ViewTermModal({ term, isOpen, onClose, onOpenSign, onSuc
 
         </div>
       </div>
+
+      {/* Lightbox / Zoom em Alta Definição da Biometria Facial */}
+      {isPhotoZoomOpen && term.facial_photo_url && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsPhotoZoomOpen(false);
+          }}
+        >
+          <div className="relative bg-slate-900 border border-slate-700/80 rounded-3xl p-4 sm:p-6 max-w-lg sm:max-w-xl w-full shadow-2xl space-y-4 max-h-[95dvh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-white shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
+                  <Camera size={19} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm sm:text-base">Evidência Biométrica Facial</h4>
+                  <p className="text-[11px] text-slate-400">
+                    {term.beneficiary_name} • Termo {term.term_number}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPhotoZoomOpen(false)}
+                className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
+                title="Fechar Visualização (Esc)"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* Imagem em Alta Resolução com Controles de Zoom */}
+            <div className="relative rounded-2xl overflow-hidden bg-black/80 border border-slate-800 flex-1 min-h-[260px] max-h-[58vh] flex items-center justify-center p-2 group">
+              <img
+                src={term.facial_photo_url}
+                alt="Biometria Facial Alta Resolução"
+                style={{ transform: `scale(${lightboxScale})` }}
+                className="max-h-[54vh] max-w-full object-contain rounded-xl transition-transform duration-200 select-none cursor-zoom-in"
+                onClick={() => setLightboxScale((s) => (s >= 2 ? 1 : +(s + 0.5).toFixed(1)))}
+                title="Clique na imagem para aproximar o zoom"
+              />
+
+              {/* Floating Zoom Controls no canto superior da imagem */}
+              <div className="absolute top-3 right-3 flex items-center gap-1 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 text-white shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => setLightboxScale((s) => Math.max(1, +(s - 0.3).toFixed(1)))}
+                  disabled={lightboxScale <= 1}
+                  className="p-1.5 text-slate-300 hover:text-white disabled:opacity-40 rounded-lg hover:bg-slate-800 cursor-pointer"
+                  title="Reduzir Zoom"
+                >
+                  <ZoomOut size={16} />
+                </button>
+                <span className="text-[11px] font-mono font-bold px-1.5 min-w-[3rem] text-center">
+                  {Math.round(lightboxScale * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLightboxScale((s) => Math.min(3, +(s + 0.3).toFixed(1)))}
+                  disabled={lightboxScale >= 3}
+                  className="p-1.5 text-slate-300 hover:text-white disabled:opacity-40 rounded-lg hover:bg-slate-800 cursor-pointer"
+                  title="Aumentar Zoom"
+                >
+                  <ZoomIn size={16} />
+                </button>
+                {lightboxScale > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setLightboxScale(1)}
+                    className="p-1.5 text-amber-400 hover:text-amber-300 rounded-lg hover:bg-slate-800 cursor-pointer text-[10px] font-bold"
+                    title="Resetar Zoom"
+                  >
+                    1:1
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Metadados Técnicos de Fé Pública */}
+            <div className="grid grid-cols-2 gap-2 text-xs text-slate-300 bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60 shrink-0">
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">Confiança Facial</span>
+                <span className="font-bold text-emerald-400">
+                  {term.facial_confidence ? Math.round(term.facial_confidence * 100) : 95}% (Face Validada)
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">Data & Hora</span>
+                <span className="font-medium">{formatDate(term.signed_at)}</span>
+              </div>
+              <div className="col-span-2 pt-1 border-t border-slate-700/60 text-[11px] text-slate-400 font-mono truncate">
+                Dispositivo: {formatSignerDevice(term.signer_device)}
+              </div>
+            </div>
+
+            {/* Ações inferiores */}
+            <div className="flex justify-between items-center pt-1 shrink-0">
+              <a
+                href={term.facial_photo_url}
+                download={`biometria-${term.term_number}.jpg`}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-700 transition-colors min-h-[40px]"
+              >
+                <Download size={15} />
+                Baixar Foto Original
+              </a>
+              <button
+                type="button"
+                onClick={() => setIsPhotoZoomOpen(false)}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer min-h-[40px]"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
