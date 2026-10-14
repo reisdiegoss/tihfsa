@@ -594,84 +594,83 @@ def seed_default_term_templates(db: Session):
                 "category": "Geral",
                 "description": "Modelo corporativo padrão para periféricos, fones de ouvido, cabos, adaptadores e equipamentos avulsos.",
                 "default_items": json.dumps([
-                    {"item_name": "Fone de ouvido estéreo com microfone", "category": "Periférico", "quantity": 1, "condition": "Novo / Em perfeito estado", "accessories": "Cabo P3/USB"},
-                    {"item_name": "Mouse óptico USB com fio", "category": "Periférico", "quantity": 1, "condition": "Em perfeito estado", "accessories": ""}
+                    {"item_name": "Fone de ouvido estéreo com microfone", "category": "Periférico", "quantity": 1, "condition": "Novo / Em perfeito estado", "accessories": "Cabo P3/USB"}
                 ], ensure_ascii=False),
-                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.35; color: #111;">
-  <div style="text-align: center; border-bottom: 1.5px solid #b89758; padding-bottom: 5px; margin-bottom: 6px;">
-    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1px; font-size: 13.5pt;">HOTEL FASANO SALVADOR</h2>
-    <h3 style="margin: 2px 0 0 0; font-weight: 600; font-size: 10pt; color: #222;">TERMO DE RESPONSABILIDADE E RETIRADA DE EQUIPAMENTOS</h3>
-    <p style="margin: 2px 0 0 0; font-size: 8pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.45; color: #0f172a;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 8px; margin-bottom: 12px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 15pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 3px 0 0 0; font-weight: 700; font-size: 11pt; color: #1e293b;">TERMO DE RESPONSABILIDADE E RETIRADA DE EQUIPAMENTOS</h3>
+    <p style="margin: 3px 0 0 0; font-size: 8.5pt; color: #64748b;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
   </div>
 
-  <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px; font-size: 8pt; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 9pt; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 22%; font-weight: 600; color: #334155;">Colaborador(a):</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 38%; font-weight: 600; color: #0f172a;">{{nome_colaborador}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 18%; font-weight: 600; color: #334155;">Documento / CPF:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 22%; color: #0f172a;">{{documento_cpf_rg}}</td>
     </tr>
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Setor / Departamento:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Setor / Departamento:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{setor_departamento}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Técnico Emissor:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{tecnico_responsavel}}</td>
     </tr>
   </table>
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">1. Discriminação dos Equipamentos e Bens Retirados</h4>
-  <p style="font-size: 7.5pt; margin-bottom: 3px; color: #374151;">O colaborador acima qualificado declara ter recebido da TI do <strong>{{hotel_fasano}}</strong>, em perfeito estado de conservação, o(s) seguinte(s) item(ns):</p>
+  <h4 style="margin: 10px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">1. Discriminação dos Equipamentos e Bens Retirados</h4>
+  <p style="font-size: 8.5pt; margin-bottom: 6px; color: #475569;">O colaborador acima qualificado declara ter recebido da TI do <strong>{{hotel_fasano}}</strong>, em perfeito estado de conservação, o(s) seguinte(s) item(ns):</p>
   
   {{tabela_equipamentos}}
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">2. Cláusulas e Obrigações de Uso</h4>
-  <ol style="font-size: 7.5pt; line-height: 1.25; padding-left: 16px; text-align: justify; color: #374151; margin-top: 2px; margin-bottom: 3px;">
-    <li style="margin-bottom: 1px;">O(s) equipamento(s) destina(m)-se exclusivamente às atividades funcionais no Hotel Fasano Salvador;</li>
-    <li style="margin-bottom: 1px;">O beneficiário assume integral responsabilidade pela guarda, conservação e segurança dos bens recebidos;</li>
-    <li style="margin-bottom: 1px;">Qualquer avaria, extravio ou furto deve ser imediatamente comunicado à gerência de TI mediante B.O. quando couber;</li>
-    <li style="margin-bottom: 1px;">É expressamente vedado transferir, ceder, emprestar ou sublocar os equipamentos sem autorização prévia da TI;</li>
-    <li style="margin-bottom: 1px;">Em caso de transferência, desligamento ou revogação deste termo, os equipamentos deverão ser imediatamente devolvidos ao setor de TI.</li>
+  <h4 style="margin: 12px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">2. Cláusulas e Obrigações de Uso</h4>
+  <ol style="font-size: 8.5pt; line-height: 1.45; padding-left: 18px; text-align: justify; color: #374151; margin-top: 4px; margin-bottom: 8px;">
+    <li style="margin-bottom: 3px;">O(s) equipamento(s) destina(m)-se exclusivamente às atividades funcionais no Hotel Fasano Salvador;</li>
+    <li style="margin-bottom: 3px;">O beneficiário assume integral responsabilidade pela guarda, conservação, asseio e segurança dos bens recebidos;</li>
+    <li style="margin-bottom: 3px;">Qualquer avaria, extravio ou furto deve ser imediatamente comunicado à gerência de TI mediante boletim de ocorrência quando couber;</li>
+    <li style="margin-bottom: 3px;">É expressamente vedado transferir, ceder, emprestar ou sublocar os equipamentos a outros colaboradores ou terceiros sem autorização prévia da TI;</li>
+    <li style="margin-bottom: 3px;">Em caso de transferência, desligamento ou revogação deste termo, os equipamentos deverão ser imediatamente devolvidos ao setor de TI nas mesmas condições de entrega.</li>
   </ol>
 
   <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 6px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 6px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 14px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 8px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td colspan="2" style="padding: 3px 8px; font-size: 7.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
+      <td colspan="2" style="padding: 6px 12px; font-size: 8.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
         Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica &amp; Biometria Facial)
       </td>
     </tr>
     <tr>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{assinatura_beneficiario}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{nome_colaborador}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
         </div>
       </td>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{foto_biometria}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">Validação Facial em Tempo Real</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Autenticação Facial (Face-API)</p>
         </div>
       </td>
     </tr>
   </table>
 
   <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 5px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 12px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
       <td style="text-align: center; vertical-align: top; padding: 0;">
-        <div style="display: inline-block; width: 60%; border-top: 1px solid #9ca3af; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
+        <div style="display: inline-block; width: 55%; border-top: 1px solid #9ca3af; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{tecnico_responsavel}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Técnico Emissor / Testemunha da Entrega</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Tecnologia da Informação — Hotel Fasano Salvador</p>
         </div>
       </td>
     </tr>
@@ -687,80 +686,80 @@ def seed_default_term_templates(db: Session):
                     {"item_name": "Base Carregadora de Mesa Bivolt", "category": "Comunicação", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Fonte de alimentação original"},
                     {"item_name": "Fone de Ouvido PTT Acústico com microfone de lapela", "category": "Comunicação", "quantity": 1, "condition": "Novo / Higienizado", "accessories": "Tubo acústico transparente"}
                 ], ensure_ascii=False),
-                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.35; color: #111;">
-  <div style="text-align: center; border-bottom: 1.5px solid #b89758; padding-bottom: 5px; margin-bottom: 6px;">
-    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1px; font-size: 13.5pt;">HOTEL FASANO SALVADOR</h2>
-    <h3 style="margin: 2px 0 0 0; font-weight: 600; font-size: 10pt; color: #222;">TERMO DE CAUTELA — RÁDIO COMUNICADOR HT</h3>
-    <p style="margin: 2px 0 0 0; font-size: 8pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.45; color: #0f172a;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 8px; margin-bottom: 12px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 15pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 3px 0 0 0; font-weight: 700; font-size: 11pt; color: #1e293b;">TERMO DE CAUTELA — RÁDIO COMUNICADOR HT</h3>
+    <p style="margin: 3px 0 0 0; font-size: 8.5pt; color: #64748b;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
   </div>
 
-  <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px; font-size: 8pt; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 9pt; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 22%; font-weight: 600; color: #334155;">Colaborador(a):</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 38%; font-weight: 600; color: #0f172a;">{{nome_colaborador}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 18%; font-weight: 600; color: #334155;">Documento / CPF:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 22%; color: #0f172a;">{{documento_cpf_rg}}</td>
     </tr>
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Setor / Operação:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Setor / Operação:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{setor_departamento}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Técnico Emissor:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{tecnico_responsavel}}</td>
     </tr>
   </table>
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">1. Equipamentos de Radiocomunicação Entregues</h4>
-  <p style="font-size: 7.5pt; margin-bottom: 3px; color: #374151;">O colaborador recebe os aparelhos calibrados nos canais operacionais do hotel:</p>
+  <h4 style="margin: 10px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">1. Equipamentos de Radiocomunicação Entregues</h4>
+  <p style="font-size: 8.5pt; margin-bottom: 6px; color: #475569;">O colaborador recebe os aparelhos calibrados nos canais operacionais do hotel:</p>
   
   {{tabela_equipamentos}}
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">2. Regras de Utilização do Rádio</h4>
-  <ul style="font-size: 7.5pt; line-height: 1.25; padding-left: 16px; text-align: justify; color: #374151; margin-top: 2px; margin-bottom: 3px;">
-    <li style="margin-bottom: 1px;">O rádio deve ser mantido sempre no canal designado para o setor do colaborador durante o turno de serviço;</li>
-    <li style="margin-bottom: 1px;">Utilizar linguagem estritamente profissional e de acordo com os protocolos de hospitalidade Fasano;</li>
-    <li style="margin-bottom: 1px;">Proibido puxar o rádio pela antena ou molhar o equipamento em áreas molhadas (exceto se homologado IP67);</li>
-    <li style="margin-bottom: 1px;">Ao término de cada escala de serviço, o rádio deve ser recolhido à base de carregamento correspondente.</li>
+  <h4 style="margin: 12px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">2. Regras de Utilização do Rádio</h4>
+  <ul style="font-size: 8.5pt; line-height: 1.45; padding-left: 18px; text-align: justify; color: #374151; margin-top: 4px; margin-bottom: 8px;">
+    <li style="margin-bottom: 3px;">O rádio deve ser mantido sempre no canal designado para o setor do colaborador durante o turno de serviço;</li>
+    <li style="margin-bottom: 3px;">Utilizar linguagem estritamente profissional e de acordo com os protocolos de hospitalidade Fasano;</li>
+    <li style="margin-bottom: 3px;">Proibido puxar o rádio pela antena ou expor a umidade (exceto se homologado IP67);</li>
+    <li style="margin-bottom: 3px;">Ao término de cada escala de serviço, o rádio deve ser recolhido à base de carregamento correspondente.</li>
   </ul>
 
   <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 6px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 6px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 14px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 8px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td colspan="2" style="padding: 3px 8px; font-size: 7.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
+      <td colspan="2" style="padding: 6px 12px; font-size: 8.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
         Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica &amp; Biometria Facial)
       </td>
     </tr>
     <tr>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{assinatura_beneficiario}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{nome_colaborador}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
         </div>
       </td>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{foto_biometria}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">Validação Facial em Tempo Real</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Autenticação Facial (Face-API)</p>
         </div>
       </td>
     </tr>
   </table>
 
   <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 5px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 12px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
       <td style="text-align: center; vertical-align: top; padding: 0;">
-        <div style="display: inline-block; width: 60%; border-top: 1px solid #9ca3af; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
+        <div style="display: inline-block; width: 55%; border-top: 1px solid #9ca3af; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{tecnico_responsavel}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Técnico Emissor / Testemunha da Entrega</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Tecnologia da Informação — Hotel Fasano Salvador</p>
         </div>
       </td>
     </tr>
@@ -775,75 +774,75 @@ def seed_default_term_templates(db: Session):
                     {"item_name": "Smartphone Corporativo Android / iOS", "category": "Telefonia", "quantity": 1, "condition": "Em perfeito estado / Sem trincas", "accessories": "Cabo USB, carregador de parede, capa protetora e película de vidro"},
                     {"item_name": "Chip Corporativo SIM Card 4G/5G", "category": "Telefonia", "quantity": 1, "condition": "Ativo com linha corporativa Fasano", "accessories": "Pacote de voz e dados corporativos"}
                 ], ensure_ascii=False),
-                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.35; color: #111;">
-  <div style="text-align: center; border-bottom: 1.5px solid #b89758; padding-bottom: 5px; margin-bottom: 6px;">
-    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1px; font-size: 13.5pt;">HOTEL FASANO SALVADOR</h2>
-    <h3 style="margin: 2px 0 0 0; font-weight: 600; font-size: 10pt; color: #222;">TERMO DE COMPROMISSO — TELEFONIA MÓVEL CORPORATIVA</h3>
-    <p style="margin: 2px 0 0 0; font-size: 8pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.45; color: #0f172a;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 8px; margin-bottom: 12px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 15pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 3px 0 0 0; font-weight: 700; font-size: 11pt; color: #1e293b;">TERMO DE COMPROMISSO — TELEFONIA MÓVEL CORPORATIVA</h3>
+    <p style="margin: 3px 0 0 0; font-size: 8.5pt; color: #64748b;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
   </div>
 
-  <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px; font-size: 8pt; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 9pt; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 22%; font-weight: 600; color: #334155;">Colaborador(a):</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 38%; font-weight: 600; color: #0f172a;">{{nome_colaborador}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 18%; font-weight: 600; color: #334155;">Documento / CPF:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 22%; color: #0f172a;">{{documento_cpf_rg}}</td>
     </tr>
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Departamento:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Departamento:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{setor_departamento}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Técnico Emissor:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{tecnico_responsavel}}</td>
     </tr>
   </table>
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">1. Dispositivo Móvel e Linha Cadastrada</h4>
+  <h4 style="margin: 10px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">1. Dispositivo Móvel e Linha Cadastrada</h4>
   {{tabela_equipamentos}}
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">2. Termos de Uso e Política de Segurança</h4>
-  <p style="font-size: 7.5pt; line-height: 1.25; text-align: justify; color: #374151; margin-top: 2px; margin-bottom: 3px;">
-    O colaborador compromete-se a manter o bloqueio de tela por biometria/PIN, não instalar aplicativos não homologados e não compartilhar credenciais. O aparelho poderá ser gerenciado remotamente pelo MDM corporativo em caso de furto ou extravio.
+  <h4 style="margin: 12px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">2. Termos de Uso e Política de Segurança</h4>
+  <p style="font-size: 8.5pt; line-height: 1.45; text-align: justify; color: #374151; margin-top: 4px; margin-bottom: 8px;">
+    O colaborador compromete-se a manter o bloqueio de tela ativo por biometria ou PIN seguro, não instalar aplicativos não homologados e não compartilhar credenciais corporativas. O aparelho poderá ser gerenciado remotamente pelo MDM institucional em caso de perda, furto ou extravio.
   </p>
 
   <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 6px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 6px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 14px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 8px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td colspan="2" style="padding: 3px 8px; font-size: 7.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
+      <td colspan="2" style="padding: 6px 12px; font-size: 8.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
         Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica &amp; Biometria Facial)
       </td>
     </tr>
     <tr>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{assinatura_beneficiario}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{nome_colaborador}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
         </div>
       </td>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{foto_biometria}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">Validação Facial em Tempo Real</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Autenticação Facial (Face-API)</p>
         </div>
       </td>
     </tr>
   </table>
 
   <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 5px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 12px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
       <td style="text-align: center; vertical-align: top; padding: 0;">
-        <div style="display: inline-block; width: 60%; border-top: 1px solid #9ca3af; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
+        <div style="display: inline-block; width: 55%; border-top: 1px solid #9ca3af; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{tecnico_responsavel}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Técnico Emissor / Testemunha da Entrega</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Tecnologia da Informação — Hotel Fasano Salvador</p>
         </div>
       </td>
     </tr>
@@ -859,75 +858,75 @@ def seed_default_term_templates(db: Session):
                     {"item_name": "Mochila / Case acolchoada para notebook", "category": "Acessório", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Alça acolchoada"},
                     {"item_name": "Mouse sem fio óptico", "category": "Periférico", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Dongle USB e pilha"}
                 ], ensure_ascii=False),
-                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.35; color: #111;">
-  <div style="text-align: center; border-bottom: 1.5px solid #b89758; padding-bottom: 5px; margin-bottom: 6px;">
-    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1px; font-size: 13.5pt;">HOTEL FASANO SALVADOR</h2>
-    <h3 style="margin: 2px 0 0 0; font-weight: 600; font-size: 10pt; color: #222;">TERMO DE RESPONSABILIDADE — NOTEBOOK CORPORATIVO</h3>
-    <p style="margin: 2px 0 0 0; font-size: 8pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.45; color: #0f172a;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 8px; margin-bottom: 12px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 15pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 3px 0 0 0; font-weight: 700; font-size: 11pt; color: #1e293b;">TERMO DE RESPONSABILIDADE — NOTEBOOK CORPORATIVO</h3>
+    <p style="margin: 3px 0 0 0; font-size: 8.5pt; color: #64748b;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
   </div>
 
-  <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px; font-size: 8pt; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 9pt; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 22%; font-weight: 600; color: #334155;">Colaborador(a):</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 38%; font-weight: 600; color: #0f172a;">{{nome_colaborador}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 18%; font-weight: 600; color: #334155;">Documento / CPF:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 22%; color: #0f172a;">{{documento_cpf_rg}}</td>
     </tr>
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Setor / Departamento:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Setor / Departamento:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{setor_departamento}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Técnico Emissor:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{tecnico_responsavel}}</td>
     </tr>
   </table>
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">1. Equipamentos e Acessórios Entregues</h4>
+  <h4 style="margin: 10px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">1. Equipamentos e Acessórios Entregues</h4>
   {{tabela_equipamentos}}
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">2. Cláusulas de Proteção de Dados e Equipamento</h4>
-  <p style="font-size: 7.5pt; line-height: 1.25; text-align: justify; color: #374151; margin-top: 2px; margin-bottom: 3px;">
-    O usuário declara ciência de que o notebook está sujeito às políticas de segurança da informação do Hotel Fasano Salvador, com criptografia BitLocker ativada e monitoramento de inventário pelo agente TIHFSA. É proibido desativar rotinas de proteção ou instalar softwares sem homologação técnica.
+  <h4 style="margin: 12px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">2. Cláusulas de Proteção de Dados e Equipamento</h4>
+  <p style="font-size: 8.5pt; line-height: 1.45; text-align: justify; color: #374151; margin-top: 4px; margin-bottom: 8px;">
+    O usuário declara ciência de que o notebook está sujeito às políticas de segurança da informação do Hotel Fasano Salvador, com criptografia BitLocker ativada e monitoramento de telemetria pelo agente TIHFSA. É expressamente proibido alterar diretivas de segurança, compartilhar senhas ou instalar programas não homologados.
   </p>
 
   <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 6px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 6px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 14px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 8px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td colspan="2" style="padding: 3px 8px; font-size: 7.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
+      <td colspan="2" style="padding: 6px 12px; font-size: 8.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
         Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica &amp; Biometria Facial)
       </td>
     </tr>
     <tr>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{assinatura_beneficiario}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{nome_colaborador}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
         </div>
       </td>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{foto_biometria}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">Validação Facial em Tempo Real</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Autenticação Facial (Face-API)</p>
         </div>
       </td>
     </tr>
   </table>
 
   <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 5px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 12px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
       <td style="text-align: center; vertical-align: top; padding: 0;">
-        <div style="display: inline-block; width: 60%; border-top: 1px solid #9ca3af; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
+        <div style="display: inline-block; width: 55%; border-top: 1px solid #9ca3af; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{tecnico_responsavel}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Técnico Emissor / Testemunha da Entrega</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Tecnologia da Informação — Hotel Fasano Salvador</p>
         </div>
       </td>
     </tr>
@@ -942,75 +941,75 @@ def seed_default_term_templates(db: Session):
                     {"item_name": "Chave física de acesso numerada", "category": "Acesso", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Chaveiro com numeração e identificação do setor"},
                     {"item_name": "TAG RFID / Cartão de Proximidade de Acesso", "category": "Acesso", "quantity": 1, "condition": "Ativo e codificado no sistema de catracas/portas", "accessories": "Cordão personalizado Fasano"}
                 ], ensure_ascii=False),
-                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.35; color: #111;">
-  <div style="text-align: center; border-bottom: 1.5px solid #b89758; padding-bottom: 5px; margin-bottom: 6px;">
-    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1px; font-size: 13.5pt;">HOTEL FASANO SALVADOR</h2>
-    <h3 style="margin: 2px 0 0 0; font-weight: 600; font-size: 10pt; color: #222;">TERMO DE CAUTELA — CHAVES E DISPOSITIVOS DE ACESSO</h3>
-    <p style="margin: 2px 0 0 0; font-size: 8pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.45; color: #0f172a;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 8px; margin-bottom: 12px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 15pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 3px 0 0 0; font-weight: 700; font-size: 11pt; color: #1e293b;">TERMO DE CAUTELA — CHAVES E DISPOSITIVOS DE ACESSO</h3>
+    <p style="margin: 3px 0 0 0; font-size: 8.5pt; color: #64748b;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
   </div>
 
-  <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px; font-size: 8pt; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 9pt; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 22%; font-weight: 600; color: #334155;">Colaborador(a):</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 38%; font-weight: 600; color: #0f172a;">{{nome_colaborador}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; width: 18%; font-weight: 600; color: #334155;">Documento / CPF:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; width: 22%; color: #0f172a;">{{documento_cpf_rg}}</td>
     </tr>
     <tr>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Setor / Função:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
-      <td style="padding: 2.5px 6px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Setor / Função:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{setor_departamento}}</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: 600; color: #334155;">Técnico Emissor:</td>
+      <td style="padding: 5px 8px; border: 1px solid #e2e8f0; color: #0f172a;">{{tecnico_responsavel}}</td>
     </tr>
   </table>
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">1. Chaves e Dispositivos Entregues</h4>
+  <h4 style="margin: 10px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">1. Chaves e Dispositivos Entregues</h4>
   {{tabela_equipamentos}}
 
-  <h4 style="margin: 6px 0 2px 0; color: #1f2937; text-transform: uppercase; font-size: 8.5pt; border-left: 3px solid #b89758; padding-left: 6px;">2. Termos de Segurança Física e Patrimonial</h4>
-  <p style="font-size: 7.5pt; line-height: 1.25; text-align: justify; color: #374151; margin-top: 2px; margin-bottom: 3px;">
-    A guarda da chave/TAG é de responsabilidade estritamente pessoal e intransferível. É expressamente vedado realizar cópias de chaves sem autorização formal da Segurança Patrimonial ou permitir a entrada de pessoas não autorizadas em áreas restritas.
+  <h4 style="margin: 12px 0 4px 0; color: #1e293b; text-transform: uppercase; font-size: 9.5pt; font-weight: bold; border-left: 3.5px solid #b89758; padding-left: 8px;">2. Termos de Segurança Física e Patrimonial</h4>
+  <p style="font-size: 8.5pt; line-height: 1.45; text-align: justify; color: #374151; margin-top: 4px; margin-bottom: 8px;">
+    A guarda da chave ou TAG de proximidade é de responsabilidade estritamente pessoal e intransferível. É expressamente proibido confeccionar cópias sem autorização formal da Segurança Patrimonial ou franquear a entrada de pessoas não autorizadas em áreas restritas.
   </p>
 
   <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 6px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 6px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 14px; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 8px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
-      <td colspan="2" style="padding: 3px 8px; font-size: 7.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
+      <td colspan="2" style="padding: 6px 12px; font-size: 8.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">
         Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica &amp; Biometria Facial)
       </td>
     </tr>
     <tr>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom; border-right: 1px solid #e2e8f0;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{assinatura_beneficiario}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{nome_colaborador}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
         </div>
       </td>
-      <td style="width: 50%; padding: 4px 8px 2px 8px; text-align: center; vertical-align: bottom;">
-        <div style="min-height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px;">
+      <td style="width: 50%; padding: 8px 14px 6px 14px; text-align: center; vertical-align: bottom;">
+        <div style="min-height: 52px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;">
           {{foto_biometria}}
         </div>
-        <div style="border-top: 1px solid #374151; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        <div style="border-top: 1.5px solid #374151; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">Validação Facial em Tempo Real</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Autenticação Facial (Face-API)</p>
         </div>
       </td>
     </tr>
   </table>
 
   <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
-  <table style="width: 100%; border-collapse: collapse; margin-top: 5px; page-break-inside: avoid !important; break-inside: avoid !important;">
+  <table style="width: 100%; border-collapse: collapse; margin-top: 12px; page-break-inside: avoid !important; break-inside: avoid !important;">
     <tr>
       <td style="text-align: center; vertical-align: top; padding: 0;">
-        <div style="display: inline-block; width: 60%; border-top: 1px solid #9ca3af; padding-top: 2px;">
-          <p style="margin: 0; font-size: 8pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-          <p style="margin: 1px 0 0 0; font-size: 7pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
-          <p style="margin: 1px 0 0 0; font-size: 6.5pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
+        <div style="display: inline-block; width: 55%; border-top: 1px solid #9ca3af; padding-top: 4px;">
+          <p style="margin: 0; font-size: 9pt; font-weight: bold; color: #0f172a;">{{tecnico_responsavel}}</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #475569;">Técnico Emissor / Testemunha da Entrega</p>
+          <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #64748b;">Tecnologia da Informação — Hotel Fasano Salvador</p>
         </div>
       </td>
     </tr>

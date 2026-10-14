@@ -1326,8 +1326,14 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Garantia de Folha A4 Única e Prevenção Absoluta de Quebra de Página (`ViewTermModal.jsx` / `init_db.py`)**:
       - **Estrutura Atômica em Tabelas Nativas (Zero Fratura)**: Substituição de containers `display: flex` por tabelas HTML nativas nos blocos de Aceite do Beneficiário (Dupla Validação), Testemunha TI e Certificação Digital sob Fé Pública. Motores de impressão de navegadores (Chromium/WebKit) tratam tabelas nativas com `page-break-inside: avoid !important; break-inside: avoid !important;` de forma atômica, eliminando 100% o risco de separar a assinatura do nome ou quebrar o card no meio.
       - **Conversor Inteligente de Compatibilidade**: Regra de impressão que intercepta e converte automaticamente layouts legados baseados em flexbox em tabelas estruturadas no momento do print.
-      - **Compactação Milimétrica A4**: Proporções executivas otimizadas (título 13.5pt, entrelinhas 1.25 a 1.35, células da tabela de itens em 2.5px 6px, rubrica touch em 42px e foto facial em 46px), reduzindo a altura total do documento em ~235px e assegurando margem de folga superior a 250px para caber com elegância em **exatamente 1 folha A4**.
+      - **Proporções Executivas Equilibradas & Responsividade Total A4 (`ViewTermModal.jsx` / `WordRibbonEditor.jsx` / `init_db.py`)**:
+        - **Equilíbrio Visual Sem Achatamento**: Superação do encolhimento artificial (`scale(0.95)` removido e reset de padding `#printable-term` no iframe isolado). O documento preenche de forma harmoniosa ~80% da folha A4 com tipografia nobre (título Fasano 15pt dourado, subtítulo 11pt, metadados 9pt, tabela de itens 8.5pt com padding confortável de 5px 8px e entrelinha 1.45), garantindo 1 página única sem estourar e sem deixar a metade inferior da folha vazia.
+        - **Evidências Visuais com Escala Real**: Assinatura manuscrita touch calibrada para 52px e biometria facial fotográfica em proporção 3x4 (64px) com selos de validação em verde esmeralda.
+        - **Certificação Digital sob Fé Pública Estruturada**: Substituição de tags inline dependentes de Tailwind por elementos em blocos nativos com estilos inline completos no iframe de impressão, impedindo a colagem indevida de textos ("TIHFSAEndereço IP" e "DataDispositivo").
+        - **Formatador Inteligente de Dispositivo (`formatSignerDevice`)**: O User-Agent cru do navegador é automaticamente tratado e sintetizado de forma executiva (ex: `Microsoft Edge (Windows 10/11 • 1912x948)`), eliminando quebras desnecessárias e poluição visual no rodapé de fé pública.
+        - **Responsividade Adaptativa na Tela**: Padding dinâmico (`p-4 sm:p-8 md:p-12`) no visualizador para exibição confortável em smartphones, tablets e monitores ultrawide.
       - **Sincronização em Massa no Banco**: Rotina automatizada em `init_db.py` que migra tanto os templates padrão quanto os termos já emitidos no banco de dados.
+
 
 
 
