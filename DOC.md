@@ -1289,13 +1289,36 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Numeração sequencial unificada: `TR-YYYY-XXXX` (ex: `TR-2026-0001`).
       - Registro do IP do assinante, identificador do dispositivo/navegador, carimbo de data/hora oficial e técnico responsável pela entrega.
       - Cláusulas e compromissos legais institucionais do Hotel Fasano Salvador para guarda, integridade e devolução de patrimônio corporativo.
-    - **Visualização Completa e Impressão em Formato A4 Institucional**:
-      - Modal com layout padrão A4 contendo timbre oficial do Hotel Fasano Salvador, dados cadastrais, tabela de bens entregues, cláusulas jurídicas e as duas evidências lado a lado (**Foto Biométrica Facial com Carimbo** e **Assinatura Digital Manuscrita**).
-      - Função "Imprimir Termo / Salvar PDF" via `window.print()` com folhas formatadas e botões da interface ocultos automaticamente na impressão.
+    - **Wizard de Assinatura em 3 Etapas Progressivas (`SignTermModal.jsx`)**:
+      - **Etapa 1: Assinatura Manuscrita com o Dedo / Touch**: Canvas responsivo de alta precisão com suporte a stylus ou dedo, botão de limpeza e confirmação antes de avançar.
+      - **Etapa 2: Prova de Vida Facial Ativa (Liveness Detection com IA)**:
+        - Abertura controlada da câmera com desligamento automático ao mudar de etapa ou fechar.
+        - Sorteio aleatório de desafios biométricos:
+          - 👁️ **Piscar os Olhos**: Análise de Eye Aspect Ratio (EAR) nos 6 landmarks oculares ($EAR < 0.22$ fechado e $\ge 0.26$ aberto).
+          - ⬆️ **Olhar para Cima**: Cálculo angular de pitch via relação nariz-olhos vs nariz-queixo ($< 0.68$).
+          - ⬅️ **Virar o Rosto para a Esquerda**: Cálculo angular de yaw via proporção tridimensional das maçãs do rosto ($> 1.85$).
+          - ➡️ **Virar o Rosto para a Direita**: Detecção de desvio lateral da face.
+          - 😊 **Sorrir**: Detecção de microexpressões faciais via rede neural `faceapi.detectSingleFace().withFaceExpressions()` ($happy > 0.65$).
+        - Feedback em tempo real com guia oval de enquadramento verde neon e beeps harmônicos via Web Audio API.
+        - Captura fotográfica automática em alta definição no momento exato em que todos os desafios são superados.
+      - **Etapa 3: Revisão e Conclusão**: Exibição conjunta da assinatura digital manuscrita e da foto biométrica com score de confiança, metadados de fé pública e botão de gravação final.
+    - **Atribuição Correta de Fé Pública (Colaborador vs Técnico)**:
+      - **Colaborador Recebedor (Titular)**: Realiza obrigatoriamente as **duas validações** de segurança (Assinatura manuscrita em tela + Biometria facial com prova de vida).
+      - **Técnico Emissor da TI**: Atua exclusivamente como **testemunha oficial da entrega** e emissor do termo, com registro de sua matrícula/nome no carimbo funcional do documento, sem foto biométrica pessoal no lugar da assinatura.
+    - **Editor Visual Wordcraft com Ribbon Toolbar (`WordRibbonEditor.jsx`)**:
+      - Barra de ferramentas estilo Microsoft Word com guias de Formatação, Inserção de Tags Dinâmicas, Importação de arquivos `.docx` via `mammoth.js` e Pré-configuração de itens padrão.
+      - Tags inteligentes interpoladas dinamicamente: `{{hotel_fasano}}`, `{{numero_termo}}`, `{{data_emissao}}`, `{{nome_colaborador}}`, `{{documento_cpf_rg}}`, `{{setor_departamento}}`, `{{tecnico_responsavel}}`, `{{tabela_equipamentos}}`, `{{assinatura_beneficiario}}`, `{{foto_biometria}}`.
+    - **Visualização Instantânea Sem Downloads & Impressão Limpa A4**:
+      - **Visualização 100% In-Page**: Abertura instantânea do termo montado em modal com modo leitura em tela cheia opcional para tablets, eliminando downloads indesejados ao apenas consultar o documento.
+      - **Impressão A4 Executiva (`index.css` & `ViewTermModal.jsx`)**:
+        - Regras estritas de `@media print` no CSS global.
+        - Supressão absoluta de elementos de tela: barra de navegação inferior móvel (`BottomNav.jsx`), barra lateral (`Sidebar.jsx`), cabeçalho superior (`Header.jsx`), botões de ação e fundos translúcidos/backdrop de modais.
+        - Interpolação nativa de templates HTML substituindo todas as tags dinâmicas por imagens e dados reais, sem qualquer vazamento de código HTML cru na folha impressa.
     - **Fluxo de Devolução e Baixa de Equipamentos**:
       - Botão "Registrar Devolução" para dar baixa no termo quando o colaborador devolve os itens ao setor de TI, registrando o técnico recebedor, data da devolução, estado de conservação dos bens e observações.
     - **Navegação e Controle de Acesso**:
       - Novo menu **"Termos"** no menu lateral (`Sidebar.jsx`) e na barra de navegação móvel para tablets (`BottomNav.jsx`).
       - Módulo `'terms'` integrado nas regras de permissão do sistema (`allowed_modules` e `require_technician`).
+
 
 

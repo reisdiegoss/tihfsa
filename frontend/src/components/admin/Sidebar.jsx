@@ -34,7 +34,10 @@ export default function Sidebar() {
 
 
   return (
-    <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 h-screen flex-col justify-between p-6 z-50">
+    <aside 
+      data-print="hidden"
+      className="hidden md:flex w-64 bg-white border-r border-slate-200 h-screen flex-col justify-between p-6 z-50 print:hidden no-print"
+    >
       <div>
         {/* Logo */}
         <div className="flex items-center gap-3 mb-10">

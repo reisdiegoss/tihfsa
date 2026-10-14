@@ -76,16 +76,27 @@ export default function WordRibbonEditor({
               O recebedor assume total responsabilidade pela guarda, conservação e integridade do bem disponibilizado pelo Hotel Fasano Salvador exclusivamente para uso institucional.
             </p>
 
-            <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
-              <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-                {{assinatura_beneficiario}}
-                <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-                <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Beneficiário Recebedor</p>
+            <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px; align-items: flex-end;">
+              <div style="flex: 1.3; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 8px; padding: 12px; text-align: center;">
+                <p style="margin: 0 0 8px 0; font-size: 8.5pt; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px;">Validações do Colaborador Recebedor</p>
+                <div style="display: flex; gap: 10px; justify-content: center; align-items: center; margin-bottom: 8px;">
+                  <div style="flex: 1; border-top: 1px solid #94a3b8; padding-top: 4px;">
+                    {{assinatura_beneficiario}}
+                    <p style="margin: 2px 0 0 0; font-size: 7.5pt; color: #64748b;">Assinatura Touch</p>
+                  </div>
+                  <div style="flex: 1; border-top: 1px solid #94a3b8; padding-top: 4px;">
+                    {{foto_biometria}}
+                    <p style="margin: 2px 0 0 0; font-size: 7.5pt; color: #64748b;">Biometria Facial</p>
+                  </div>
+                </div>
+                <p style="margin: 4px 0 0 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+                <p style="margin: 2px 0 0 0; font-size: 8pt; color: #64748b;">Beneficiário Recebedor (Titular)</p>
               </div>
-              <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-                {{foto_biometria}}
-                <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-                <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">TI — Fasano Salvador</p>
+
+              <div style="flex: 0.9; border-top: 1px solid #4b5563; padding-top: 10px; text-align: center; margin-bottom: 6px;">
+                <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+                <p style="margin: 2px 0 0 0; font-size: 8pt; color: #6b7280;">Técnico Emissor / Testemunha da Entrega</p>
+                <p style="margin: 1px 0 0 0; font-size: 7.5pt; color: #9ca3af;">Setor de TI — Hotel Fasano Salvador</p>
               </div>
             </div>
           </div>
@@ -264,14 +275,14 @@ export default function WordRibbonEditor({
   const dynamicTags = [
     { code: "{{hotel_fasano}}", label: "Hotel Fasano Salvador", desc: "Nome institucional" },
     { code: "{{numero_termo}}", label: "Nº do Termo", desc: "Ex: TR-2026-0001" },
-    { code: "{{nome_colaborador}}", label: "Nome do Colaborador", desc: "Beneficiário recebedor" },
+    { code: "{{nome_colaborador}}", label: "Nome do Colaborador", desc: "Beneficiário recebedor titular" },
     { code: "{{documento_cpf_rg}}", label: "CPF / Documento", desc: "Documento do colaborador" },
     { code: "{{setor_departamento}}", label: "Setor / Depto", desc: "Setor de alocação" },
-    { code: "{{tecnico_responsavel}}", label: "Técnico Emissor", desc: "Quem entregou o item" },
+    { code: "{{tecnico_responsavel}}", label: "Técnico / Testemunha", desc: "Técnico emissor e testemunha da entrega" },
     { code: "{{data_emissao}}", label: "Data de Emissão", desc: "Data/hora do registro" },
     { code: "{{tabela_equipamentos}}", label: "Tabela de Equipamentos", desc: "Grade com os itens entregues" },
-    { code: "{{assinatura_beneficiario}}", label: "Rubrica / Assinatura", desc: "Assinatura touch em tela" },
-    { code: "{{foto_biometria}}", label: "Registro Facial", desc: "Foto e score do face-api" },
+    { code: "{{assinatura_beneficiario}}", label: "Assinatura Touch (Colaborador)", desc: "1ª Validação: Assinatura manuscrita em tela" },
+    { code: "{{foto_biometria}}", label: "Biometria Facial (Colaborador)", desc: "2ª Validação: Foto da prova de vida liveness" },
   ];
 
   return (

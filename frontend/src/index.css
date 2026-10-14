@@ -15,3 +15,74 @@ body {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* REGRAS GLOBAIS DE IMPRESSÃO (A4 / DOCUMENTOS) */
+@media print {
+  /* Ocultar rigorosamente barras de navegação, menus, cabeçalhos do app e botões */
+  nav,
+  aside,
+  header,
+  [role="navigation"],
+  .bottom-nav,
+  .print\:hidden,
+  [data-print="hidden"],
+  nav[class*="fixed"],
+  .fixed.bottom-0,
+  button,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Reset de layout do documento para impressão limpa */
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    font-size: 11pt !important;
+  }
+
+  /* Desativar sombras, fundos de modal escuros e backdrops */
+  #root,
+  main,
+  .fixed.inset-0,
+  [class*="backdrop-blur"] {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    width: 100% !important;
+  }
+
+  .shadow-2xl, .shadow-xl, .shadow-lg, .shadow-md, .shadow-sm {
+    box-shadow: none !important;
+  }
+
+  /* Área imprimível de documentos (Termos, Relatórios, etc.) */
+  #printable-term,
+  .printable-area {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  /* Configuração de página A4 */
+  @page {
+    size: A4 portrait;
+    margin: 10mm 10mm 10mm 10mm;
+  }
+}
+
+

@@ -10,7 +10,10 @@ export default function Header() {
 
   return (
     <>
-      <header className="h-20 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between sticky top-0 z-10 shrink-0">
+      <header 
+        data-print="hidden"
+        className="h-20 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between sticky top-0 z-10 shrink-0 print:hidden no-print"
+      >
         
         <div className="flex items-center gap-3 w-full sm:w-auto">
           {/* Search Bar */}

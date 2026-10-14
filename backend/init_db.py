@@ -580,15 +580,13 @@ def seed_floors_and_locations(db: Session):
 def seed_default_term_templates(db: Session):
     """
     Cadastra os modelos padrão de documentos e termos de equipamentos com layout estilo Word (Ribbon)
-    e tags dinâmicas se ainda não existirem templates no banco.
+    e tags dinâmicas.
+    A validação digital (assinatura touch + biometria facial) pertence 100% ao beneficiário recebedor.
+    O técnico é o responsável por emitir e testemunha da entrega.
     """
     try:
         import json
         from app.models.term import EquipmentTermTemplate
-
-        if db.query(EquipmentTermTemplate).count() > 0:
-            print("[INIT_DB] Modelos de termos de responsabilidade já cadastrados preservados.")
-            return
 
         templates = [
             {
@@ -635,21 +633,45 @@ def seed_default_term_templates(db: Session):
     <li>Em caso de transferência de função, desligamento ou revogação deste termo, os equipamentos deverão ser imediatamente devolvidos ao setor de TI nas mesmas condições de entrega.</li>
   </ol>
 
-  <h4 style="margin: 22px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">3. Assinatura Digital e Evidência Biométrica</h4>
-  <p style="font-size: 9.5pt; color: #4b5563; text-align: justify; margin-bottom: 25px;">
-    Este documento é formalizado em meio eletrônico com assinatura gráfica do recebedor e captura biométrica facial em tempo real para fins de validade e fé pública interna.
-  </p>
+  <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
+  <div style="margin-top: 25px; border: 1px solid #d1d5db; background-color: #f9fafb; border-radius: 8px; padding: 14px;">
+    <p style="margin: 0 0 10px 0; font-size: 10pt; font-weight: bold; color: #1f2937; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">
+      Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica & Biometria Facial)
+    </p>
 
-  <div style="margin-top: 30px; display: flex; justify-content: space-between; gap: 30px;">
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{assinatura_beneficiario}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Beneficiário Recebedor</p>
+    <div style="display: flex; justify-content: space-between; gap: 20px; align-items: flex-end;">
+      <!-- 1. Assinatura Escrita do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{assinatura_beneficiario}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        </div>
+      </div>
+
+      <!-- 2. Biometria Facial do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{foto_biometria}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        </div>
+      </div>
     </div>
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{foto_biometria}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Setor de TI — Fasano Salvador</p>
+  </div>
+
+  <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
+  <div style="margin-top: 25px; display: flex; justify-content: center;">
+    <div style="width: 60%; text-align: center; border-top: 1px solid #9ca3af; padding-top: 6px;">
+      <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
+      <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
     </div>
   </div>
 </div>"""
@@ -698,16 +720,45 @@ def seed_default_term_templates(db: Session):
     <li>Ao término de cada escala de serviço, o rádio deve ser recolhido à base de carregamento correspondente.</li>
   </ul>
 
-  <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{assinatura_beneficiario}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Assinatura do Beneficiário</p>
+  <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
+  <div style="margin-top: 25px; border: 1px solid #d1d5db; background-color: #f9fafb; border-radius: 8px; padding: 14px;">
+    <p style="margin: 0 0 10px 0; font-size: 10pt; font-weight: bold; color: #1f2937; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">
+      Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica & Biometria Facial)
+    </p>
+
+    <div style="display: flex; justify-content: space-between; gap: 20px; align-items: flex-end;">
+      <!-- Assinatura Escrita do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{assinatura_beneficiario}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        </div>
+      </div>
+
+      <!-- Biometria Facial do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{foto_biometria}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        </div>
+      </div>
     </div>
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{foto_biometria}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Validação TI Fasano Salvador</p>
+  </div>
+
+  <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
+  <div style="margin-top: 25px; display: flex; justify-content: center;">
+    <div style="width: 60%; text-align: center; border-top: 1px solid #9ca3af; padding-top: 6px;">
+      <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
+      <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
     </div>
   </div>
 </div>"""
@@ -750,16 +801,45 @@ def seed_default_term_templates(db: Session):
     O colaborador compromete-se a não desativar o bloqueio de tela por biometria/PIN, não instalar aplicativos não homologados e não compartilhar credenciais corporativas. O aparelho poderá ser gerenciado remotamente pelo MDM da empresa em caso de furto ou extravio.
   </p>
 
-  <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{assinatura_beneficiario}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Assinatura do Beneficiário</p>
+  <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
+  <div style="margin-top: 25px; border: 1px solid #d1d5db; background-color: #f9fafb; border-radius: 8px; padding: 14px;">
+    <p style="margin: 0 0 10px 0; font-size: 10pt; font-weight: bold; color: #1f2937; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">
+      Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica & Biometria Facial)
+    </p>
+
+    <div style="display: flex; justify-content: space-between; gap: 20px; align-items: flex-end;">
+      <!-- Assinatura Escrita do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{assinatura_beneficiario}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        </div>
+      </div>
+
+      <!-- Biometria Facial do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{foto_biometria}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        </div>
+      </div>
     </div>
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{foto_biometria}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Setor de TI — Fasano Salvador</p>
+  </div>
+
+  <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
+  <div style="margin-top: 25px; display: flex; justify-content: center;">
+    <div style="width: 60%; text-align: center; border-top: 1px solid #9ca3af; padding-top: 6px;">
+      <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
+      <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
     </div>
   </div>
 </div>"""
@@ -803,16 +883,45 @@ def seed_default_term_templates(db: Session):
     O usuário declara ciência de que o notebook está sujeito às políticas de segurança da informação do Hotel Fasano, com criptografia BitLocker ativada e monitoramento pelo agente de telemetria TIHFSA. É proibido alterar configurações de segurança, compartilhar senha de rede ou instalar softwares sem homologação técnica.
   </p>
 
-  <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{assinatura_beneficiario}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Assinatura do Beneficiário</p>
+  <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
+  <div style="margin-top: 25px; border: 1px solid #d1d5db; background-color: #f9fafb; border-radius: 8px; padding: 14px;">
+    <p style="margin: 0 0 10px 0; font-size: 10pt; font-weight: bold; color: #1f2937; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">
+      Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica & Biometria Facial)
+    </p>
+
+    <div style="display: flex; justify-content: space-between; gap: 20px; align-items: flex-end;">
+      <!-- Assinatura Escrita do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{assinatura_beneficiario}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        </div>
+      </div>
+
+      <!-- Biometria Facial do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{foto_biometria}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        </div>
+      </div>
     </div>
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{foto_biometria}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Setor de TI — Fasano Salvador</p>
+  </div>
+
+  <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
+  <div style="margin-top: 25px; display: flex; justify-content: center;">
+    <div style="width: 60%; text-align: center; border-top: 1px solid #9ca3af; padding-top: 6px;">
+      <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
+      <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
     </div>
   </div>
 </div>"""
@@ -855,21 +964,64 @@ def seed_default_term_templates(db: Session):
     A guarda da chave/TAG é de responsabilidade estritamente pessoal e intransferível. É expressamente vedado realizar cópias de chaves sem autorização formal da Segurança Patrimonial ou permitir a entrada de pessoas não autorizadas em áreas restritas.
   </p>
 
-  <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{assinatura_beneficiario}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Assinatura do Beneficiário</p>
+  <!-- BLOCO DE DUPLA VALIDAÇÃO DO BENEFICIÁRIO (ASSINATURA TOUCH + BIOMETRIA FACIAL) -->
+  <div style="margin-top: 25px; border: 1px solid #d1d5db; background-color: #f9fafb; border-radius: 8px; padding: 14px;">
+    <p style="margin: 0 0 10px 0; font-size: 10pt; font-weight: bold; color: #1f2937; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">
+      Aceite do Beneficiário (Dupla Validação: Assinatura Gráfica & Biometria Facial)
+    </p>
+
+    <div style="display: flex; justify-content: space-between; gap: 20px; align-items: flex-end;">
+      <!-- Assinatura Escrita do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{assinatura_beneficiario}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Assinatura Digital Manuscrita (Touch)</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Doc: {{documento_cpf_rg}} | {{setor_departamento}}</p>
+        </div>
+      </div>
+
+      <!-- Biometria Facial do Beneficiário -->
+      <div style="flex: 1; text-align: center;">
+        <div style="min-height: 75px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+          {{foto_biometria}}
+        </div>
+        <div style="border-top: 1.5px solid #374151; padding-top: 5px;">
+          <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">Validação Facial em Tempo Real</p>
+          <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Evidência Biométrica do Recebedor</p>
+          <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Autenticação Facial (Face-API)</p>
+        </div>
+      </div>
     </div>
-    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
-      {{foto_biometria}}
-      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
-      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Validação TI / Segurança Fasano</p>
+  </div>
+
+  <!-- RESPONSÁVEL PELA ENTREGA / TESTEMUNHA TI -->
+  <div style="margin-top: 25px; display: flex; justify-content: center;">
+    <div style="width: 60%; text-align: center; border-top: 1px solid #9ca3af; padding-top: 6px;">
+      <p style="margin: 0; font-size: 9.5pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 8.5pt; color: #4b5563;">Técnico Emissor / Testemunha da Entrega</p>
+      <p style="margin: 1px 0 0 0; font-size: 8pt; color: #6b7280;">Tecnologia da Informação — Hotel Fasano Salvador</p>
     </div>
   </div>
 </div>"""
             }
         ]
+
+        existing_templates = db.query(EquipmentTermTemplate).all()
+        if existing_templates:
+            # Sincroniza / atualiza os templates existentes com a estrutura correta de dupla validação
+            for tmpl in existing_templates:
+                for new_t in templates:
+                    if tmpl.title == new_t["title"]:
+                        tmpl.content_html = new_t["content_html"]
+                        tmpl.category = new_t["category"]
+                        tmpl.description = new_t["description"]
+                        tmpl.default_items = new_t["default_items"]
+            db.commit()
+            print("[INIT_DB] Modelos de termos de responsabilidade sincronizados com dupla validação do colaborador.")
+            return
 
         for tmpl in templates:
             db.add(EquipmentTermTemplate(**tmpl))
