@@ -1358,3 +1358,17 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Dossiê detalhado exibindo a fotografia biométrica facial em alta definição (280x280px), a assinatura manuscrita touch e os metadados de auditoria (score de confiança da IA, IP de coleta, dispositivo/navegador, carimbo oficial de data/hora e técnico emissor).
       - **Modal Lightbox Fullscreen com Zoom Interativo**: Ao tocar ou clicar na foto biométrica, abre-se um modal de ampliação em tela cheia com fundo translúcido escuro, controles de zoom e botão de download da imagem original em alta definição para auditoria.
       - Controles de zoom in / zoom out (+, -, 100%) no visualizador do documento A4 para facilitar leitura em telas de iPads e smartphones.
+
+40. **Responsividade Universal: Barra de Ações em Massa de Chamados e Calibração iOS/iPadOS**:
+    - **Barra Flutuante de Ações em Massa (`TicketList.jsx`)**:
+      - **Causa Raiz da Anomalia**: A barra flutuante estava com `fixed bottom-6 z-40`. No mobile/tablet, a barra `BottomNav` fica em `fixed bottom-0 z-40` com altura de ~70px, engolindo e cortando a barra de ações em massa por trás. No desktop, `left-1/2 -translate-x-1/2` não considerava os 256px da Sidebar fixa esquerda, deslocando a barra 128px para a esquerda em relação ao centro da área de conteúdo.
+      - **Solução Definitiva**:
+        - Posicionamento dinâmico: `bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)] lg:bottom-8`. No mobile e tablet fica perfeitamente acima da BottomNav com margem de respiro; no desktop flutua a 32px do rodapé.
+        - Centralização perfeita: `left-1/2 -translate-x-1/2 lg:left-[calc(50%+8rem)]`, compensando exatamente a largura da sidebar no desktop.
+        - Camada de elevação `z-50` para sobrepor qualquer elemento inferior.
+        - Layout interno compacto e responsivo: largura máxima `w-[calc(100%-1.5rem)] sm:w-auto`, badge com contador, singular/plural correto e botões de toque com altura ergonômica mínima de 38px.
+        - Modal de Atualização em Massa atualizado com `pt-safe`, `pb-safe` e `max-h-[90dvh]`.
+    - **Calibração do Modal de Biometria Facial no iOS/Safari (`SignTermModal.jsx`)**:
+      - **Dynamic Island / Notch**: Overlay e container atualizados com `pt-[max(12px,env(safe-area-inset-top))]`, `pb-[max(12px,env(safe-area-inset-bottom))]` e `max-h-[88dvh]`, eliminando a colisão com o entalhe do iPhone.
+      - **Bug de Renderização em Miniatura do WebKit no iOS**: O feed de vídeo que aparecia encolhido no canto superior direito devido a `scale-x-[-1]` e flexbox agora é encapsulado em um wrapper absoluto com `aspect-[3/4]`, `object-fit: cover` e atributos WebKit explícitos (`playsinline`, `webkit-playsinline`, `muted`). O vídeo preenche 100% da moldura da câmera com o rosto perfeitamente alinhado na guia oval.
+      - **Stepper Compacto**: No mobile, os títulos longos foram substituídos por rótulos objetivos ("Assinatura", "Biometria", "Conclusão"), eliminando quebras de linha com reticências.

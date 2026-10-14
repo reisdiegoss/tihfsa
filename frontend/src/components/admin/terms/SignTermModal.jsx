@@ -187,20 +187,28 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
         streamRef.current = null;
       }
 
-      // Constraints sem restrições que forçam crop/zoom digital no sensor
+      // Constraints naturais para sensores de tablet/smartphone e desktop
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: targetMode },
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
+          facingMode: targetMode ? { ideal: targetMode } : "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
         audio: false,
       });
 
       streamRef.current = stream;
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        const video = videoRef.current;
+        video.srcObject = stream;
+        video.setAttribute("playsinline", "true");
+        video.setAttribute("webkit-playsinline", "true");
+        video.muted = true;
+        try {
+          await video.play();
+        } catch (playErr) {
+          console.warn("[Camera] Play imediato interceptado:", playErr);
+        }
         setCameraActive(true);
       }
     } catch (err) {
@@ -210,8 +218,14 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
         const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         streamRef.current = fallbackStream;
         if (videoRef.current) {
-          videoRef.current.srcObject = fallbackStream;
-          videoRef.current.play();
+          const video = videoRef.current;
+          video.srcObject = fallbackStream;
+          video.setAttribute("playsinline", "true");
+          video.setAttribute("webkit-playsinline", "true");
+          video.muted = true;
+          try {
+            await video.play();
+          } catch (e) {}
           setCameraActive(true);
         }
       } catch (fallbackErr) {
@@ -517,58 +531,67 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
   const activeChallenge = challenges[currentChallengeIndex];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-sm overflow-y-auto animate-fadeIn">
-      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[94vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm overflow-y-auto animate-fadeIn pt-[max(12px,env(safe-area-inset-top))] pb-[max(12px,env(safe-area-inset-bottom))]">
+      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[88dvh] sm:max-h-[92dvh]">
         
         {/* 1. HEADER DO MODAL COM STEPPER PROGRESSIVO */}
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 text-white px-6 py-4 border-b border-slate-800 shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300">
-                <ShieldCheck size={22} />
+        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 text-white px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-800 shrink-0">
+          <div className="flex items-center justify-between mb-2 sm:mb-3">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300 shrink-0">
+                <ShieldCheck size={20} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30">
+                  <span className="text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30 font-mono">
                     {term.term_number}
                   </span>
-                  <h3 className="font-bold text-base sm:text-lg">Aceite Digital em 3 Etapas</h3>
+                  <h3 className="font-bold text-sm sm:text-lg truncate">Aceite Digital</h3>
                 </div>
-                <p className="text-xs text-slate-300">
-                  Beneficiário: <strong className="text-white">{term.beneficiary_name}</strong> • Testemunha TI: {term.technician_name}
+                <p className="text-[11px] sm:text-xs text-slate-300 truncate mt-0.5">
+                  Beneficiário: <strong className="text-white">{term.beneficiary_name}</strong>
                 </p>
               </div>
             </div>
 
             <button 
               onClick={() => { stopCamera(); onClose(); }}
-              className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+              className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer shrink-0"
             >
               <X size={20} />
             </button>
           </div>
 
-          {/* Stepper Progress Bar */}
-          <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-700/60">
-            <div className={`flex items-center gap-2 py-1 transition-all ${currentStep === 1 ? "text-blue-400 font-bold" : currentStep > 1 ? "text-emerald-400" : "text-slate-500"}`}>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${currentStep === 1 ? "bg-blue-500 text-white" : currentStep > 1 ? "bg-emerald-500 text-white" : "bg-slate-700 text-slate-400"}`}>
+          {/* Stepper Progress Bar Responsivo */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-2 border-t border-slate-700/60">
+            <div className={`flex items-center gap-1.5 sm:gap-2 py-1 transition-all ${currentStep === 1 ? "text-blue-400 font-bold" : currentStep > 1 ? "text-emerald-400" : "text-slate-500"}`}>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${currentStep === 1 ? "bg-blue-500 text-white" : currentStep > 1 ? "bg-emerald-500 text-white" : "bg-slate-700 text-slate-400"}`}>
                 {currentStep > 1 ? "✓" : "1"}
               </div>
-              <span className="text-xs truncate">1. Assinar com o Dedo</span>
+              <span className="text-xs truncate">
+                <span className="sm:hidden">Assinatura</span>
+                <span className="hidden sm:inline">1. Assinar com o Dedo</span>
+              </span>
             </div>
 
-            <div className={`flex items-center gap-2 py-1 transition-all ${currentStep === 2 ? "text-amber-400 font-bold" : currentStep > 2 ? "text-emerald-400" : "text-slate-500"}`}>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${currentStep === 2 ? "bg-amber-500 text-slate-900" : currentStep > 2 ? "bg-emerald-500 text-white" : "bg-slate-700 text-slate-400"}`}>
+            <div className={`flex items-center gap-1.5 sm:gap-2 py-1 transition-all ${currentStep === 2 ? "text-amber-400 font-bold" : currentStep > 2 ? "text-emerald-400" : "text-slate-500"}`}>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${currentStep === 2 ? "bg-amber-500 text-slate-900" : currentStep > 2 ? "bg-emerald-500 text-white" : "bg-slate-700 text-slate-400"}`}>
                 {currentStep > 2 ? "✓" : "2"}
               </div>
-              <span className="text-xs truncate">2. Prova de Vida Facial</span>
+              <span className="text-xs truncate">
+                <span className="sm:hidden">Biometria</span>
+                <span className="hidden sm:inline">2. Prova de Vida</span>
+              </span>
             </div>
 
-            <div className={`flex items-center gap-2 py-1 transition-all ${currentStep === 3 ? "text-emerald-400 font-bold" : "text-slate-500"}`}>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${currentStep === 3 ? "bg-emerald-500 text-white" : "bg-slate-700 text-slate-400"}`}>
+            <div className={`flex items-center gap-1.5 sm:gap-2 py-1 transition-all ${currentStep === 3 ? "text-emerald-400 font-bold" : "text-slate-500"}`}>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${currentStep === 3 ? "bg-emerald-500 text-white" : "bg-slate-700 text-slate-400"}`}>
                 3
               </div>
-              <span className="text-xs truncate">3. Conclusão & Registro</span>
+              <span className="text-xs truncate">
+                <span className="sm:hidden">Conclusão</span>
+                <span className="hidden sm:inline">3. Conclusão & Registro</span>
+              </span>
             </div>
           </div>
         </div>
@@ -658,26 +681,26 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
           {/* ETAPA 2: PROVA DE VIDA FACIAL COM DESAFIOS ALEATÓRIOS     */}
           {/* ========================================================= */}
           {currentStep === 2 && (
-            <div className="space-y-4 animate-fadeIn">
+            <div className="space-y-3 sm:space-y-4 animate-fadeIn">
               
-              {/* Banner do Desafio Ativo */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-50 border border-amber-300/80 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500 text-slate-900 flex items-center justify-center font-black shadow-md shadow-amber-500/20 shrink-0">
+              {/* Banner do Desafio Ativo Compacto */}
+              <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-50 border border-amber-300/80 flex items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-amber-500 text-slate-900 flex items-center justify-center font-black shadow-md shadow-amber-500/20 shrink-0">
                     {activeChallenge ? (
-                      <activeChallenge.icon size={26} className="animate-pulse" />
+                      <activeChallenge.icon size={22} className="animate-pulse" />
                     ) : (
-                      <Sparkles size={26} />
+                      <Sparkles size={22} />
                     )}
                   </div>
-                  <div>
-                    <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 block">
-                      Prova de Vida • Desafio {currentChallengeIndex + 1} de {challenges.length}
+                  <div className="min-w-0">
+                    <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-amber-700 block">
+                      Desafio {currentChallengeIndex + 1} de {challenges.length}
                     </span>
-                    <h4 className="text-base sm:text-lg font-black text-slate-900">
-                      {activeChallenge ? activeChallenge.title : "Posicione o rosto na câmera..."}
+                    <h4 className="text-sm sm:text-base font-black text-slate-900 truncate">
+                      {activeChallenge ? activeChallenge.title : "Posicione o rosto..."}
                     </h4>
-                    <p className="text-xs text-slate-600 mt-0.5">
+                    <p className="text-[11px] sm:text-xs text-slate-600 truncate mt-0.5">
                       {activeChallenge ? activeChallenge.instruction : "Olhe fixamente para a tela"}
                     </p>
                   </div>
@@ -686,32 +709,32 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                 {/* Status do Desafio */}
                 <div className="flex flex-col items-end shrink-0">
                   {challengeCompleted ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow">
-                      <Check size={14} /> Desafio Aprovado!
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white text-[11px] font-bold rounded-lg shadow">
+                      <Check size={13} /> Aprovado!
                     </span>
                   ) : faceDetected ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-lg border border-blue-200">
-                      Rosto Alinhado ({faceConfidence}%)
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-800 text-[11px] font-semibold rounded-lg border border-blue-200">
+                      Alinhado ({faceConfidence}%)
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-600 text-xs font-semibold rounded-lg">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-600 text-[11px] font-semibold rounded-lg">
                       Aproxime o rosto
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Feed da Câmera com Imagem Real (Sem Zoom / Sem Corte) e Moldura Guia */}
-              <div className="relative rounded-3xl overflow-hidden bg-slate-950 border-2 border-slate-700 shadow-xl w-full max-w-xl mx-auto flex items-center justify-center min-h-[300px] max-h-[55vh]">
+              {/* Feed da Câmera Adaptativo (Proporção 3:4 perfeita para iPad e iPhone) */}
+              <div className="relative rounded-3xl overflow-hidden bg-black border-2 border-slate-700 shadow-2xl w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto aspect-[3/4] flex items-center justify-center">
                 {cameraLoading && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 z-20 bg-slate-900/90 backdrop-blur-sm">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 z-30 bg-slate-900/90 backdrop-blur-sm">
                     <RefreshCw size={32} className="animate-spin text-blue-500 mb-2" />
-                    <span className="text-xs font-semibold">Ativando lente da câmera real...</span>
+                    <span className="text-xs font-semibold">Ativando câmera...</span>
                   </div>
                 )}
 
                 {cameraError ? (
-                  <div className="p-6 text-center text-rose-400 space-y-3 z-20">
+                  <div className="p-6 text-center text-rose-400 space-y-3 z-30">
                     <AlertTriangle size={36} className="mx-auto" />
                     <p className="text-xs">{cameraError}</p>
                     <button
@@ -724,24 +747,36 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                   </div>
                 ) : (
                   <>
-                    <video
-                      ref={videoRef}
-                      playsInline
-                      muted
-                      className={`w-full h-full max-h-[55vh] object-contain transition-transform duration-300 ${
-                        facingMode === "user" ? "scale-x-[-1]" : ""
-                      }`}
-                    />
+                    {/* Wrapper Absoluto para impedir bug de flexbox no WebKit */}
+                    <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        webkit-playsinline="true"
+                        muted
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          transform: facingMode === "user" ? "scaleX(-1)" : "none",
+                          WebkitTransform: facingMode === "user" ? "scaleX(-1)" : "none",
+                          transformOrigin: "center center",
+                          WebkitTransformOrigin: "center center",
+                        }}
+                        className="w-full h-full block"
+                      />
+                    </div>
 
                     {/* Guia Oval de Centralização do Rosto Adaptativa */}
-                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
                       <div
-                        className={`w-44 h-60 sm:w-56 sm:h-72 rounded-full border-4 transition-all duration-300 shadow-2xl ${
+                        className={`w-44 h-60 sm:w-52 sm:h-68 rounded-full border-4 transition-all duration-300 shadow-2xl ${
                           challengeCompleted
                             ? "border-emerald-400 bg-emerald-500/10 scale-105"
                             : faceDetected
-                            ? "border-amber-400 bg-amber-400/5"
-                            : "border-white/40 border-dashed"
+                            ? "border-amber-400 bg-amber-400/10"
+                            : "border-white/50 border-dashed"
                         }`}
                       />
                     </div>
@@ -750,38 +785,26 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                     <button
                       type="button"
                       onClick={toggleFacingMode}
-                      className="absolute top-3.5 right-3.5 z-20 pointer-events-auto px-3 py-1.5 bg-slate-900/80 hover:bg-slate-800 text-white text-xs font-bold rounded-xl border border-slate-700 backdrop-blur-md shadow-md flex items-center gap-1.5 cursor-pointer transition-colors"
+                      className="absolute top-3.5 right-3.5 z-20 pointer-events-auto px-3 py-1.5 bg-slate-900/80 hover:bg-slate-800 active:scale-95 text-white text-xs font-bold rounded-xl border border-slate-700/80 backdrop-blur-md shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
                       title="Alternar entre câmera frontal e traseira"
                     >
                       <SwitchCamera size={14} className="text-blue-400" />
-                      <span className="text-[11px]">{facingMode === "user" ? "Câmera Traseira" : "Câmera Frontal"}</span>
+                      <span className="text-[11px]">{facingMode === "user" ? "Traseira" : "Frontal"}</span>
                     </button>
 
-                    {/* Badge flutuante do desafio e controle */}
-                    <div className="absolute bottom-4 inset-x-4 flex items-center justify-between z-10 pointer-events-none">
-                      <div className="bg-slate-900/85 backdrop-blur-md px-3 py-1.5 rounded-xl text-white text-xs font-bold border border-slate-700 flex items-center gap-2 shadow-lg">
-                        <Camera size={14} className="text-blue-400" />
-                        <span className="text-[11px] truncate max-w-[170px] sm:max-w-none">
-                          {facingMode === "user" ? "Câmera Frontal (FOV Real)" : "Câmera Traseira (FOV Real)"}
-                        </span>
+                    {/* Badge flutuante inferior no box */}
+                    <div className="absolute bottom-3.5 left-3.5 z-20 pointer-events-none">
+                      <div className="bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-white text-[10px] font-semibold border border-slate-700/60 flex items-center gap-1.5 shadow">
+                        <Camera size={12} className="text-blue-400" />
+                        <span>{facingMode === "user" ? "Frontal" : "Traseira"}</span>
                       </div>
-
-                      {/* Botão de fallback manual caso necessário */}
-                      <button
-                        type="button"
-                        onClick={handleManualCapture}
-                        className="pointer-events-auto px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg cursor-pointer transition-all"
-                        title="Capturar foto do colaborador imediatamente"
-                      >
-                        Capturar Foto
-                      </button>
                     </div>
                   </>
                 )}
               </div>
 
-              <p className="text-center text-xs text-slate-500">
-                A biometria facial garante que o termo está sendo assinado pelo próprio colaborador no momento da retirada.
+              <p className="text-center text-[11px] sm:text-xs text-slate-500">
+                A foto biométrica é capturada automaticamente quando os desafios forem concluídos.
               </p>
             </div>
           )}
@@ -864,7 +887,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
         </div>
 
         {/* 3. FOOTER COM NAVEGAÇÃO DE ETAPAS */}
-        <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between shrink-0">
+        <div className="bg-slate-50 px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-200 flex items-center justify-between gap-2 shrink-0">
           <div>
             {currentStep > 1 && (
               <button
@@ -873,19 +896,20 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                   stopCamera();
                   setCurrentStep((prev) => prev - 1);
                 }}
-                className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                className="px-3.5 sm:px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm min-h-[44px]"
               >
                 <ArrowLeft size={15} />
-                Voltar Etapa
+                <span className="hidden sm:inline">Voltar Etapa</span>
+                <span className="sm:hidden">Voltar</span>
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => { stopCamera(); onClose(); }}
-              className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+              className="px-3 sm:px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer min-h-[44px] flex items-center"
             >
               Cancelar
             </button>
@@ -896,9 +920,9 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                 type="button"
                 onClick={handleConfirmSignature}
                 disabled={!hasSignature}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-500/25 flex items-center gap-2 transition-all disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                className="px-4 sm:px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-500/25 flex items-center gap-2 transition-all disabled:opacity-50 disabled:pointer-events-none cursor-pointer min-h-[44px]"
               >
-                Confirmar Assinatura & Ir para Biometria
+                <span>Avançar para Biometria</span>
                 <ArrowRight size={15} />
               </button>
             )}
@@ -908,9 +932,9 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
               <button
                 type="button"
                 onClick={handleManualCapture}
-                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-500/25 flex items-center gap-2 transition-all cursor-pointer"
+                className="px-4 sm:px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-amber-500/25 flex items-center gap-2 transition-all cursor-pointer min-h-[44px]"
               >
-                Concluir Foto Facial
+                <span>Concluir Foto Facial</span>
                 <ArrowRight size={15} />
               </button>
             )}
@@ -921,10 +945,10 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                 type="button"
                 onClick={handleFinalSubmit}
                 disabled={loading}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer hover:shadow-none"
+                className="px-5 sm:px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer hover:shadow-none min-h-[44px]"
               >
                 <CheckCircle2 size={16} />
-                {loading ? "Registrando Termo..." : "Finalizar e Registrar Termo Digital"}
+                <span>{loading ? "Registrando..." : "Finalizar Termo"}</span>
               </button>
             )}
           </div>

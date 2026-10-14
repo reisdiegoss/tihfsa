@@ -1294,34 +1294,34 @@ export default function TicketList() {
         )}
       </div>
 
-      {/* Floating Batch Actions Bar (Barra Flutuante de Ações em Massa) */}
+      {/* Floating Batch Actions Bar (Barra Flutuante de Ações em Massa - 100% Responsiva) */}
       {isStaff && selectedTicketIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-4 animate-slide-up flex-wrap max-w-full">
-          <div className="flex items-center gap-2">
-            <span className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs shadow-xs">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)] lg:bottom-8 left-1/2 -translate-x-1/2 lg:left-[calc(50%+8rem)] z-50 bg-slate-900/95 text-white px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-2xl shadow-2xl shadow-slate-950/50 border border-slate-700/80 backdrop-blur-md flex items-center justify-between gap-2.5 sm:gap-4 animate-slide-up w-[calc(100%-1.5rem)] sm:w-auto max-w-lg">
+          <div className="flex items-center gap-2 min-w-0 shrink-0">
+            <span className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs shadow-xs shrink-0">
               {selectedTicketIds.length}
             </span>
-            <span className="text-xs font-bold text-slate-200">
-              chamado{selectedTicketIds.length > 1 ? "s" : ""} selecionado{selectedTicketIds.length > 1 ? "s" : ""}
+            <span className="text-xs font-bold text-slate-200 truncate">
+              {selectedTicketIds.length === 1 ? "1 selecionado" : `${selectedTicketIds.length} selecionados`}
             </span>
           </div>
 
-          <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+          <div className="h-4 w-px bg-slate-700 hidden sm:block shrink-0" />
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => setIsBatchModalOpen(true)}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer min-h-[38px]"
             >
-              <CheckSquare size={15} />
-              <span>Alterar Status em Massa</span>
+              <CheckSquare size={14} />
+              <span className="whitespace-nowrap">Alterar Status</span>
             </button>
 
             <button
               onClick={clearSelection}
-              className="text-slate-400 hover:text-white text-xs font-medium px-2 py-1 transition-colors cursor-pointer"
+              className="text-slate-400 hover:text-white active:scale-95 text-xs font-medium px-2.5 py-1.5 transition-colors cursor-pointer min-h-[38px] flex items-center"
             >
-              Cancelar seleção
+              Cancelar
             </button>
           </div>
         </div>
@@ -1329,25 +1329,25 @@ export default function TicketList() {
 
       {/* Modal de Atualização de Status em Massa com Auditoria */}
       {isBatchModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden animate-scale-up">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in pt-[max(12px,env(safe-area-inset-top))] pb-[max(12px,env(safe-area-inset-bottom))]">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden animate-scale-up max-h-[90dvh] flex flex-col">
             
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
                   <CheckSquare size={20} />
                 </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">Atualizar Status em Massa</h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Aplicar novo status a {selectedTicketIds.length} chamado{selectedTicketIds.length > 1 ? "s" : ""} com auditoria
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900 truncate">Atualizar Status em Massa</h3>
+                  <p className="text-xs text-slate-500 font-medium truncate">
+                    Aplicar novo status a {selectedTicketIds.length} chamado{selectedTicketIds.length > 1 ? "s" : ""}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => !batchLoading && setIsBatchModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
               >
                 <X size={16} />
               </button>
