@@ -55,6 +55,7 @@ class EquipmentTerm(Base):
     return_notes = Column(Text, nullable=True)
 
     # Cláusulas Legais e Observações
+    template_id = Column(Integer, ForeignKey("equipment_term_templates.id", ondelete="SET NULL"), nullable=True)
     expected_return_date = Column(DateTime(timezone=True), nullable=True)
     legal_text = Column(Text, nullable=False)
     notes = Column(Text, nullable=True)
@@ -76,7 +77,34 @@ class EquipmentTerm(Base):
     department = relationship("Department", foreign_keys=[department_id])
     technician = relationship("User", foreign_keys=[technician_id])
     return_technician = relationship("User", foreign_keys=[return_technician_id])
+    template = relationship("EquipmentTermTemplate", foreign_keys=[template_id])
     items = relationship("EquipmentTermItem", back_populates="term", cascade="all, delete-orphan", order_by="EquipmentTermItem.id")
+
+
+class EquipmentTermTemplate(Base):
+    """
+    Modelos de Termos de Retirada e Responsabilidade (Builder estilo Word com Tags Dinâmicas).
+    """
+    __tablename__ = "equipment_term_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False, index=True)
+    category = Column(String(100), default="Geral", nullable=False)
+    description = Column(String(300), nullable=True)
+    content_html = Column(Text, nullable=False)
+    default_items = Column(Text, nullable=True)  # JSON com itens pré-definidos
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
 
 class EquipmentTermItem(Base):
@@ -101,3 +129,4 @@ class EquipmentTermItem(Base):
 
     term = relationship("EquipmentTerm", back_populates="items")
     asset = relationship("Asset", foreign_keys=[asset_id])
+

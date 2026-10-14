@@ -429,6 +429,24 @@ def apply_migrations():
             CREATE INDEX IF NOT EXISTS idx_equipment_term_items_term_id ON equipment_term_items(term_id);
             CREATE INDEX IF NOT EXISTS idx_equipment_term_items_asset_id ON equipment_term_items(asset_id);
         """),
+
+        # Modelos de Documentos e Termos de Equipamentos (Builder com Formatação Word)
+        ("equipment_term_templates", """
+            CREATE TABLE IF NOT EXISTS equipment_term_templates (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                category VARCHAR(100) DEFAULT 'Geral' NOT NULL,
+                description VARCHAR(300),
+                content_html TEXT NOT NULL,
+                default_items TEXT,
+                is_active BOOLEAN DEFAULT TRUE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_term_templates_title ON equipment_term_templates(title);
+            CREATE INDEX IF NOT EXISTS idx_term_templates_category ON equipment_term_templates(category);
+        """),
+        ("equipment_terms.template_id", "ALTER TABLE equipment_terms ADD COLUMN IF NOT EXISTS template_id INTEGER REFERENCES equipment_term_templates(id) ON DELETE SET NULL;"),
     ]
 
 
@@ -559,6 +577,309 @@ def seed_floors_and_locations(db: Session):
         print(f"[INIT_DB] Aviso ao sincronizar andares/localizações: {e}")
 
 
+def seed_default_term_templates(db: Session):
+    """
+    Cadastra os modelos padrão de documentos e termos de equipamentos com layout estilo Word (Ribbon)
+    e tags dinâmicas se ainda não existirem templates no banco.
+    """
+    try:
+        import json
+        from app.models.term import EquipmentTermTemplate
+
+        if db.query(EquipmentTermTemplate).count() > 0:
+            print("[INIT_DB] Modelos de termos de responsabilidade já cadastrados preservados.")
+            return
+
+        templates = [
+            {
+                "title": "Termo Geral de Retirada de Equipamentos e Acessórios",
+                "category": "Geral",
+                "description": "Modelo corporativo padrão para periféricos, fones de ouvido, cabos, adaptadores e equipamentos avulsos.",
+                "default_items": json.dumps([
+                    {"item_name": "Fone de ouvido estéreo com microfone", "category": "Periférico", "quantity": 1, "condition": "Novo / Em perfeito estado", "accessories": "Cabo P3/USB"},
+                    {"item_name": "Mouse óptico USB com fio", "category": "Periférico", "quantity": 1, "condition": "Em perfeito estado", "accessories": ""}
+                ], ensure_ascii=False),
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 12px; margin-bottom: 20px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 18pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 6px 0 0 0; font-weight: 600; font-size: 13pt; color: #222;">TERMO DE RESPONSABILIDADE E RETIRADA DE EQUIPAMENTOS</h3>
+    <p style="margin: 4px 0 0 0; font-size: 10pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 10.5pt;">
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Setor / Departamento:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+    </tr>
+  </table>
+
+  <h4 style="margin: 18px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">1. Discriminação dos Equipamentos e Bens Retirados</h4>
+  <p style="font-size: 10pt; margin-bottom: 10px; color: #374151;">O colaborador acima qualificado declara ter recebido da TI do <strong>{{hotel_fasano}}</strong>, em perfeito estado de funcionamento e conservação, o(s) seguinte(s) item(ns):</p>
+  
+  {{tabela_equipamentos}}
+
+  <h4 style="margin: 22px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">2. Cláusulas e Obrigações de Uso</h4>
+  <ol style="font-size: 10pt; line-height: 1.6; padding-left: 20px; text-align: justify; color: #374151;">
+    <li>O(s) equipamento(s) destina(m)-se estrita e exclusivamente ao exercício das atividades funcionais ligadas ao Hotel Fasano Salvador;</li>
+    <li>O beneficiário assume integral responsabilidade pela guarda, conservação, asseio e segurança dos bens recebidos;</li>
+    <li>Qualquer avaria, extravio, furto ou roubo deve ser imediatamente comunicado à gerência de TI mediante boletim de ocorrência quando couber;</li>
+    <li>É expressamente vedado transferir, ceder, emprestar ou sublocar os equipamentos a outros colaboradores ou a terceiros sem autorização prévia da TI;</li>
+    <li>Em caso de transferência de função, desligamento ou revogação deste termo, os equipamentos deverão ser imediatamente devolvidos ao setor de TI nas mesmas condições de entrega.</li>
+  </ol>
+
+  <h4 style="margin: 22px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">3. Assinatura Digital e Evidência Biométrica</h4>
+  <p style="font-size: 9.5pt; color: #4b5563; text-align: justify; margin-bottom: 25px;">
+    Este documento é formalizado em meio eletrônico com assinatura gráfica do recebedor e captura biométrica facial em tempo real para fins de validade e fé pública interna.
+  </p>
+
+  <div style="margin-top: 30px; display: flex; justify-content: space-between; gap: 30px;">
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{assinatura_beneficiario}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Beneficiário Recebedor</p>
+    </div>
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{foto_biometria}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Setor de TI — Fasano Salvador</p>
+    </div>
+  </div>
+</div>"""
+            },
+            {
+                "title": "Termo de Entrega de Rádio Comunicador (HT / Walkie-Talkie)",
+                "category": "Comunicação",
+                "description": "Modelo para entrega de rádios comunicadores HT operacionais, bases de recarga e fones PTT.",
+                "default_items": json.dumps([
+                    {"item_name": "Rádio Comunicador HT Profissional (Motorola / Hytera)", "category": "Comunicação", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Antena original, bateria acoplada e clipe de cinto"},
+                    {"item_name": "Base Carregadora de Mesa Bivolt", "category": "Comunicação", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Fonte de alimentação original"},
+                    {"item_name": "Fone de Ouvido PTT Acústico com microfone de lapela", "category": "Comunicação", "quantity": 1, "condition": "Novo / Higienizado", "accessories": "Tubo acústico transparente"}
+                ], ensure_ascii=False),
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 12px; margin-bottom: 20px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 18pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 6px 0 0 0; font-weight: 600; font-size: 13pt; color: #222;">TERMO DE CAUTELA — RÁDIO COMUNICADOR HT</h3>
+    <p style="margin: 4px 0 0 0; font-size: 10pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 10.5pt;">
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Setor / Operação:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+    </tr>
+  </table>
+
+  <h4 style="margin: 18px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">1. Equipamentos de Radiocomunicação Entregues</h4>
+  <p style="font-size: 10pt; margin-bottom: 10px; color: #374151;">O colaborador recebe os aparelhos calibrados nos canais operacionais do hotel:</p>
+  
+  {{tabela_equipamentos}}
+
+  <h4 style="margin: 22px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">2. Regras de Utilização do Rádio</h4>
+  <ul style="font-size: 10pt; line-height: 1.6; padding-left: 20px; text-align: justify; color: #374151;">
+    <li>O rádio deve ser mantido sempre no canal designado para o setor do colaborador durante o turno de serviço;</li>
+    <li>Utilizar linguagem estritamente profissional, concisa e de acordo com o código Q / protocolos de hospitalidade Fasano;</li>
+    <li>Proibido puxar o rádio pela antena ou molhar o equipamento em áreas molhadas (exceto se homologado IP67);</li>
+    <li>Ao término de cada escala de serviço, o rádio deve ser recolhido à base de carregamento correspondente.</li>
+  </ul>
+
+  <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{assinatura_beneficiario}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Assinatura do Beneficiário</p>
+    </div>
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{foto_biometria}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Validação TI Fasano Salvador</p>
+    </div>
+  </div>
+</div>"""
+            },
+            {
+                "title": "Termo de Responsabilidade - Smartphone / Celular Corporativo",
+                "category": "Telefonia",
+                "description": "Modelo para entrega de smartphone corporativo, plano de dados 4G/5G institucional e acessórios.",
+                "default_items": json.dumps([
+                    {"item_name": "Smartphone Corporativo Android / iOS", "category": "Telefonia", "quantity": 1, "condition": "Em perfeito estado / Sem trincas", "accessories": "Cabo USB, carregador de parede, capa protetora e película de vidro"},
+                    {"item_name": "Chip Corporativo SIM Card 4G/5G", "category": "Telefonia", "quantity": 1, "condition": "Ativo com linha corporativa Fasano", "accessories": "Pacote de voz e dados corporativos"}
+                ], ensure_ascii=False),
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 12px; margin-bottom: 20px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 18pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 6px 0 0 0; font-weight: 600; font-size: 13pt; color: #222;">TERMO DE COMPROMISSO E USO — TELEFONIA MÓVEL CORPORATIVA</h3>
+    <p style="margin: 4px 0 0 0; font-size: 10pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 10.5pt;">
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Departamento:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+    </tr>
+  </table>
+
+  <h4 style="margin: 18px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">1. Dispositivo Móvel e Linha Cadastrada</h4>
+  {{tabela_equipamentos}}
+
+  <h4 style="margin: 22px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">2. Termos de Uso e Política de Segurança</h4>
+  <p style="font-size: 10pt; line-height: 1.6; text-align: justify; color: #374151;">
+    O colaborador compromete-se a não desativar o bloqueio de tela por biometria/PIN, não instalar aplicativos não homologados e não compartilhar credenciais corporativas. O aparelho poderá ser gerenciado remotamente pelo MDM da empresa em caso de furto ou extravio.
+  </p>
+
+  <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{assinatura_beneficiario}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Assinatura do Beneficiário</p>
+    </div>
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{foto_biometria}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Setor de TI — Fasano Salvador</p>
+    </div>
+  </div>
+</div>"""
+            },
+            {
+                "title": "Termo de Responsabilidade - Notebook e Estação Móvel",
+                "category": "Notebook",
+                "description": "Modelo para entrega de computador portátil, carregador original e mochila de transporte para trabalho remoto ou híbrido.",
+                "default_items": json.dumps([
+                    {"item_name": "Notebook Corporativo Dell / Lenovo", "category": "Notebook", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Fonte carregadora original bivolt com cabo tripé"},
+                    {"item_name": "Mochila / Case acolchoada para notebook", "category": "Acessório", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Alça acolchoada"},
+                    {"item_name": "Mouse sem fio óptico", "category": "Periférico", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Dongle USB e pilha"}
+                ], ensure_ascii=False),
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 12px; margin-bottom: 20px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 18pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 6px 0 0 0; font-weight: 600; font-size: 13pt; color: #222;">TERMO DE RESPONSABILIDADE — NOTEBOOK CORPORATIVO</h3>
+    <p style="margin: 4px 0 0 0; font-size: 10pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 10.5pt;">
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Setor / Departamento:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+    </tr>
+  </table>
+
+  <h4 style="margin: 18px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">1. Equipamentos e Acessórios Entregues</h4>
+  {{tabela_equipamentos}}
+
+  <h4 style="margin: 22px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">2. Cláusulas de Proteção de Dados e Equipamento</h4>
+  <p style="font-size: 10pt; line-height: 1.6; text-align: justify; color: #374151;">
+    O usuário declara ciência de que o notebook está sujeito às políticas de segurança da informação do Hotel Fasano, com criptografia BitLocker ativada e monitoramento pelo agente de telemetria TIHFSA. É proibido alterar configurações de segurança, compartilhar senha de rede ou instalar softwares sem homologação técnica.
+  </p>
+
+  <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{assinatura_beneficiario}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Assinatura do Beneficiário</p>
+    </div>
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{foto_biometria}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Setor de TI — Fasano Salvador</p>
+    </div>
+  </div>
+</div>"""
+            },
+            {
+                "title": "Termo de Cautela de Chaves de Acesso, TAGs e Crachás / Relógio",
+                "category": "Acesso e Segurança",
+                "description": "Modelo para cautela de chaves físicas mestras, tags RFID de controle de portas e relógio de ponto/acesso.",
+                "default_items": json.dumps([
+                    {"item_name": "Chave física de acesso numerada", "category": "Acesso", "quantity": 1, "condition": "Em perfeito estado", "accessories": "Chaveiro com numeração e identificação do setor"},
+                    {"item_name": "TAG RFID / Cartão de Proximidade de Acesso", "category": "Acesso", "quantity": 1, "condition": "Ativo e codificado no sistema de catracas/portas", "accessories": "Cordão personalizado Fasano"}
+                ], ensure_ascii=False),
+                "content_html": """<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+  <div style="text-align: center; border-bottom: 2px solid #b89758; padding-bottom: 12px; margin-bottom: 20px;">
+    <h2 style="margin: 0; color: #b89758; text-transform: uppercase; letter-spacing: 1.5px; font-size: 18pt;">HOTEL FASANO SALVADOR</h2>
+    <h3 style="margin: 6px 0 0 0; font-weight: 600; font-size: 13pt; color: #222;">TERMO DE CAUTELA — CHAVES E DISPOSITIVOS DE ACESSO</h3>
+    <p style="margin: 4px 0 0 0; font-size: 10pt; color: #666;">Número: <strong>{{numero_termo}}</strong> &bull; Emissão: <strong>{{data_emissao}}</strong></p>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 10.5pt;">
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 25%; font-weight: 600;">Colaborador(a):</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 35%;">{{nome_colaborador}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; width: 20%; font-weight: 600;">Documento / CPF:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; width: 20%;">{{documento_cpf_rg}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Setor / Função:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{setor_departamento}}</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db; background-color: #f9fafb; font-weight: 600;">Técnico Emissor:</td>
+      <td style="padding: 7px 10px; border: 1px solid #d1d5db;">{{tecnico_responsavel}}</td>
+    </tr>
+  </table>
+
+  <h4 style="margin: 18px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">1. Chaves e Dispositivos Entregues</h4>
+  {{tabela_equipamentos}}
+
+  <h4 style="margin: 22px 0 8px 0; color: #1f2937; text-transform: uppercase; font-size: 11pt; border-left: 4px solid #b89758; padding-left: 8px;">2. Termos de Segurança Física e Patrimonial</h4>
+  <p style="font-size: 10pt; line-height: 1.6; text-align: justify; color: #374151;">
+    A guarda da chave/TAG é de responsabilidade estritamente pessoal e intransferível. É expressamente vedado realizar cópias de chaves sem autorização formal da Segurança Patrimonial ou permitir a entrada de pessoas não autorizadas em áreas restritas.
+  </p>
+
+  <div style="margin-top: 35px; display: flex; justify-content: space-between; gap: 30px;">
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{assinatura_beneficiario}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{nome_colaborador}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Assinatura do Beneficiário</p>
+    </div>
+    <div style="flex: 1; text-align: center; border-top: 1px solid #4b5563; padding-top: 8px;">
+      {{foto_biometria}}
+      <p style="margin: 4px 0 0 0; font-size: 10pt; font-weight: bold; color: #111;">{{tecnico_responsavel}}</p>
+      <p style="margin: 2px 0 0 0; font-size: 9pt; color: #6b7280;">Validação TI / Segurança Fasano</p>
+    </div>
+  </div>
+</div>"""
+            }
+        ]
+
+        for tmpl in templates:
+            db.add(EquipmentTermTemplate(**tmpl))
+        db.commit()
+        print(f"[INIT_DB] {len(templates)} modelo(s) padrão de termos de responsabilidade criados com sucesso.")
+    except Exception as e:
+        db.rollback()
+        print(f"[INIT_DB] Aviso ao sincronizar modelos de termos: {e}")
+
+
 def main():
     print("=" * 60)
     print("  TIHFSA — Inicialização e Migração do Banco de Dados")
@@ -598,6 +919,7 @@ def main():
         seed_asset_types(db)
         seed_floors_and_locations(db)
         seed_root_admin(db)
+        seed_default_term_templates(db)
         cleanup_corrupted_logon_history()
     finally:
         db.close()

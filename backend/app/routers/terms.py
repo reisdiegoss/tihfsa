@@ -19,7 +19,7 @@ from app.auth.dependencies import get_current_user, require_technician, require_
 from app.database import get_db
 from app.models.asset import Asset
 from app.models.department import Department
-from app.models.term import EquipmentTerm, EquipmentTermItem
+from app.models.term import EquipmentTerm, EquipmentTermItem, EquipmentTermTemplate
 from app.models.user import User
 from app.schemas.term import (
     DEFAULT_TERMS_LEGAL_TEXT,
@@ -31,6 +31,9 @@ from app.schemas.term import (
     EquipmentTermSignRequest,
     EquipmentTermStats,
     EquipmentTermUpdate,
+    EquipmentTermTemplateCreate,
+    EquipmentTermTemplateUpdate,
+    EquipmentTermTemplateResponse,
 )
 
 router = APIRouter(prefix="/api/v1/terms", tags=["Equipment Terms"])
@@ -177,6 +180,103 @@ def list_terms(
     return terms
 
 
+# ==========================================================
+# TEMPLATES (BUILDER ESTILO WORD & IMPORTAÇÃO DOCX)
+# ==========================================================
+
+@router.get("/templates", response_model=List[EquipmentTermTemplateResponse])
+def list_term_templates(
+    category: Optional[str] = None,
+    only_active: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+    _: User = Depends(require_module("terms")),
+):
+    """Lista todos os modelos de documentos/termos configurados."""
+    query = db.query(EquipmentTermTemplate)
+    if category:
+        query = query.filter(EquipmentTermTemplate.category == category)
+    if only_active:
+        query = query.filter(EquipmentTermTemplate.is_active == True)
+    return query.order_by(EquipmentTermTemplate.category, EquipmentTermTemplate.title).all()
+
+
+@router.get("/templates/{template_id}", response_model=EquipmentTermTemplateResponse)
+def get_term_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+    _: User = Depends(require_module("terms")),
+):
+    """Retorna detalhes de um modelo de documento."""
+    template = db.query(EquipmentTermTemplate).filter(EquipmentTermTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Modelo de termo não encontrado")
+    return template
+
+
+@router.post("/templates", response_model=EquipmentTermTemplateResponse, status_code=status.HTTP_201_CREATED)
+def create_term_template(
+    template_in: EquipmentTermTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+    _: User = Depends(require_module("terms")),
+):
+    """Cria um novo modelo de termo (via builder Word ou importação DOCX)."""
+    new_template = EquipmentTermTemplate(
+        title=template_in.title.strip(),
+        category=template_in.category.strip() if template_in.category else "Geral",
+        description=template_in.description,
+        content_html=template_in.content_html,
+        default_items=template_in.default_items,
+        is_active=template_in.is_active,
+    )
+    db.add(new_template)
+    db.commit()
+    db.refresh(new_template)
+    return new_template
+
+
+@router.put("/templates/{template_id}", response_model=EquipmentTermTemplateResponse)
+def update_term_template(
+    template_id: int,
+    template_in: EquipmentTermTemplateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+    _: User = Depends(require_module("terms")),
+):
+    """Atualiza o conteúdo, formatação ou itens padrão de um modelo de termo."""
+    template = db.query(EquipmentTermTemplate).filter(EquipmentTermTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Modelo de termo não encontrado")
+
+    update_data = template_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(template, field, value)
+
+    template.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(template)
+    return template
+
+
+@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_term_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+    _: User = Depends(require_module("terms")),
+):
+    """Exclui um modelo de termo de documento."""
+    template = db.query(EquipmentTermTemplate).filter(EquipmentTermTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Modelo de termo não encontrado")
+
+    db.delete(template)
+    db.commit()
+    return None
+
+
 @router.get("/{term_id}", response_model=EquipmentTermResponse)
 def get_term_detail(
     term_id: int,
@@ -246,6 +346,7 @@ def create_term(
         has_ad_account=has_ad_account,
         technician_id=current_user.id,
         technician_name=technician_name,
+        template_id=term_in.template_id,
         expected_return_date=term_in.expected_return_date,
         legal_text=legal_text,
         notes=term_in.notes,

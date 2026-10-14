@@ -67,10 +67,46 @@ class EquipmentTermItemResponse(EquipmentTermItemBase):
 
 
 # ==========================================================
+# TEMPLATE SCHEMAS (BUILDER ESTILO WORD)
+# ==========================================================
+
+class EquipmentTermTemplateBase(BaseModel):
+    title: str = Field(..., max_length=200, description="Título do modelo de documento")
+    category: str = Field("Geral", max_length=100, description="Categoria do documento (ex: Comunicação, Telefonia, Notebook, Acesso)")
+    description: Optional[str] = Field(None, max_length=300)
+    content_html: str = Field(..., description="Conteúdo formatado em HTML com tags {{nome_colaborador}}, etc.")
+    default_items: Optional[str] = Field(None, description="JSON serializado com itens pré-configurados sugeridos")
+    is_active: bool = True
+
+
+class EquipmentTermTemplateCreate(EquipmentTermTemplateBase):
+    pass
+
+
+class EquipmentTermTemplateUpdate(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    content_html: Optional[str] = None
+    default_items: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class EquipmentTermTemplateResponse(EquipmentTermTemplateBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ==========================================================
 # TERM SCHEMAS
 # ==========================================================
 
 class EquipmentTermBase(BaseModel):
+    template_id: Optional[int] = None
     term_type: str = Field("retirada", max_length=50, description="retirada, emprestimo, devolucao")
     beneficiary_type: str = Field("ad_user", max_length=20, description="ad_user ou external_user")
     user_id: Optional[int] = None
@@ -84,6 +120,7 @@ class EquipmentTermBase(BaseModel):
     expected_return_date: Optional[datetime] = None
     legal_text: Optional[str] = None
     notes: Optional[str] = None
+
 
 
 class EquipmentTermCreate(EquipmentTermBase):
@@ -121,8 +158,10 @@ class EquipmentTermResponse(BaseModel):
     term_number: str
     status: str
     term_type: str
+    template_id: Optional[int] = None
     beneficiary_type: str
     user_id: Optional[int] = None
+
     beneficiary_name: str
     beneficiary_document: Optional[str] = None
     department_id: Optional[int] = None

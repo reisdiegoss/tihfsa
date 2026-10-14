@@ -24,6 +24,9 @@ export default function NewTermModal({ isOpen, onClose, onSuccess, onSaveAndSign
   const [error, setError] = useState(null);
 
   // Form Fields
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [beneficiaryName, setBeneficiaryName] = useState("");
@@ -49,19 +52,48 @@ export default function NewTermModal({ isOpen, onClose, onSuccess, onSaveAndSign
     }
   ]);
 
-  // Carregar usuários e departamentos
+  // Carregar usuários, departamentos e modelos de termos
   useEffect(() => {
     if (!isOpen) return;
 
     async function loadData() {
       try {
         setLoadingInitial(true);
-        const [usersRes, deptsRes] = await Promise.all([
+        const [usersRes, deptsRes, tmplsRes] = await Promise.all([
           api.get("/users?is_room=false&is_active=true"),
           api.get("/departments"),
+          api.get("/terms/templates?only_active=true"),
         ]);
         setAdUsers(usersRes.data || []);
         setDepartments(deptsRes.data || []);
+        const loadedTemplates = tmplsRes.data || [];
+        setTemplates(loadedTemplates);
+
+        // Se ainda não escolheu modelo e houver templates, seleciona o primeiro por padrão
+        if (loadedTemplates.length > 0 && !selectedTemplateId) {
+          const first = loadedTemplates[0];
+          setSelectedTemplateId(String(first.id));
+          setSelectedTemplate(first);
+          if (first.default_items) {
+            try {
+              const parsed = JSON.parse(first.default_items);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setItems(parsed.map((p) => ({
+                  item_name: p.item_name || "",
+                  category: p.category || "Periférico",
+                  asset_tag: "",
+                  serial_number: "",
+                  quantity: p.quantity || 1,
+                  condition: p.condition || "Em perfeito estado de funcionamento",
+                  accessories: p.accessories || "",
+                  notes: "",
+                })));
+              }
+            } catch (e) {
+              console.error("Erro ao aplicar default items:", e);
+            }
+          }
+        }
       } catch (err) {
         console.error("Erro ao carregar dados iniciais:", err);
       } finally {
@@ -71,6 +103,33 @@ export default function NewTermModal({ isOpen, onClose, onSuccess, onSaveAndSign
 
     loadData();
   }, [isOpen]);
+
+  // Troca de modelo de termo
+  const handleSelectTemplate = (tmplId) => {
+    setSelectedTemplateId(tmplId);
+    const found = templates.find((t) => String(t.id) === String(tmplId));
+    setSelectedTemplate(found || null);
+
+    if (found && found.default_items) {
+      try {
+        const parsed = JSON.parse(found.default_items);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setItems(parsed.map((p) => ({
+            item_name: p.item_name || "",
+            category: p.category || "Periférico",
+            asset_tag: "",
+            serial_number: "",
+            quantity: p.quantity || 1,
+            condition: p.condition || "Em perfeito estado de funcionamento",
+            accessories: p.accessories || "",
+            notes: "",
+          })));
+        }
+      } catch (e) {
+        console.error("Erro ao carregar itens do modelo:", e);
+      }
+    }
+  };
 
   // Ao selecionar um usuário do AD
   const handleSelectAdUser = (userId) => {
@@ -165,6 +224,8 @@ export default function NewTermModal({ isOpen, onClose, onSuccess, onSaveAndSign
 
     try {
       const payload = {
+        template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
+        legal_text: selectedTemplate?.content_html || null,
         term_type: "retirada",
         beneficiary_type: beneficiaryType,
         user_id: beneficiaryType === "ad_user" && selectedUserId ? Number(selectedUserId) : null,
@@ -239,6 +300,51 @@ export default function NewTermModal({ isOpen, onClose, onSuccess, onSaveAndSign
               <span>{error}</span>
             </div>
           )}
+
+          {/* SELEÇÃO DO MODELO DE DOCUMENTO (BUILDER / TEMPLATES) */}
+          <div className="bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-slate-50 p-5 rounded-2xl border border-blue-200/80 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <FileText size={18} className="text-blue-600" />
+                  Modelo de Documento & Termo
+                </h4>
+                <p className="text-xs text-slate-500">Escolha o modelo formatado para pré-preencher itens e texto legal</p>
+              </div>
+
+              {selectedTemplate && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-800 text-[11px] font-bold rounded-lg self-start sm:self-auto">
+                  Categoria: {selectedTemplate.category}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Selecione o Modelo de Termo *
+                </label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => handleSelectTemplate(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                >
+                  <option value="">Sem modelo (Termo Avulso / Padrão)</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      [{t.category}] {t.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedTemplate?.description && (
+                <div className="flex items-center text-xs text-slate-600 bg-white/80 p-2.5 rounded-xl border border-slate-200">
+                  <span>{selectedTemplate.description}</span>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* SELEÇÃO DO BENEFICIÁRIO (COM OU SEM AD) */}
           <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">

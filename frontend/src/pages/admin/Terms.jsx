@@ -3,12 +3,13 @@ import {
   FileText, Plus, Search, Filter, RefreshCw, 
   CheckCircle2, Clock, RotateCcw, AlertCircle, Eye, 
   UserCheck, ShieldCheck, Camera, Headphones, Radio, 
-  Smartphone, Laptop, Key, Package, Building2, ChevronRight, X
+  Smartphone, Laptop, Key, Package, Building2, ChevronRight, X, Sparkles
 } from "lucide-react";
 import api from "../../api/client";
 import NewTermModal from "../../components/admin/terms/NewTermModal";
 import SignTermModal from "../../components/admin/terms/SignTermModal";
 import ViewTermModal from "../../components/admin/terms/ViewTermModal";
+import TermTemplatesTab from "../../components/admin/terms/TermTemplatesTab";
 
 function formatDate(dateStr) {
   if (!dateStr) return "—";
@@ -30,6 +31,9 @@ export default function Terms() {
   const [stats, setStats] = useState({ total: 0, pending_signature: 0, signed: 0, returned: 0, cancelled: 0 });
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Abas Principais ("terms" = Termos Emitidos, "templates" = Modelos de Documentos)
+  const [activeMainTab, setActiveMainTab] = useState("terms");
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState("");
@@ -165,8 +169,44 @@ export default function Terms() {
         </button>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Sub-Navegação de Abas */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+        <button
+          onClick={() => setActiveMainTab("terms")}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+            activeMainTab === "terms"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <FileText size={16} />
+          Termos Emitidos
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-black ${
+            activeMainTab === "terms" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+          }`}>
+            {stats.total}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveMainTab("templates")}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+            activeMainTab === "templates"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <Sparkles size={16} className={activeMainTab === "templates" ? "text-amber-300" : "text-amber-500"} />
+          Modelos de Documentos (Builder Word)
+        </button>
+      </div>
+
+      {activeMainTab === "templates" ? (
+        <TermTemplatesTab />
+      ) : (
+        <>
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
             <FileText size={24} />
@@ -420,6 +460,8 @@ export default function Terms() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* MODAIS */}
       <NewTermModal

@@ -112,6 +112,38 @@ Gestão Completa de Apartamentos & UHs (`/admin/settings`):
   - Exclusão com desativação preventiva de segurança caso possua histórico de chamados ou ativos vinculados.
 - **Endpoints de Backend**: `GET /api/v1/rooms/`, `POST /api/v1/rooms/`, `PATCH /api/v1/rooms/{id}`, `PATCH /api/v1/rooms/{id}/toggle-active`, `DELETE /api/v1/rooms/{id}`.
 
+Módulo de Termos de Retirada de Equipamentos, Assinatura Digital em Tela & Validação Facial (`/admin/terms`):
+- **Objetivo (Zero Papel / 100% Digital)**: Substituição de processos manuais de impressão de termos em Word, coleta de assinatura física em papel, digitalização em scanner e armazenamento em pastas de rede.
+- **Fluxo do Técnico no Tablet / Mobile**:
+  - O técnico de TI abre o termo para o colaborador ou prestador antes da entrega do equipamento.
+  - Vínculo direto com contas do Active Directory (AD) com preenchimento automático de nome, login e setor, ou cadastro manual com nome, CPF/documento e setor para terceiros/prestadores.
+  - Discriminação de itens com sugestões rápidas (Fone de ouvido, Rádio HT, Celular, Notebook, Chave de acesso, Relógio de ponto) e vinculação opcional a ativos do CMDB.
+  - Coleta de assinatura manuscrita diretamente na tela via `signature_pad` (touch / caneta / mouse).
+  - Validação biométrica facial em tempo real via câmera utilizando `face-api.js`, registrando a foto e o score de confiança do recebedor como evidência de entrega.
+  - Visualização e impressão no formato folha A4 com carimbo de autenticidade, IP e data/hora.
+
+Editor Visual de Modelos de Documentos com Barra de Ferramentas Estilo Word (Ribbon Toolbar) & Importação DOCX:
+- **Aba "Modelos de Documentos (Builder)" no Menu Termos**:
+  - Galeria de templates com filtros por categoria (Geral, Comunicação/HT, Telefonia, Notebooks, Acesso e Segurança).
+  - **Barra de Ferramentas Estilo Microsoft Word (Ribbon)**:
+    - *Página Inicial*: Família de fontes (Arial, Calibri, Times, Segoe UI, Georgia, etc.), tamanhos (8pt a 36pt), Negrito, Itálico, Sublinhado, Tachado, Cor da Fonte, Cor de Realce, Alinhamentos (Esquerda, Centro, Direita, Justificar), Listas com Marcadores e Numeração, Limpar Estilos, Desfazer e Refazer.
+    - *Inserir & Tags Dinâmicas*: Inserção com 1 clique de tags no cursor: `{{hotel_fasano}}`, `{{numero_termo}}`, `{{nome_colaborador}}`, `{{documento_cpf_rg}}`, `{{setor_departamento}}`, `{{tecnico_responsavel}}`, `{{data_emissao}}`, `{{tabela_equipamentos}}`, `{{assinatura_beneficiario}}`, `{{foto_biometria}}`, além de gerador de tabelas estilizadas e divisores.
+    - *Importar Arquivo Word (.docx)*: Conversor de documentos Microsoft Word `.docx` diretamente para HTML limpo via `mammoth`, preservando cabeçalhos, negritos, tabelas e parágrafos sem dependências externas.
+    - *Itens Pré-configurados*: Definição de equipamentos padrão de cada modelo para inserção automática ao abrir novo termo.
+    - *Canvas com Folha A4 Real*: Simulação visual de papel A4 (210 × 297 mm) com margens reais e régua superior.
+- **Modelos Padrão Nativos Pré-carregados no Banco**:
+  1. *Termo Geral de Retirada de Equipamentos e Acessórios* (Fones, periféricos, cabos).
+  2. *Termo de Entrega de Rádio Comunicador (HT / Walkie-Talkie)* (Aparelho, base carregadora, antena, fone PTT).
+  3. *Termo de Responsabilidade - Smartphone / Celular Corporativo* (Aparelho, chip 4G/5G, carregador, capa).
+  4. *Termo de Responsabilidade - Notebook e Estação Móvel* (Notebook corporativo, carregador original, mochila, mouse).
+  5. *Termo de Cautela de Chaves de Acesso, TAGs e Crachás / Relógio* (Chaves mestras, tags RFID de catracas/portas).
+- **Endpoints de Modelos**:
+  - `GET /api/v1/terms/templates`: Lista modelos com filtros opcionais de categoria e status ativo.
+  - `POST /api/v1/terms/templates`: Criação de novo modelo via editor ou importação docx.
+  - `GET /api/v1/terms/templates/{id}`: Detalhes do modelo.
+  - `PUT /api/v1/terms/templates/{id}`: Atualização de layout, HTML e itens padrão.
+  - `DELETE /api/v1/terms/templates/{id}`: Exclusão de modelo.
+
 Gestão Completa de Andares & Pavimentos (`/admin/settings` - Módulo Andares):
 - **Tabela `Floor` no Banco**: Mapeamento estrutural de andares e pavimentos do hotel com `name` (ex: "Térreo", "Subsolo", "1º Andar" ao "7º Andar / Rooftop"), `number` (nível numérico para ordenação vertical), `description` e `is_active`.
 - **Painel de Controle em "Hotel & Espaços"**:

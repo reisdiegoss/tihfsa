@@ -19,7 +19,7 @@ from app.models.satisfaction_survey import TicketSatisfactionSurvey
 from app.models.qrcode import QRCodeItem, QRCodeConfig
 from app.models.notification_log import NotificationLog
 from app.models.contract import Supplier, SupplierContact, Contract, ContractService, ContractInvoice
-from app.models.term import EquipmentTerm, EquipmentTermItem
+from app.models.term import EquipmentTerm, EquipmentTermItem, EquipmentTermTemplate
 
 __all__ = [
     "User",
@@ -54,6 +54,8 @@ __all__ = [
     "ContractInvoice",
     "EquipmentTerm",
     "EquipmentTermItem",
+    "EquipmentTermTemplate",
 ]
+
 
 
