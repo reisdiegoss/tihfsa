@@ -1487,12 +1487,14 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
 49. **Monitoramento do Veritas Backup Exec Server 23.0 Rev. 1250 & Abertura de Chamados**:
     - **Coleta de Telemetria Nativa no Agente PowerShell (`tihfsa-agent.ps1`)**:
       - Função `Get-BackupExecTelemetry` inspeciona os serviços do Veritas (`BackupExecJobEngine`, `BackupExecServer`, `BackupExecDeviceMediaService`, `BackupExecManagementService`).
-      - Coleta via BEMCLI (`Get-BEJobHistory -Limit 1`) e fallback via Windows Event Log (IDs 34113 = Sucesso, 34114 = Erro/Falha, 57755 = Warning de Mídia).
+      - Coleta via BEMCLI ordenado de forma estrita (`Get-BEJobHistory | Sort-Object EndTime -Descending | Select -First 1`), inspeção de alertas ativos de console (`Get-BEAlert -State Active` como fita cheia ou solicitação de mídia) e varredura profunda no Windows Event Log (IDs 34113, 34114, 34115, 57751 a 57756, 58068 e entradas de Warning/Error).
       - Extrai: nome do trabalho, status normalizado (`Success`, `Error`, `Warning`), timestamp de conclusão, duração em segundos/minutos, volume em GB transferido e mensagem do evento.
     - **Regras de Negócio e Abertura Automática de Chamados**:
       - **Backup Concluído com Sucesso**: Abre chamado automaticamente no Helpdesk com status **"Aguardando Validação"** (`TicketStatus.PENDING_VALIDATION`) e prioridade Baixa/Média. Permite que o analista de TI valide fisicamente os catálogos/fitas antes de encerrar o chamado diário.
       - **Backup com Falha ou Erro**: Abre chamado com status **"Novo"** (`TicketStatus.NEW`) e prioridade **"Crítica"** (`TicketPriority.CRITICAL`), destacando o Event ID e a mensagem de erro do Backup Exec para intervenção emergencial.
-      - **Deduplicação Inteligente (36 Horas)**: Utiliza hash combinada do servidor, nome do trabalho e data de conclusão (`[Backup Exec] {job_name} ({hostname}) - {YYYY-MM-DD}`), garantindo que apenas um chamado seja aberto por execução do job, independentemente do intervalo do agente (a cada 1 ou 15 minutos).
+      - **Deduplicação Inteligente com Prioridade Absoluta para Falhas**:
+        - As chaves de deduplicação são segregadas por desfecho (`[Backup Exec] Sucesso - ...` vs `[Backup Exec] Falha - ...`).
+        - Um chamado de sucesso anterior **nunca** bloqueia a abertura imediata de um chamado de falha/erro. Em caso de nova execução com erro, o chamado crítico é aberto e notificado instantaneamente sem ser engolido pelo chamado de validação matinal.
     - **Notificações Automáticas em Tempo Real (WhatsApp & E-mail Corporativo)**:
       - **WhatsApp**: Disparo instantâneo para o grupo da equipe de TI via Evolution API com identificação do servidor, rotina, status, volume e link direto para o chamado.
       - **E-mail Corporativo de Suporte (`send_ticket_created_staff_notification`)**:

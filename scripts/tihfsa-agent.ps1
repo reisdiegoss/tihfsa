@@ -372,7 +372,7 @@ function Get-BackupExecTelemetry {
             Import-Module BEMCLI -ErrorAction SilentlyContinue | Out-Null
         }
         if (Get-Command Get-BEJobHistory -ErrorAction SilentlyContinue) {
-            $lastJob = Get-BEJobHistory -Limit 1 -ErrorAction SilentlyContinue
+            $lastJob = Get-BEJobHistory -ErrorAction SilentlyContinue | Sort-Object EndTime -Descending | Select-Object -First 1
             if ($lastJob) {
                 $telemetry.last_job_name = if ($lastJob.JobName) { $lastJob.JobName } else { "Backup Exec Job" }
                 $telemetry.last_job_completion_time = if ($lastJob.EndTime) { $lastJob.EndTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }
@@ -382,70 +382,58 @@ function Get-BackupExecTelemetry {
                 }
 
                 $jobStatusRaw = if ($lastJob.JobStatus) { $lastJob.JobStatus.ToString() } else { "" }
-                if ($jobStatusRaw -match "Succeeded|Success|Successful") {
+                if ($jobStatusRaw -match "Succeeded$|Success|Successful") {
                     $telemetry.last_job_status = "Success"
-                } elseif ($jobStatusRaw -match "Error|Failed|Canceled|CompletedWithExceptions|Fatal") {
+                } elseif ($jobStatusRaw -match "Error|Failed|Canceled|CompletedWithExceptions|Fatal|Missed|ThresholdExceeded") {
                     $telemetry.last_job_status = "Error"
                 } elseif ($jobStatusRaw -match "Warning|Attention") {
                     $telemetry.last_job_status = "Warning"
                 }
             }
         }
+        # Verifica se há Alertas Ativos no console do Backup Exec (ex: fita requerida, pool cheio, erro de hardware)
+        if (Get-Command Get-BEAlert -ErrorAction SilentlyContinue) {
+            $activeAlerts = @(Get-BEAlert -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Active' -and $_.Severity -in @('Error', 'AttentionRequired', 'Warning') })
+            if ($activeAlerts -and $activeAlerts.Count -gt 0) {
+                $firstAlert = $activeAlerts[0]
+                $telemetry.last_job_status = "Error"
+                $telemetry.last_event_message = "Alerta Ativo no Veritas Backup Exec: $($firstAlert.Name) - $($firstAlert.Message)"
+            }
+        }
     } catch {}
 
-    # 3. Complemento / Fallback Seguro via Windows Application Event Log (Fontes: Backup Exec / Backup Exec CatError)
-    # Event IDs canônicos do Veritas Backup Exec:
-    # 34113 = Trabalho de backup concluído com êxito (Sucesso)
-    # 34114 = Trabalho de backup concluído com erros / falha
-    # 57755 = Alerta de mídia / fita requerida
-    # 57756 = Erro de comunicação com dispositivo
+    # 3. Complemento / Fallback Seguro via Windows Application Event Log
     try {
-        $events = Get-WinEvent -FilterHashtable @{
-            LogName      = 'Application'
-            ProviderName = '*Backup Exec*'
-            Id           = 34113, 34114, 57755, 57756
-        } -MaxEvents 5 -ErrorAction SilentlyContinue
-
-        if (-not $events) {
-            # Fallback para Get-EventLog em sistemas legados
-            $events = Get-EventLog -LogName Application -Source "*Backup Exec*" -Newest 5 -ErrorAction SilentlyContinue | Where-Object {
-                $_.EventID -in @(34113, 34114, 57755, 57756)
-            }
+        # Busca os eventos mais recentes de erro/aviso/conclusão do Veritas Backup Exec
+        $events = Get-EventLog -LogName Application -Source "*Backup Exec*" -Newest 50 -ErrorAction SilentlyContinue | Where-Object {
+            $_.EventID -in @(34113, 34114, 34115, 57751, 57752, 57753, 57754, 57755, 57756, 58068) -or $_.EntryType -in @("Error", "Warning")
         }
 
         if ($events -and $events.Count -gt 0) {
             $latestEvent = $events[0]
-            $eventId = if ($latestEvent.Id) { [int]$latestEvent.Id } else { [int]$latestEvent.EventID }
+            $eventId = [int]$latestEvent.EventID
             $eventMsg = if ($latestEvent.Message) { $latestEvent.Message.Trim() } else { "" }
-            $eventTime = if ($latestEvent.TimeCreated) { $latestEvent.TimeCreated } else { $latestEvent.TimeGenerated }
+            $eventTime = $latestEvent.TimeGenerated
+            $evtTimeStr = $eventTime.ToString("yyyy-MM-dd HH:mm:ss")
+            $isEvtError = ($eventId -in @(34114, 34115, 57755, 57756, 57751, 57752, 57753, 57754, 58068)) -or ($latestEvent.EntryType -in @("Error", "Warning"))
 
-            $telemetry.last_event_id = $eventId
-            $telemetry.last_event_message = $eventMsg
+            # O evento do Windows prevalece se for um erro ou se for mais recente que o registro do BEMCLI
+            if ($isEvtError -or -not $telemetry.last_job_completion_time -or ($evtTimeStr -ge $telemetry.last_job_completion_time)) {
+                $telemetry.last_event_id = $eventId
+                $telemetry.last_event_message = $eventMsg
+                $telemetry.last_job_completion_time = $evtTimeStr
+                $telemetry.last_job_status = if ($eventId -eq 57755) { "Warning" } elseif ($isEvtError) { "Error" } else { "Success" }
 
-            if (-not $telemetry.last_job_completion_time -and $eventTime) {
-                $telemetry.last_job_completion_time = $eventTime.ToString("yyyy-MM-dd HH:mm:ss")
-            }
-
-            # Extrair nome do trabalho da mensagem do evento se não tiver sido extraído pelo BEMCLI
-            if (-not $telemetry.last_job_name -and $eventMsg -match "trabalho\s+['""]([^'""]+)['""]|job\s+['""]([^'""]+)['""]") {
-                $telemetry.last_job_name = $matches[1]
-            }
-            if (-not $telemetry.last_job_name) {
-                $telemetry.last_job_name = "Rotina Diaria de Backup Veritas"
-            }
-
-            # Determinar status com base no Event ID se ainda estiver Unknown
-            if ($telemetry.last_job_status -eq "Unknown") {
-                if ($eventId -eq 34113) {
-                    $telemetry.last_job_status = "Success"
-                } elseif ($eventId -eq 34114 -or $eventId -eq 57756) {
-                    $telemetry.last_job_status = "Error"
-                } elseif ($eventId -eq 57755) {
-                    $telemetry.last_job_status = "Warning"
+                if ($eventMsg -match "trabalho\s+['""]([^'""]+)['""]|job\s+['""]([^'""]+)['""]") {
+                    $telemetry.last_job_name = $matches[1]
                 }
             }
         }
     } catch {}
+
+    if (-not $telemetry.last_job_name) {
+        $telemetry.last_job_name = "Rotina Diaria de Backup Veritas"
+    }
 
     return $telemetry
 }
