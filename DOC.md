@@ -527,13 +527,17 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Barra de Ações Flutuante**: Exibe a contagem de itens selecionados e atalho para o modal de alteração em massa.
     - **Fechamento em Massa com Motivo Replicado**: Quando o operador escolhe o status `Fechado`, o campo de justificativa técnica torna-se estritamente **obrigatório**. O mesmo motivo inserido é replicado e gravado em massa em todos os chamados selecionados (na coluna `closure_reason` da tabela `tickets` e no histórico de auditoria individual).
     - **Fechamento Unitário com Modal de Resolução**: Ao encerrar um chamado individualmente pelo Drawer lateral (`TicketDetailDrawer`) ou pela tela de detalhes (`TicketDetail`), um modal intuitivo solicita obrigatoriamente o motivo da resolução técnica, preenchendo `closed_at`, `closure_reason` e criando registro na linha do tempo.
+    - **Operações Disponíveis em Lote na Barra Flutuante**:
+      - **Assumir Chamados em Massa (`POST /api/v1/tickets/batch-take`)**: O técnico autenticado assume a custódia técnica imediata de todos os chamados selecionados, movendo o status de `Novo` para `Em Andamento`, registrando `first_response_at` (SLA de primeiro atendimento) e gerando trilha de auditoria individual com `interaction_type="take"`.
+      - **Transferir Chamados em Massa (`POST /api/v1/tickets/batch-transfer`)**: Transfere múltiplos chamados selecionados para outro especialista com justificativa técnica obrigatória (COBIT DSS02.04), gravando `previous_technician_id`, `transferred_by_id`, `transferred_at`, `transfer_reason`, gerando interação com `interaction_type="transfer"` e notificando o novo responsável via WhatsApp/E-mail.
+      - **Atualizar Status em Massa (`POST /api/v1/tickets/batch-status`)**: Transição em lote para `Novo`, `Em Andamento`, `Aguardando Validação` ou `Fechado`. No caso de fechamento, exige justificativa obrigatória registrada como motivo do fechamento de todos os itens.
     - **Registro de Auditoria Individual na Timeline**: Toda alteração em lote registra uma interação no histórico (`TicketInteraction`) de cada chamado afetado, gravando:
       - Nome completo e perfil do responsável pela alteração.
       - Data e hora exatas da operação.
-      - Status anterior e novo status aplicado.
-      - Motivo / justificativa informada pelo técnico (com identificação `🔒 [Fechamento em Massa]`).
-    - **Disparo Opcional no WhatsApp**: Opção de notificar o grupo de TI sobre o encerramento ou alteração em massa consolidada através da Evolution API, constando o motivo do fechamento e quantidade de chamados.
-    - **Segurança e Controle de Permissão**: Endpoints `/api/v1/tickets/batch-status` e `PATCH /api/v1/tickets/{id}` protegidos pela dependência `require_technician` (apenas administradores e técnicos autorizados).
+      - Status anterior e novo status aplicado (ou técnicos de origem e destino na transferência).
+      - Motivo / justificativa informada pelo técnico (com identificação `🔒 [Fechamento em Massa]`, `📌 [Custódia Assumida em Lote]` ou `🔄 [Custódia Transferida em Lote]`).
+    - **Disparo Opcional no WhatsApp & E-mail**: Opção de notificar o grupo de TI e os técnicos envolvidos sobre a transferência, encerramento ou alteração em massa consolidada através da Evolution API e SMTP corporativo.
+    - **Segurança e Controle de Permissão**: Endpoints `/api/v1/tickets/batch-status`, `/api/v1/tickets/batch-take` e `/api/v1/tickets/batch-transfer` protegidos pela dependência `require_technician` (apenas administradores e técnicos autorizados).
 
 11. **Ciclo de Vida de Alertas NOC (UniFi e Zabbix) & Histórico Contínuo no Mesmo Dia**:
     - **Cenário 1 — Queda Inicial**: Ao detectar um equipamento offline na controladora UniFi ou disparo crítico no Zabbix, o sistema abre automaticamente um chamado (`Novo`), registra a interação inicial na linha do tempo e notifica imediatamente a equipe.

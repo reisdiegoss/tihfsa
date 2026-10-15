@@ -6,7 +6,7 @@ import {
   Layers, AlertTriangle, ChevronLeft, ChevronsLeft, 
   ChevronsRight, CheckCircle2, User, Radio, Activity, Wifi,
   CheckSquare, Square, MinusSquare, ShieldCheck, MessageSquare, Send,
-  Star, Ticket, UserCheck
+  Star, Ticket, UserCheck, ArrowRightLeft
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/client";
@@ -156,11 +156,35 @@ export default function TicketList() {
   // Seleção Múltipla para Ações em Massa (Batch Actions)
   const [selectedTicketIds, setSelectedTicketIds] = useState([]);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [isBatchTransferModalOpen, setIsBatchTransferModalOpen] = useState(false);
   const [batchTargetStatus, setBatchTargetStatus] = useState("Em Andamento");
   const [batchComment, setBatchComment] = useState("");
   const [batchNotifyWhatsapp, setBatchNotifyWhatsapp] = useState(false);
+  const [batchTargetTechId, setBatchTargetTechId] = useState("");
+  const [batchTransferReason, setBatchTransferReason] = useState("");
+  const [batchTransferNotifyWhatsapp, setBatchTransferNotifyWhatsapp] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchToast, setBatchToast] = useState(null);
+  const [techniciansList, setTechniciansList] = useState([]);
+
+  useEffect(() => {
+    if (isStaff) {
+      api.get("/users/?is_active=true")
+        .then((r) => {
+          const all = Array.isArray(r.data) ? r.data : [];
+          const techs = all.filter((u) => {
+            const rStr = (u.role || "").toLowerCase();
+            const roles = (u.roles || []).map((x) => x.toLowerCase());
+            return !u.is_room && (
+              rStr.includes("tech") || rStr.includes("tecnico") || rStr.includes("admin") ||
+              roles.some((x) => x.includes("tech") || x.includes("tecnico") || x.includes("admin"))
+            );
+          });
+          setTechniciansList(techs);
+        })
+        .catch(() => {});
+    }
+  }, [isStaff]);
 
   const fetchTickets = () => {
     setLoading(true);
@@ -564,6 +588,76 @@ export default function TicketList() {
       console.error(err);
       const msg = err.response?.data?.detail || "Erro ao atualizar chamados em lote.";
       alert(msg);
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  // Assumir Atendimento em Massa (ITIL 4 Service Desk)
+  const handleBatchTake = async () => {
+    if (selectedTicketIds.length === 0) return;
+    if (!window.confirm(`Deseja assumir o atendimento de todos os ${selectedTicketIds.length} chamados selecionados sob sua responsabilidade técnica?`)) {
+      return;
+    }
+
+    setBatchLoading(true);
+    try {
+      const res = await api.post("/tickets/batch-take", {
+        ticket_ids: selectedTicketIds,
+      });
+
+      setSelectedTicketIds([]);
+      setBatchToast({
+        type: "success",
+        message: res.data.message || `${res.data.updated_count} chamados assumidos com sucesso!`,
+      });
+      setTimeout(() => setBatchToast(null), 5000);
+      fetchTickets();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao assumir chamados em lote.");
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  // Transferência em Massa (COBIT DSS02)
+  const handleBatchTransferSubmit = async (e) => {
+    e.preventDefault();
+    if (selectedTicketIds.length === 0) return;
+
+    if (!batchTargetTechId) {
+      alert("Selecione o técnico de destino.");
+      return;
+    }
+    if (!batchTransferReason.trim()) {
+      alert("A justificativa técnica da transferência é obrigatória conforme COBIT DSS02.");
+      return;
+    }
+
+    setBatchLoading(true);
+    try {
+      const res = await api.post("/tickets/batch-transfer", {
+        ticket_ids: selectedTicketIds,
+        target_technician_id: Number(batchTargetTechId),
+        reason: batchTransferReason.trim(),
+        notify_whatsapp: batchTransferNotifyWhatsapp,
+      });
+
+      setIsBatchTransferModalOpen(false);
+      setBatchTargetTechId("");
+      setBatchTransferReason("");
+      setSelectedTicketIds([]);
+
+      setBatchToast({
+        type: "success",
+        message: res.data.message || `${res.data.updated_count} chamados transferidos com sucesso!`,
+      });
+      setTimeout(() => setBatchToast(null), 5000);
+      fetchTickets();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao transferir chamados em lote.");
     } finally {
       setBatchLoading(false);
     }
@@ -1573,30 +1667,59 @@ export default function TicketList() {
 
       {/* Floating Batch Actions Bar (Barra Flutuante de Ações em Massa - 100% Responsiva) */}
       {isStaff && selectedTicketIds.length > 0 && (
-        <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)] lg:bottom-8 left-1/2 -translate-x-1/2 lg:left-[calc(50%+8rem)] z-50 bg-slate-900/95 text-white px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-2xl shadow-2xl shadow-slate-950/50 border border-slate-700/80 backdrop-blur-md flex items-center justify-between gap-2.5 sm:gap-4 animate-slide-up w-[calc(100%-1.5rem)] sm:w-auto max-w-lg">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)] lg:bottom-8 left-1/2 -translate-x-1/2 lg:left-[calc(50%+8rem)] z-50 bg-slate-900/95 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl shadow-2xl shadow-slate-950/50 border border-slate-700/80 backdrop-blur-md flex items-center justify-between gap-2 sm:gap-3 animate-slide-up w-[calc(100%-1.25rem)] sm:w-auto max-w-xl">
           <div className="flex items-center gap-2 min-w-0 shrink-0">
             <span className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs shadow-xs shrink-0">
               {selectedTicketIds.length}
             </span>
-            <span className="text-xs font-bold text-slate-200 truncate">
-              {selectedTicketIds.length === 1 ? "1 selecionado" : `${selectedTicketIds.length} selecionados`}
+            <span className="text-xs font-bold text-slate-200 truncate hidden xs:inline">
+              {selectedTicketIds.length === 1 ? "1 chamado" : `${selectedTicketIds.length} chamados`}
             </span>
           </div>
 
           <div className="h-4 w-px bg-slate-700 hidden sm:block shrink-0" />
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+            {/* Assumir em Massa (ITIL 4) */}
             <button
+              type="button"
+              onClick={handleBatchTake}
+              disabled={batchLoading}
+              className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer min-h-[36px] disabled:opacity-50"
+              title="Assumir a responsabilidade de todos os chamados selecionados sob sua custódia"
+            >
+              <UserCheck size={14} />
+              <span className="whitespace-nowrap">Assumir ({selectedTicketIds.length})</span>
+            </button>
+
+            {/* Transferir em Massa (COBIT DSS02) */}
+            <button
+              type="button"
+              onClick={() => setIsBatchTransferModalOpen(true)}
+              disabled={batchLoading}
+              className="flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer min-h-[36px] disabled:opacity-50"
+              title="Transferir a custódia dos chamados selecionados para outro especialista"
+            >
+              <ArrowRightLeft size={14} />
+              <span className="whitespace-nowrap">Transferir</span>
+            </button>
+
+            {/* Alterar Status */}
+            <button
+              type="button"
               onClick={() => setIsBatchModalOpen(true)}
-              className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer min-h-[38px]"
+              disabled={batchLoading}
+              className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer min-h-[36px] disabled:opacity-50"
+              title="Alterar status dos chamados selecionados"
             >
               <CheckSquare size={14} />
-              <span className="whitespace-nowrap">Alterar Status</span>
+              <span className="whitespace-nowrap">Status</span>
             </button>
 
             <button
+              type="button"
               onClick={clearSelection}
-              className="text-slate-400 hover:text-white active:scale-95 text-xs font-medium px-2.5 py-1.5 transition-colors cursor-pointer min-h-[38px] flex items-center"
+              className="text-slate-400 hover:text-white active:scale-95 text-xs font-medium px-2 py-1.5 transition-colors cursor-pointer min-h-[36px] flex items-center"
             >
               Cancelar
             </button>
@@ -1758,6 +1881,146 @@ export default function TicketList() {
               </div>
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Transferência em Massa (COBIT DSS02.04 & DSS02.07) */}
+      {isBatchTransferModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in pt-[max(12px,env(safe-area-inset-top))] pb-[max(12px,env(safe-area-inset-bottom))]">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden animate-scale-up max-h-[90dvh] flex flex-col">
+            
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                  <ArrowRightLeft size={20} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900 truncate">Transferir Chamados em Massa</h3>
+                  <p className="text-xs text-slate-500 font-medium truncate">
+                    Transferir custódia de {selectedTicketIds.length} chamado{selectedTicketIds.length > 1 ? "s" : ""} para outro especialista
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !batchLoading && setIsBatchTransferModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body / Form */}
+            <form onSubmit={handleBatchTransferSubmit} className="p-6 space-y-5 overflow-y-auto">
+              
+              {/* Selected Tickets Summary */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">
+                  Chamados Selecionados ({selectedTicketIds.length}):
+                </label>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                  {selectedTicketIds.map((id) => (
+                    <span
+                      key={id}
+                      className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-xs font-extrabold"
+                    >
+                      #{id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Technician Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Novo Técnico Responsável: <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] font-semibold text-slate-400">Obrigatório</span>
+                </label>
+                <select
+                  value={batchTargetTechId}
+                  onChange={(e) => setBatchTargetTechId(e.target.value)}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs font-semibold rounded-xl p-3 outline-none focus:border-amber-500 focus:bg-white transition-all cursor-pointer"
+                >
+                  <option value="">Selecione o técnico de destino...</option>
+                  {techniciansList.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.display_name} • Nível {t.support_level || "N1"} ({t.role || "Técnico"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Transfer Reason / Justification */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Justificativa da Transferência em Massa: <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    Auditoria COBIT DSS02
+                  </span>
+                </label>
+                <textarea
+                  value={batchTransferReason}
+                  onChange={(e) => setBatchTransferReason(e.target.value)}
+                  placeholder="Explique o motivo da transferência em lote (ex: redistribuição de demanda operacional, troca de turno, especialista em redes/telefonia, etc.)..."
+                  rows={3}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs font-medium rounded-xl p-3 outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"
+                />
+              </div>
+
+              {/* WhatsApp Notification Checkbox */}
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="batchTransferNotify"
+                  checked={batchTransferNotifyWhatsapp}
+                  onChange={(e) => setBatchTransferNotifyWhatsapp(e.target.checked)}
+                  className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                />
+                <label htmlFor="batchTransferNotify" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                  Disparar alerta no grupo de TI do WhatsApp informando a transferência em lote
+                </label>
+              </div>
+
+              {/* Audit Notice Box */}
+              <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl flex items-start gap-2.5">
+                <ShieldCheck size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                  <strong className="font-extrabold">Trilha de Auditoria:</strong> Cada um dos {selectedTicketIds.length} chamados receberá uma interação na Linha do Tempo registrando a transferência de custódia realizada por <strong>{user?.display_name || "Você"}</strong> e o novo técnico responsável receberá notificação automática.
+                </p>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={batchLoading}
+                  onClick={() => setIsBatchTransferModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={batchLoading || !batchTargetTechId || !batchTransferReason.trim()}
+                  className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {batchLoading ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Transferindo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRightLeft size={14} />
+                      <span>Confirmar Transferência ({selectedTicketIds.length})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

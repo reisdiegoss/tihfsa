@@ -24,6 +24,7 @@ from app.models.category import Category, Subcategory
 from datetime import datetime, timezone
 from app.schemas.ticket import (
     TicketCreate, TicketUpdate, TicketSolve, TicketValidate, TicketBatchStatusUpdate,
+    TicketBatchTake, TicketBatchTransfer,
     TicketTransfer, TicketEscalate,
     TicketResponse, TicketDetail, InteractionCreate, InteractionResponse,
 )
@@ -931,6 +932,208 @@ def batch_update_status(
         "updated_ids": [t.id for t in updated_tickets],
         "new_status": target_status.value,
         "closure_reason": closure_reason if target_status == TicketStatus.CLOSED else None,
+    }
+
+
+@router.post("/batch-take")
+def batch_take_tickets(
+    data: TicketBatchTake,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Assume múltiplos chamados em lote sob custódia do técnico autenticado (ITIL 4 Service Desk).
+    - Ignora chamados já fechados.
+    - Atualiza technician_id = current_user.id.
+    - Se status for NEW, avança para IN_PROGRESS.
+    - Define first_response_at se ainda não preenchido.
+    - Registra TicketInteraction(interaction_type='take') em cada chamado para auditoria.
+    - Dispara notificações conforme regras do sistema.
+    Permissão: Administradores e Técnicos.
+    """
+    if not data.ticket_ids:
+        raise HTTPException(status_code=400, detail="Nenhum chamado informado para assumir.")
+
+    now = datetime.now(timezone.utc)
+    updated_tickets = []
+
+    for t_id in data.ticket_ids:
+        ticket = db.query(Ticket).filter(Ticket.id == t_id).first()
+        if not ticket or ticket.status == TicketStatus.CLOSED:
+            continue
+
+        ticket.technician_id = current_user.id
+        ticket.updated_at = now
+
+        if ticket.status == TicketStatus.NEW:
+            ticket.status = TicketStatus.IN_PROGRESS
+
+        if not ticket.first_response_at:
+            ticket.first_response_at = now
+
+        audit_msg = f"📌 [Custódia Assumida em Lote] O técnico {current_user.display_name} assumiu a responsabilidade pelo atendimento deste chamado."
+        interaction = TicketInteraction(
+            ticket_id=ticket.id,
+            user_id=current_user.id,
+            message=audit_msg,
+            interaction_type="take",
+            is_solution=False,
+        )
+        db.add(interaction)
+        updated_tickets.append(ticket)
+
+    db.commit()
+
+    # Notificações aos solicitantes
+    try:
+        from app.models.system_setting import SystemSetting
+        from app.services.email_service import send_ticket_assigned_notification
+        setting = db.query(SystemSetting).first()
+        notify_assign = getattr(setting, "notify_requester_on_assign", True) if setting else True
+        if notify_assign:
+            for t in updated_tickets:
+                req_user = db.query(User).filter(User.id == t.requester_id).first()
+                if req_user and req_user.email:
+                    background_tasks.add_task(
+                        send_ticket_assigned_notification,
+                        ticket=t,
+                        requester_name=req_user.display_name,
+                        requester_email=req_user.email,
+                        technician_name=current_user.display_name,
+                    )
+    except Exception as e:
+        print(f"[WARN] Falha nas notificações de batch_take: {e}")
+
+    return {
+        "success": True,
+        "updated_count": len(updated_tickets),
+        "updated_ids": [t.id for t in updated_tickets],
+        "message": f"{len(updated_tickets)} chamado(s) assumido(s) com sucesso por {current_user.display_name}!",
+    }
+
+
+@router.post("/batch-transfer")
+def batch_transfer_tickets(
+    data: TicketBatchTransfer,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Transfere múltiplos chamados em lote para outro especialista (COBIT DSS02.04 & DSS02.07).
+    - Justificativa obrigatória (auditoria e não-repúdio).
+    - Validação de existência de técnico de destino ativo.
+    - Ignora chamados já fechados ou já atribuídos ao técnico destino.
+    - Atualiza previous_technician_id, technician_id, transferred_at, transferred_by_id, transfer_reason.
+    - Registra TicketInteraction(interaction_type='transfer') em cada chamado.
+    - Envia notificações por e-mail e WhatsApp para o técnico de destino.
+    Permissão: Administradores e Técnicos.
+    """
+    if not data.ticket_ids:
+        raise HTTPException(status_code=400, detail="Nenhum chamado informado para transferência.")
+
+    reason = data.reason.strip() if data.reason else ""
+    if not reason:
+        raise HTTPException(status_code=400, detail="A justificativa da transferência é obrigatória conforme COBIT DSS02.")
+
+    target_tech = db.query(User).filter(User.id == data.target_technician_id, User.is_active == True).first()
+    if not target_tech:
+        raise HTTPException(status_code=404, detail="Técnico de destino não encontrado ou inativo.")
+
+    now = datetime.now(timezone.utc)
+    updated_tickets = []
+
+    for t_id in data.ticket_ids:
+        ticket = db.query(Ticket).filter(Ticket.id == t_id).first()
+        if not ticket or ticket.status == TicketStatus.CLOSED:
+            continue
+        if ticket.technician_id == target_tech.id:
+            continue
+
+        prev_tech_id = ticket.technician_id
+        prev_tech = db.query(User).filter(User.id == prev_tech_id).first() if prev_tech_id else None
+        prev_tech_name = prev_tech.display_name if prev_tech else "Fila Livre"
+
+        ticket.previous_technician_id = prev_tech_id
+        ticket.technician_id = target_tech.id
+        ticket.transferred_at = now
+        ticket.transferred_by_id = current_user.id
+        ticket.transfer_reason = reason
+        ticket.updated_at = now
+
+        if ticket.status == TicketStatus.NEW:
+            ticket.status = TicketStatus.IN_PROGRESS
+
+        audit_msg = (
+            f"🔄 [Custódia Transferida em Lote]\n"
+            f"De: {prev_tech_name}\n"
+            f"Para: {target_tech.display_name}\n"
+            f"Transferido por: {current_user.display_name}\n"
+            f"Motivo / Justificativa: {reason}"
+        )
+        interaction = TicketInteraction(
+            ticket_id=ticket.id,
+            user_id=current_user.id,
+            message=audit_msg,
+            interaction_type="transfer",
+            is_solution=False,
+        )
+        db.add(interaction)
+        updated_tickets.append(ticket)
+
+    db.commit()
+
+    # Notificações ao técnico de destino
+    base_url = get_app_base_url()
+    try:
+        from app.services.email_service import send_ticket_assigned_notification
+        if target_tech.email and updated_tickets:
+            for t in updated_tickets:
+                req_u = db.query(User).filter(User.id == t.requester_id).first()
+                req_name = req_u.display_name if req_u else "Solicitante"
+                background_tasks.add_task(
+                    send_ticket_assigned_notification,
+                    ticket=t,
+                    requester_name=req_name,
+                    requester_email=target_tech.email,
+                    technician_name=target_tech.display_name,
+                )
+
+        if updated_tickets:
+            ticket_refs = ", ".join([f"#{t.id}" for t in updated_tickets[:8]])
+            if len(updated_tickets) > 8:
+                ticket_refs += f" e mais {len(updated_tickets) - 8} chamados"
+
+            wa_batch_transfer = (
+                f"🔄 *[TIHFSA] Chamados Transferidos em Lote para Você! ({len(updated_tickets)})*\n\n"
+                f"Olá, *{target_tech.display_name}*!\n"
+                f"O técnico *{current_user.display_name}* transferiu {len(updated_tickets)} chamado(s) para sua responsabilidade.\n"
+                f"*Chamados:* {ticket_refs}\n"
+                f"*Motivo:* {reason}\n\n"
+                f"🔗 *Acessar portal:* {base_url}/admin/tickets"
+            )
+            if target_tech.phone:
+                background_tasks.add_task(
+                    EvolutionService.send_whatsapp_message,
+                    wa_batch_transfer,
+                    recipient=target_tech.phone,
+                    recipient_name=target_tech.display_name,
+                )
+            if data.notify_whatsapp:
+                background_tasks.add_task(
+                    EvolutionService.send_whatsapp_message,
+                    wa_batch_transfer,
+                )
+    except Exception as e:
+        print(f"[WARN] Falha nas notificações de batch_transfer: {e}")
+
+    return {
+        "success": True,
+        "updated_count": len(updated_tickets),
+        "updated_ids": [t.id for t in updated_tickets],
+        "target_technician_name": target_tech.display_name,
+        "message": f"{len(updated_tickets)} chamado(s) transferido(s) com sucesso para {target_tech.display_name}!",
     }
 
 

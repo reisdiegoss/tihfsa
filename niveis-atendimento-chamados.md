@@ -180,3 +180,13 @@ graph TD
   - Técnicos podem transferir para outro colega do mesmo nível com justificativa registrada.
   - No dropdown de seleção de técnicos (Transferência e Escalação), o nível de cada especialista é exibido explicitamente (`Nome • Nível N1/N2/N3 (Cargo)`).
 
+---
+
+## 4. Ações em Massa na Fila de Chamados (Assumir & Transferir em Lote)
+
+Na tela principal de chamados (`/admin/tickets`), a barra flutuante de ações em massa foi expandida para suportar operações de custódia técnica:
+- **⚡ Assumir ({N})**: Com 1 clique de confirmação, o técnico autenticado assume a custódia imediata de todos os chamados marcados. Se o status for `Novo`, avança para `Em Andamento`, registra o SLA de primeira resposta (`first_response_at`) e gera interação de custódia na timeline de cada chamado (`interaction_type="take"`).
+- **🔄 Transferir ({N})**: Abre modal de transferência em massa permitindo selecionar o técnico de destino (com exibição do nível de atendimento de cada especialista) e preencher a justificativa técnica obrigatória. Cada chamado recebe o registro de transferência auditado (`interaction_type="transfer"`) e o novo técnico é notificado via WhatsApp e e-mail corporativo.
+- **📋 Status ({N})**: Modal existente para transição de status em massa com motivo obrigatório para encerramento.
+
+

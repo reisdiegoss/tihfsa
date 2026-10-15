@@ -65,6 +65,19 @@ class TicketBatchStatusUpdate(BaseModel):
     notify_whatsapp: bool = False
 
 
+class TicketBatchTake(BaseModel):
+    """Payload para assumir múltiplos chamados em lote."""
+    ticket_ids: list[int]
+
+
+class TicketBatchTransfer(BaseModel):
+    """Payload para transferir múltiplos chamados em lote para outro especialista."""
+    ticket_ids: list[int]
+    target_technician_id: int
+    reason: str
+    notify_whatsapp: bool = False
+
+
 class InteractionCreate(BaseModel):
     message: str
     is_solution: bool = False
