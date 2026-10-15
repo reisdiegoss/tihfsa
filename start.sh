@@ -652,15 +652,26 @@ server {
         autoindex on;
     }
 
-    # Manifesto PWA Dinâmico e Ícones Apple Touch iOS / Android (Sempre atualizados)
-    location ~* ^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png|favicon\.ico)$ {
+    # Manifesto PWA Dinâmico
+    location ~* ^/(manifest\.webmanifest|manifest\.json)$ {
         proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Ícones Apple Touch iOS e Favicon (Permite armazenamento em cache de disco pelo WebKit/Safari)
+    location ~* ^/(apple-touch-icon.*\.png|favicon\.ico)$ {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "public, max-age=604800";
     }
 
     # Ícones canônicos do PWA atendidos dinamicamente pelo backend
@@ -756,15 +767,26 @@ server {
         autoindex on;
     }
 
-    # Manifesto PWA Dinâmico e Ícones Apple Touch iOS / Android (Sempre atualizados)
-    location ~* ^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png|favicon\.ico)$ {
+    # Manifesto PWA Dinâmico
+    location ~* ^/(manifest\.webmanifest|manifest\.json)$ {
         proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Ícones Apple Touch iOS e Favicon (Permite armazenamento em cache de disco pelo WebKit/Safari)
+    location ~* ^/(apple-touch-icon.*\.png|favicon\.ico)$ {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "public, max-age=604800";
     }
 
     # Ícones canônicos do PWA atendidos dinamicamente pelo backend

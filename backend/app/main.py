@@ -568,9 +568,8 @@ def get_root_manifest():
             content=data,
             media_type="application/manifest+json",
             headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0",
+                "Cache-Control": "no-cache, must-revalidate",
+                "Access-Control-Allow-Origin": "*",
             }
         )
     finally:
