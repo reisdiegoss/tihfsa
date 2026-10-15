@@ -4,7 +4,7 @@ Model TicketInteraction — interações/comentários dentro de um chamado.
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, Integer, Text, Boolean, DateTime, ForeignKey
+    Column, Integer, String, Text, Boolean, DateTime, ForeignKey
 )
 from sqlalchemy.orm import relationship
 
