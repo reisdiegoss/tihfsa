@@ -327,6 +327,127 @@ function Get-LoggedUser {
     return $env:USERNAME
 }
 
+function Get-BackupExecTelemetry {
+    # 1. Verifica se os serviços do Veritas Backup Exec 23.0 existem na máquina
+    $beServiceNames = @('BackupExecJobEngine', 'BackupExecServer', 'BackupExecDeviceMediaService', 'BackupExecManagementService')
+    $beInstalled = $false
+    $beServicesRunning = $true
+    $servicesStatus = @{}
+
+    foreach ($sName in $beServiceNames) {
+        $svc = Get-Service -Name $sName -ErrorAction SilentlyContinue
+        if ($svc) {
+            $beInstalled = $true
+            $servicesStatus[$sName] = $svc.Status.ToString()
+            if ($svc.Status -ne "Running") {
+                $beServicesRunning = $false
+            }
+        }
+    }
+
+    # Se não houver serviços do Backup Exec, encerra retornando $null de forma ultra-leve
+    if (-not $beInstalled) {
+        return $null
+    }
+
+    $telemetry = @{
+        installed                = $true
+        server_version           = "23.0 Rev. 1250"
+        services_running         = $beServicesRunning
+        services_status          = $servicesStatus
+        last_job_name            = ""
+        last_job_status          = "Unknown"  # "Success" | "Error" | "Warning" | "Unknown"
+        last_job_completion_time = ""
+        last_job_elapsed_time    = ""
+        last_job_byte_count_gb   = 0.0
+        last_event_id            = 0
+        last_event_message       = ""
+    }
+
+    # 2. Tenta coletar via BEMCLI (Módulo Oficial Veritas Backup Exec PowerShell)
+    try {
+        if (-not (Get-Module -Name BEMCLI)) {
+            Import-Module BEMCLI -ErrorAction SilentlyContinue | Out-Null
+        }
+        if (Get-Command Get-BEJobHistory -ErrorAction SilentlyContinue) {
+            $lastJob = Get-BEJobHistory -Limit 1 -ErrorAction SilentlyContinue
+            if ($lastJob) {
+                $telemetry.last_job_name = if ($lastJob.JobName) { $lastJob.JobName } else { "Backup Exec Job" }
+                $telemetry.last_job_completion_time = if ($lastJob.EndTime) { $lastJob.EndTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }
+                $telemetry.last_job_elapsed_time = if ($lastJob.ElapsedTime) { $lastJob.ElapsedTime.ToString() } else { "" }
+                if ($lastJob.TotalDataSizeBytes) {
+                    $telemetry.last_job_byte_count_gb = [math]::Round($lastJob.TotalDataSizeBytes / 1GB, 2)
+                }
+
+                $jobStatusRaw = if ($lastJob.JobStatus) { $lastJob.JobStatus.ToString() } else { "" }
+                if ($jobStatusRaw -match "Succeeded|Success|Successful") {
+                    $telemetry.last_job_status = "Success"
+                } elseif ($jobStatusRaw -match "Error|Failed|Canceled|CompletedWithExceptions|Fatal") {
+                    $telemetry.last_job_status = "Error"
+                } elseif ($jobStatusRaw -match "Warning|Attention") {
+                    $telemetry.last_job_status = "Warning"
+                }
+            }
+        }
+    } catch {}
+
+    # 3. Complemento / Fallback Seguro via Windows Application Event Log (Fontes: Backup Exec / Backup Exec CatError)
+    # Event IDs canônicos do Veritas Backup Exec:
+    # 34113 = Trabalho de backup concluído com êxito (Sucesso)
+    # 34114 = Trabalho de backup concluído com erros / falha
+    # 57755 = Alerta de mídia / fita requerida
+    # 57756 = Erro de comunicação com dispositivo
+    try {
+        $events = Get-WinEvent -FilterHashtable @{
+            LogName      = 'Application'
+            ProviderName = '*Backup Exec*'
+            Id           = 34113, 34114, 57755, 57756
+        } -MaxEvents 5 -ErrorAction SilentlyContinue
+
+        if (-not $events) {
+            # Fallback para Get-EventLog em sistemas legados
+            $events = Get-EventLog -LogName Application -Source "*Backup Exec*" -Newest 5 -ErrorAction SilentlyContinue | Where-Object {
+                $_.EventID -in @(34113, 34114, 57755, 57756)
+            }
+        }
+
+        if ($events -and $events.Count -gt 0) {
+            $latestEvent = $events[0]
+            $eventId = if ($latestEvent.Id) { [int]$latestEvent.Id } else { [int]$latestEvent.EventID }
+            $eventMsg = if ($latestEvent.Message) { $latestEvent.Message.Trim() } else { "" }
+            $eventTime = if ($latestEvent.TimeCreated) { $latestEvent.TimeCreated } else { $latestEvent.TimeGenerated }
+
+            $telemetry.last_event_id = $eventId
+            $telemetry.last_event_message = $eventMsg
+
+            if (-not $telemetry.last_job_completion_time -and $eventTime) {
+                $telemetry.last_job_completion_time = $eventTime.ToString("yyyy-MM-dd HH:mm:ss")
+            }
+
+            # Extrair nome do trabalho da mensagem do evento se não tiver sido extraído pelo BEMCLI
+            if (-not $telemetry.last_job_name -and $eventMsg -match "trabalho\s+['""]([^'""]+)['""]|job\s+['""]([^'""]+)['""]") {
+                $telemetry.last_job_name = $matches[1]
+            }
+            if (-not $telemetry.last_job_name) {
+                $telemetry.last_job_name = "Rotina Diária de Backup Veritas"
+            }
+
+            # Determinar status com base no Event ID se ainda estiver Unknown
+            if ($telemetry.last_job_status -eq "Unknown") {
+                if ($eventId -eq 34113) {
+                    $telemetry.last_job_status = "Success"
+                } elseif ($eventId -eq 34114 -or $eventId -eq 57756) {
+                    $telemetry.last_job_status = "Error"
+                } elseif ($eventId -eq 57755) {
+                    $telemetry.last_job_status = "Warning"
+                }
+            }
+        }
+    } catch {}
+
+    return $telemetry
+}
+
 function Get-SystemMetrics {
     # CPU
     $cpu = 0
@@ -613,6 +734,7 @@ function Get-SystemMetrics {
         office_product_key  = $officeKey
         office_status       = $officeStatus
         installed_apps      = [object[]]@($installedApps)
+        backup_exec         = Get-BackupExecTelemetry
     }
 }
 

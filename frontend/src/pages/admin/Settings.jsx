@@ -47,7 +47,9 @@ import {
   Hotel,
   ArrowUp,
   ArrowDown,
-  MessageSquare
+  MessageSquare,
+  Smartphone,
+  UploadCloud
 } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -226,7 +228,7 @@ export default function Settings() {
   const [savingZabbixConfig, setSavingZabbixConfig] = useState(false);
   const [newIgnoredPattern, setNewIgnoredPattern] = useState("");
 
-  // General System Settings & Email Branding States
+  // General System Settings, Email Branding & PWA App States
   const [generalSettings, setGeneralSettings] = useState({
     support_notification_email: "ti-hfsa@fasano.com.br",
     email_header_title: "TIHFSA — Hotel Fasano Salvador",
@@ -242,6 +244,11 @@ export default function Settings() {
     notify_ti_on_close: true,
     notify_ti_on_update: true,
     notify_technician_on_assign: true,
+    pwa_name: "TIHFSA — Hotel Fasano Salvador",
+    pwa_short_name: "TIHFSA",
+    pwa_theme_color: "#0f172a",
+    pwa_bg_color: "#0f172a",
+    pwa_icon_url: "/icons/icon-512.png",
   });
   const [loadingGeneralSettings, setLoadingGeneralSettings] = useState(false);
   const [savingGeneralSettings, setSavingGeneralSettings] = useState(false);
@@ -249,6 +256,30 @@ export default function Settings() {
   const [testEmailRecipient, setTestEmailRecipient] = useState("");
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [testEmailFeedback, setTestEmailFeedback] = useState(null);
+  const [uploadingPwaIcon, setUploadingPwaIcon] = useState(false);
+  const [pwaIconMsg, setPwaIconMsg] = useState(null);
+
+  const handlePwaIconUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPwaIcon(true);
+    setPwaIconMsg(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const { data } = await api.post("/settings/general/pwa-icon", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setGeneralSettings(prev => ({ ...prev, pwa_icon_url: data.icon_url }));
+      setPwaIconMsg({ type: "success", text: "Ícone do aplicativo atualizado com sucesso!" });
+      setTimeout(() => setPwaIconMsg(null), 4000);
+    } catch (err) {
+      console.error(err);
+      setPwaIconMsg({ type: "error", text: formatApiError(err, "Falha ao enviar ícone do app.") });
+    } finally {
+      setUploadingPwaIcon(false);
+    }
+  };
 
   const fetchGeneralSettings = async () => {
     setLoadingGeneralSettings(true);
@@ -2375,7 +2406,163 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* Card 4: Disparo de E-mail de Teste */}
+              {/* Card 4: Configurações do Aplicativo PWA (Instalação no Celular / Desktop) */}
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Smartphone className="text-blue-600" size={18} />
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900">
+                        Identidade do Aplicativo Mobile & Desktop (PWA)
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Personalize o nome, ícone e cores da barra de status exibidos ao instalar no Android, iOS ou Windows.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    Standalone WebAPK / iOS
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Nome Completo do App */}
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                      Nome Completo do Aplicativo <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={generalSettings.pwa_name || ""}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, pwa_name: e.target.value })}
+                      placeholder="Ex: TIHFSA — Hotel Fasano Salvador"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-colors"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Exibido no prompt de instalação do navegador e na tela de carregamento (Splash Screen).
+                    </p>
+                  </div>
+
+                  {/* Nome Curto */}
+                  <div>
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                      Nome Curto no Dispositivo (Home Screen) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={15}
+                      value={generalSettings.pwa_short_name || ""}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, pwa_short_name: e.target.value })}
+                      placeholder="Ex: TIHFSA"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 transition-colors"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Texto exibido logo abaixo do ícone na tela inicial do celular (máx. 12-15 caracteres).
+                    </p>
+                  </div>
+
+                  {/* Cor do Tema / Barra de Status */}
+                  <div>
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1">
+                      Cor da Barra de Status / Topo <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={generalSettings.pwa_theme_color || "#0f172a"}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, pwa_theme_color: e.target.value, pwa_bg_color: e.target.value })}
+                        className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer bg-white p-0.5"
+                      />
+                      <input
+                        type="text"
+                        value={generalSettings.pwa_theme_color || "#0f172a"}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, pwa_theme_color: e.target.value, pwa_bg_color: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:border-blue-500 uppercase"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <span className="text-[10px] text-slate-400 font-bold mr-1">Paleta:</span>
+                      {["#0f172a", "#1e3a8a", "#2563eb", "#0284c7", "#111827"].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setGeneralSettings({ ...generalSettings, pwa_theme_color: c, pwa_bg_color: c })}
+                          className="w-5 h-5 rounded-md border border-slate-300 shadow-2xs hover:scale-110 transition-transform cursor-pointer"
+                          style={{ backgroundColor: c }}
+                          title={`Selecionar ${c}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Upload e Troca de Ícone Oficial do App */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-16 h-16 rounded-2xl shadow-md border-2 border-white overflow-hidden bg-slate-900 flex items-center justify-center shrink-0">
+                      <img
+                        src={generalSettings.pwa_icon_url || "/icons/icon-512.png"}
+                        alt="Ícone do Aplicativo"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.src = "/icons/apple-touch-icon.png"; }}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs font-extrabold text-slate-800">Ícone Oficial do Aplicativo</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Compatível com WebAPK Android (192/512px) e Apple Touch Icon iOS (180px).
+                      </p>
+                      <span className="text-[10px] font-mono text-slate-400 mt-1 block truncate max-w-xs">
+                        {generalSettings.pwa_icon_url}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all shadow-2xs cursor-pointer w-full sm:w-auto justify-center">
+                      <UploadCloud size={15} className={uploadingPwaIcon ? "animate-bounce text-blue-600" : ""} />
+                      <span>{uploadingPwaIcon ? "Enviando..." : "Substituir Ícone"}</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handlePwaIconUpload}
+                        disabled={uploadingPwaIcon}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {pwaIconMsg && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                      pwaIconMsg.type === "success"
+                        ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                        : "bg-red-50 border border-red-200 text-red-800"
+                    }`}
+                  >
+                    {pwaIconMsg.type === "success" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                    <span>{pwaIconMsg.text}</span>
+                  </div>
+                )}
+
+                {/* Dica de Experiência Nativa */}
+                <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200/80 text-[11px] text-blue-900 leading-relaxed space-y-1">
+                  <p className="font-extrabold flex items-center gap-1.5">
+                    💡 Instalação Standalone sem Barra de Navegador:
+                  </p>
+                  <p className="text-blue-800">
+                    • <strong>No Android (Chrome):</strong> Abre sem guias ou barra de URL, funcionando como um APK nativo via WebAPK.
+                  </p>
+                  <p className="text-blue-800">
+                    • <strong>No iPhone / iPad (Safari):</strong> Toque no botão <em>Compartilhar</em> &rarr; <em>Adicionar à Tela de Início</em>. Abre em modo 100% tela cheia, ocultando os botões do Safari.
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 5: Disparo de E-mail de Teste */}
               <div className="bg-slate-50 rounded-3xl border border-slate-200 p-6 space-y-3">
                 <div className="flex items-center gap-2">
                   <Send className="text-blue-600" size={16} />
@@ -2421,75 +2608,117 @@ export default function Settings() {
               </div>
             </form>
 
-            {/* Coluna Direita: Live Preview do E-mail Corporativo */}
-            <div className="lg:col-span-5 sticky top-6 space-y-3">
-              <div className="flex items-center justify-between px-2">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Eye size={14} className="text-blue-500" />
-                  Live Preview • Microsoft Outlook
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Bulletproof MSO
-                </span>
-              </div>
+            {/* Coluna Direita: Live Previews (Outlook + Smartphone Home Screen) */}
+            <div className="lg:col-span-5 sticky top-6 space-y-6">
+              {/* Preview 1: Mockup Smartphone Tela Inicial */}
+              <div className="bg-slate-900 rounded-3xl p-5 border border-slate-800 shadow-xl text-white">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Smartphone size={14} className="text-blue-400" />
+                    Preview • Tela Inicial Mobile
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800">
+                    iOS & Android
+                  </span>
+                </div>
 
-              {/* Mockup de E-mail */}
-              <div className="bg-slate-100/80 p-4 rounded-3xl border border-slate-200 shadow-inner">
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-lg transition-all">
-                  {/* Banner Superior Personalizável */}
-                  <div className="bg-[#1e3a8a] p-5 text-left border-b border-blue-950">
-                    <div className="text-white font-bold text-base leading-tight break-words">
-                      {generalSettings.email_header_title || "TIHFSA — Hotel Fasano Salvador"}
+                <div className="mt-4 flex items-center justify-center py-4 bg-slate-950/60 rounded-2xl border border-slate-800/80">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-18 h-18 rounded-2xl shadow-2xl border-2 border-white/20 overflow-hidden relative group transition-transform hover:scale-105"
+                         style={{ backgroundColor: generalSettings.pwa_theme_color || "#0f172a" }}>
+                      <img
+                        src={generalSettings.pwa_icon_url || "/icons/icon-512.png"}
+                        alt="Preview Ícone"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.src = "/icons/apple-touch-icon.png"; }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/20 pointer-events-none" />
                     </div>
-                    <div className="text-blue-200 text-xs font-normal mt-1 leading-normal break-words">
-                      {generalSettings.email_header_subtitle || "Central de Serviços & Suporte de TI"}
-                    </div>
-                  </div>
-
-                  {/* Corpo do E-mail */}
-                  <div className="p-5 bg-white space-y-3.5">
-                    {/* Badge */}
-                    <div>
-                      <span className="inline-block px-3 py-1 rounded-full text-[10px] font-extrabold uppercase bg-sky-100 text-sky-800 tracking-wider">
-                        CHAMADO REGISTRADO #1042
-                      </span>
-                    </div>
-
-                    {/* Título do Corpo com destaque */}
-                    <div className="text-slate-900 font-extrabold text-sm leading-snug break-words border-b border-slate-100 pb-2">
-                      {generalSettings.email_body_title || "Notificação de Atendimento"}
-                    </div>
-
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Olá <strong>{user?.display_name || "Diego Reis"}</strong>,
-                    </p>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Seu chamado foi registrado com sucesso em nosso sistema de atendimento de TI.
-                    </p>
-
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1 text-slate-700">
-                      <div><strong>Protocolo:</strong> #1042</div>
-                      <div><strong>Título:</strong> Configuração de Impressora Fiscal</div>
-                      <div><strong>Garantia do Serviço:</strong> {generalSettings.ticket_warranty_days} dias para reabertura</div>
-                    </div>
-
-                    {/* Botão de Ação */}
-                    <div className="pt-2 text-center">
-                      <div className="inline-block px-5 py-2.5 rounded-lg bg-[#1e3a8a] text-white font-bold text-xs shadow-sm">
-                        Acompanhar Chamado no Portal
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Rodapé do E-mail */}
-                  <div className="bg-slate-50 border-t border-slate-100 px-5 py-3 text-center text-[10px] text-slate-400">
-                    {generalSettings.email_header_title || "TIHFSA — Hotel Fasano Salvador"} | Notificação do Sistema
+                    <span className="text-xs font-bold text-white tracking-wide text-center drop-shadow-md">
+                      {generalSettings.pwa_short_name || "TIHFSA"}
+                    </span>
                   </div>
                 </div>
 
-                <p className="text-[10px] text-slate-400 text-center mt-3 leading-normal">
-                  Este modelo renderiza em tabelas 100% nativas compatíveis com Outlook Desktop (Word engine), Outlook Web, iOS, Android e Dark Mode.
-                </p>
+                <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Barra de Status:</span>
+                  <span className="font-mono font-bold text-white flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full border border-white/30" style={{ backgroundColor: generalSettings.pwa_theme_color || "#0f172a" }} />
+                    {generalSettings.pwa_theme_color || "#0f172a"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Preview 2: Live Preview E-mail Outlook */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-2">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Eye size={14} className="text-blue-500" />
+                    Live Preview • Microsoft Outlook
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Bulletproof MSO
+                  </span>
+                </div>
+
+                {/* Mockup de E-mail */}
+                <div className="bg-slate-100/80 p-4 rounded-3xl border border-slate-200 shadow-inner">
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-lg transition-all">
+                    {/* Banner Superior Personalizável */}
+                    <div className="bg-[#1e3a8a] p-5 text-left border-b border-blue-950">
+                      <div className="text-white font-bold text-base leading-tight break-words">
+                        {generalSettings.email_header_title || "TIHFSA — Hotel Fasano Salvador"}
+                      </div>
+                      <div className="text-blue-200 text-xs font-normal mt-1 leading-normal break-words">
+                        {generalSettings.email_header_subtitle || "Central de Serviços & Suporte de TI"}
+                      </div>
+                    </div>
+
+                    {/* Corpo do E-mail */}
+                    <div className="p-5 bg-white space-y-3.5">
+                      {/* Badge */}
+                      <div>
+                        <span className="inline-block px-3 py-1 rounded-full text-[10px] font-extrabold uppercase bg-sky-100 text-sky-800 tracking-wider">
+                          CHAMADO REGISTRADO #1042
+                        </span>
+                      </div>
+
+                      {/* Título do Corpo com destaque */}
+                      <div className="text-slate-900 font-extrabold text-sm leading-snug break-words border-b border-slate-100 pb-2">
+                        {generalSettings.email_body_title || "Notificação de Atendimento"}
+                      </div>
+
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Olá <strong>{user?.display_name || "Diego Reis"}</strong>,
+                      </p>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Seu chamado foi registrado com sucesso em nosso sistema de atendimento de TI.
+                      </p>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1 text-slate-700">
+                        <div><strong>Protocolo:</strong> #1042</div>
+                        <div><strong>Título:</strong> Configuração de Impressora Fiscal</div>
+                        <div><strong>Garantia do Serviço:</strong> {generalSettings.ticket_warranty_days} dias para reabertura</div>
+                      </div>
+
+                      {/* Botão de Ação */}
+                      <div className="pt-2 text-center">
+                        <div className="inline-block px-5 py-2.5 rounded-lg bg-[#1e3a8a] text-white font-bold text-xs shadow-sm">
+                          Acompanhar Chamado no Portal
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Rodapé do E-mail */}
+                    <div className="bg-slate-50 border-t border-slate-100 px-5 py-3 text-center text-[10px] text-slate-400">
+                      {generalSettings.email_header_title || "TIHFSA — Hotel Fasano Salvador"} | Notificação do Sistema
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 text-center mt-3 leading-normal">
+                    Este modelo renderiza em tabelas 100% nativas compatíveis com Outlook Desktop (Word engine), Outlook Web, iOS, Android e Dark Mode.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

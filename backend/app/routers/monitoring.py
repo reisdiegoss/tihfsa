@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.asset import Asset
 from app.models.monitoring import AgentCheckin, AgentMetricsHistory, AgentLogonHistory
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.models.user import User
 from app.services.sla_service import get_helpdesk_monitoring_summary
 
@@ -56,6 +56,7 @@ class AgentCheckinPayload(BaseModel):
     office_status: Optional[str] = None
     anydesk_id: Optional[str] = None
     rustdesk_id: Optional[str] = None
+    backup_exec: Optional[dict] = None
 
 
 class AgentMachineResponse(BaseModel):
@@ -729,6 +730,116 @@ def agent_checkin(
         db.commit()
     except Exception:
         db.rollback()
+
+    # 7. Monitoramento de Backup — Veritas Backup Exec 23.0 Rev. 1250
+    # Regra 1: Se o backup for concluído com sucesso -> Abrir chamado com status "Aguardando Validação"
+    # Regra 2: Se o backup falhar ou der erro -> Abrir chamado com status "Novo" e prioridade "Crítica"
+    # Regra 3: Deduplicação inteligente -> Não abre chamado se já existir chamado recente para o mesmo trabalho e conclusão.
+    if getattr(data, "backup_exec", None) and isinstance(data.backup_exec, dict):
+        try:
+            b_info = data.backup_exec
+            b_status = str(b_info.get("last_job_status") or "").strip()
+            job_name = str(b_info.get("last_job_name") or "Rotina de Backup Diário").strip()
+            comp_time_str = str(b_info.get("last_job_completion_time") or "").strip()
+            byte_gb = b_info.get("last_job_byte_count_gb", 0.0)
+            elapsed = str(b_info.get("last_job_elapsed_time") or "N/A").strip()
+            event_id = b_info.get("last_event_id")
+            event_msg = str(b_info.get("last_event_message") or "").strip()
+
+            if b_status in ("Success", "Error", "Warning"):
+                # Data de referência para deduplicação (apenas YYYY-MM-DD para evitar múltiplos chamados no mesmo dia)
+                today_str = comp_time_str[:10] if len(comp_time_str) >= 10 else now.strftime("%Y-%m-%d")
+                dedup_marker = f"[Backup Exec] {job_name} ({hostname_clean}) - {today_str}"
+
+                # Verifica se já existe chamado aberto nas últimas 36 horas com essa chave
+                since_window = now - timedelta(hours=36)
+                existing_ticket = (
+                    db.query(Ticket)
+                    .filter(
+                        Ticket.created_at >= since_window,
+                        or_(
+                            Ticket.title.ilike(f"%{job_name}%"),
+                            Ticket.description.ilike(f"%{dedup_marker}%")
+                        ),
+                        Ticket.description.ilike(f"%{hostname_clean}%")
+                    )
+                    .first()
+                )
+
+                if not existing_ticket:
+                    # Identifica ou associa categoria Backup se existir no sistema
+                    cat_id = None
+                    try:
+                        from app.models.category import Category
+                        backup_cat = db.query(Category).filter(Category.name.ilike("%backup%")).first()
+                        if backup_cat:
+                            cat_id = backup_cat.id
+                    except Exception:
+                        pass
+
+                    # Identifica usuário do sistema solicitante
+                    admin_user = db.query(User).filter(User.role == "admin").first()
+                    requester_id = admin_user.id if admin_user else 1
+
+                    if b_status == "Success":
+                        ticket_title = f"[Backup Exec] Sucesso - {job_name} ({hostname_clean})"
+                        ticket_desc = (
+                            f"## 🛡️ Telemetria Veritas Backup Exec 23.0 (Rev. 1250)\n\n"
+                            f"**Servidor:** `{hostname_clean}` ({ip_clean})\n"
+                            f"**Trabalho:** `{job_name}`\n"
+                            f"**Status da Execução:** ✅ **Concluído com Êxito**\n"
+                            f"**Data/Hora de Conclusão:** {comp_time_str or now.strftime('%d/%m/%Y %H:%M:%S')}\n"
+                            f"**Duração:** {elapsed}\n"
+                            f"**Volume Transferido:** {byte_gb} GB\n\n"
+                            f"---\n"
+                            f"### 📋 Procedimento de Validação Técnica Requerido:\n"
+                            f"1. Conferir o relatório detalhado do Veritas Backup Exec no servidor `{hostname_clean}`.\n"
+                            f"2. Validar a integridade dos catálogos e mídias de armazenamento (fita LTO / disco pool).\n"
+                            f"3. Homologar a validação técnica e concluir este chamado no portal de chamados.\n\n"
+                            f"<!-- Chave de deduplicação: {dedup_marker} -->"
+                        )
+                        # REGRA EXPRESSA DO USUÁRIO: Chamado criado com status "Aguardando Validação"
+                        new_ticket = Ticket(
+                            title=ticket_title,
+                            description=ticket_desc,
+                            status=TicketStatus.PENDING_VALIDATION,  # "Aguardando Validação"
+                            priority=TicketPriority.LOW,
+                            category_id=cat_id,
+                            asset_id=asset.id if asset else None,
+                            requester_id=requester_id,
+                        )
+                    else:
+                        # Erro ou Falha
+                        ticket_title = f"🚨 [Backup Exec] Falha no Backup - {job_name} ({hostname_clean})"
+                        ticket_desc = (
+                            f"## 🚨 Alerta Crítico — Veritas Backup Exec 23.0 (Rev. 1250)\n\n"
+                            f"**Servidor:** `{hostname_clean}` ({ip_clean})\n"
+                            f"**Trabalho:** `{job_name}`\n"
+                            f"**Status da Execução:** ❌ **FALHA / ERRO NO BACKUP**\n"
+                            f"**Data/Hora:** {comp_time_str or now.strftime('%d/%m/%Y %H:%M:%S')}\n"
+                            f"**Evento Windows:** ID {event_id or '34114'}\n"
+                            f"**Mensagem do Log de Eventos:**\n```\n{event_msg or 'Consulte o log do Backup Exec no servidor.'}\n```\n\n"
+                            f"---\n"
+                            f"### ⚠️ Ação Imediata Necessária:\n"
+                            f"Acessar o console do Backup Exec no servidor `{hostname_clean}` imediatamente para identificar a causa da falha (mídia cheia, serviço parado, falha de VSS ou timeout de rede) e reiniciar a rotina.\n\n"
+                            f"<!-- Chave de deduplicação: {dedup_marker} -->"
+                        )
+                        new_ticket = Ticket(
+                            title=ticket_title,
+                            description=ticket_desc,
+                            status=TicketStatus.NEW,  # "Novo"
+                            priority=TicketPriority.CRITICAL,  # "Crítica"
+                            category_id=cat_id,
+                            asset_id=asset.id if asset else None,
+                            requester_id=requester_id,
+                        )
+
+                    db.add(new_ticket)
+                    db.commit()
+                    db.refresh(new_ticket)
+        except Exception as e:
+            db.rollback()
+            print(f"[Monitoring] Erro ao processar telemetria do Backup Exec: {e}")
 
     return {
         "status": "ok",

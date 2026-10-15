@@ -1453,3 +1453,44 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Clamp visual no HUD: `Desafio {Math.min(currentChallengeIndex + 1, challenges.length)}/{challenges.length}`.
     - **Novo Desafio: Centralização Estável ("Centralize o rosto" 🎯)**:
       - Adicionado como desafio ativo e 100% acessível: exige apenas manter o rosto dentro do círculo por 1 segundo (~4 frames estáveis). A barra avança em tempo real e valida sem exigir qualquer movimento ou desvio de olhar.
+
+47. **PWA Standalone (iOS & Android) e Personalização em Parâmetros Gerais**:
+    - **Experiência Nativa de Aplicativo (Eliminação de Barras de Navegador)**:
+      - *Diagnóstico Android (Chrome)*: O Android WebAPK rejeitava a instalação como app nativo porque o manifesto PWA continha apenas ícones em formato SVG. O Google Chrome exige obrigatoriamente ícones em PNG com dimensões mínimas de 192x192 e 512x512 e declaração de propósito `any maskable`. Sem isso, o Chrome gerava apenas um atalho simples com URL visível e guias do navegador.
+      - *Diagnóstico iOS (Safari)*: O Safari da Apple não suporta SVG para a tag `apple-touch-icon`. A ausência de ícones PNG e da tag `apple-mobile-web-app-status-bar-style` fazia o Safari abrir a página como aba normal com barra de endereço e controles inferiores visíveis.
+      - *Geração dos Ícones Oficiais*: Criados os assets de alta definição em `frontend/public/icons/`:
+        - `icon-192.png` (192x192 px, padrão WebAPK Android)
+        - `icon-512.png` (512x512 px, padrão alta densidade)
+        - `icon-maskable-512.png` (512x512 px, safe-area adaptável)
+        - `apple-touch-icon.png` (180x180 px, padrão Apple Retina Display)
+      - *Manifesto e Meta Tags Atualizados*: Inseridos `display: "standalone"`, `display_override: ["standalone", "window-controls-overlay"]`, `apple-mobile-web-app-capable: "yes"` e `apple-mobile-web-app-status-bar-style: "default"`.
+    - **Configuração Integrada na Aba "Parâmetros Gerais"**:
+      - Conforme solicitado, **nenhuma aba adicional foi criada**. A gestão visual do PWA foi incorporada diretamente dentro de *Configurações &rarr; Parâmetros Gerais*:
+        - Nome Completo da Aplicação (`pwa_name`).
+        - Nome Curto no Dispositivo (`pwa_short_name`, exibido na tela inicial do celular).
+        - Cor do Tema da Barra de Status / Topo (`pwa_theme_color` e `pwa_bg_color`).
+        - Upload e substituição do Ícone Oficial do App (`/api/v1/settings/general/pwa-icon`).
+      - *Live Preview do Smartphone*: Coluna lateral com simulação em tempo real da tela inicial de um smartphone (iOS e Android), refletindo o ícone, o nome curto e a cor da barra de status instantaneamente.
+      - *Endpoint de Manifesto Dinâmico*: `/api/v1/settings/general/pwa-manifest` serve o manifesto JSON atualizado com as preferências salvas no banco de dados.
+
+48. **Responsividade Universal dos Módulos (Cards Mobile & Grids Flexíveis)**:
+    - **TicketList.jsx (Gestão de Chamados)**:
+      - *Problema*: Tabela de 8 colunas forçava rolagem horizontal complexa e quebrava em smartphones e tablets.
+      - *Solução*: Implementada a visualização híbrida:
+        - Em telas `< 1024px` (`block lg:hidden`), os chamados são exibidos em formato de **Cards Mobile** elegantes e compactos, com badges de status, prioridade animada, solicitante, data/hora e toque expandido.
+        - Em telas `>= 1024px` (`hidden lg:table`), a visualização em tabela desktop com colunas ordenáveis e checkboxes em lote permanece ativa.
+    - **Contracts.jsx (Contratos e Faturas)**:
+      - Adicionada a visão responsiva em cards para Contratos e Faturas para dispositivos móveis (`< lg`), mantendo todas as ações (Download do PDF, Detalhes, Dar Baixa na Fatura, Copiar PIX) com alvos de toque ergonômicos ($\ge 44\text{px}$).
+    - **Assets.jsx (Inventário de Ativos & CMDB)**:
+      - O cabeçalho de ações ("Atualizar Status", "Zabbix", "UniFi", "Novo Ativo") foi refatorado para grade flexível em mobile (`grid grid-cols-2 sm:flex`), eliminando quebras desordenadas e sobreposição em telas verticais.
+
+49. **Monitoramento do Veritas Backup Exec Server 23.0 Rev. 1250 & Abertura de Chamados**:
+    - **Coleta de Telemetria Nativa no Agente PowerShell (`tihfsa-agent.ps1`)**:
+      - Função `Get-BackupExecTelemetry` inspeciona os serviços do Veritas (`BackupExecJobEngine`, `BackupExecServer`, `BackupExecDeviceMediaService`, `BackupExecManagementService`).
+      - Coleta via BEMCLI (`Get-BEJobHistory -Limit 1`) e fallback via Windows Event Log (IDs 34113 = Sucesso, 34114 = Erro/Falha, 57755 = Warning de Mídia).
+      - Extrai: nome do trabalho, status normalizado (`Success`, `Error`, `Warning`), timestamp de conclusão, duração em segundos/minutos, volume em GB transferido e mensagem do evento.
+    - **Regras de Negócio e Abertura Automática de Chamados**:
+      - **Backup Concluído com Sucesso**: Abre chamado automaticamente no Helpdesk com status **"Aguardando Validação"** (`TicketStatus.PENDING_VALIDATION`) e prioridade Baixa/Média. Permite que o analista de TI valide fisicamente os catálogos/fitas antes de encerrar o chamado diário.
+      - **Backup com Falha ou Erro**: Abre chamado com status **"Novo"** (`TicketStatus.NEW`) e prioridade **"Crítica"** (`TicketPriority.CRITICAL`), destacando o Event ID e a mensagem de erro do Backup Exec para intervenção emergencial.
+      - **Deduplicação Inteligente (36 Horas)**: Utiliza hash combinada do servidor, nome do trabalho e data de conclusão (`[Backup Exec] {job_name} ({hostname}) - {YYYY-MM-DD}`), garantindo que apenas um chamado seja aberto por execução do job, independentemente do intervalo do agente (a cada 1 ou 15 minutos).
+

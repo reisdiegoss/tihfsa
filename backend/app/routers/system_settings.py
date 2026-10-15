@@ -29,6 +29,13 @@ class SystemSettingsSchema(BaseModel):
     notify_ti_on_close: bool = True
     notify_ti_on_update: bool = True
     notify_technician_on_assign: bool = True
+    
+    # Configurações do PWA (Instalação no Celular / Desktop)
+    pwa_name: str = "TIHFSA — Hotel Fasano Salvador"
+    pwa_short_name: str = "TIHFSA"
+    pwa_theme_color: str = "#0f172a"
+    pwa_bg_color: str = "#0f172a"
+    pwa_icon_url: str = "/icons/icon-512.png"
 
 
 @router.get("", response_model=SystemSettingsSchema, summary="Obter parâmetros gerais do sistema")
@@ -58,6 +65,11 @@ def get_general_settings(
         notify_ti_on_close=setting.notify_ti_on_close if getattr(setting, 'notify_ti_on_close', None) is not None else True,
         notify_ti_on_update=setting.notify_ti_on_update if getattr(setting, 'notify_ti_on_update', None) is not None else True,
         notify_technician_on_assign=setting.notify_technician_on_assign if setting.notify_technician_on_assign is not None else True,
+        pwa_name=getattr(setting, 'pwa_name', None) or "TIHFSA — Hotel Fasano Salvador",
+        pwa_short_name=getattr(setting, 'pwa_short_name', None) or "TIHFSA",
+        pwa_theme_color=getattr(setting, 'pwa_theme_color', None) or "#0f172a",
+        pwa_bg_color=getattr(setting, 'pwa_bg_color', None) or "#0f172a",
+        pwa_icon_url=getattr(setting, 'pwa_icon_url', None) or "/icons/icon-512.png",
     )
 
 
@@ -97,6 +109,14 @@ def update_general_settings(
     setting.notify_ti_on_close = payload.notify_ti_on_close
     setting.notify_ti_on_update = payload.notify_ti_on_update
     setting.notify_technician_on_assign = payload.notify_technician_on_assign
+    
+    # Salvar configurações PWA
+    setting.pwa_name = (payload.pwa_name or "").strip() or "TIHFSA — Hotel Fasano Salvador"
+    setting.pwa_short_name = (payload.pwa_short_name or "").strip() or "TIHFSA"
+    setting.pwa_theme_color = (payload.pwa_theme_color or "").strip() or "#0f172a"
+    setting.pwa_bg_color = (payload.pwa_bg_color or "").strip() or "#0f172a"
+    if payload.pwa_icon_url:
+        setting.pwa_icon_url = payload.pwa_icon_url.strip()
 
     db.commit()
     db.refresh(setting)
@@ -116,6 +136,11 @@ def update_general_settings(
         notify_ti_on_close=setting.notify_ti_on_close,
         notify_ti_on_update=setting.notify_ti_on_update,
         notify_technician_on_assign=setting.notify_technician_on_assign,
+        pwa_name=setting.pwa_name or "TIHFSA — Hotel Fasano Salvador",
+        pwa_short_name=setting.pwa_short_name or "TIHFSA",
+        pwa_theme_color=setting.pwa_theme_color or "#0f172a",
+        pwa_bg_color=setting.pwa_bg_color or "#0f172a",
+        pwa_icon_url=setting.pwa_icon_url or "/icons/icon-512.png",
     )
 
 
@@ -191,4 +216,96 @@ def send_test_email_endpoint(
         raise HTTPException(status_code=500, detail="Falha ao despachar e-mail via SMTP. Verifique as credenciais no .env.")
 
     return {"success": True, "message": f"E-mail de teste enviado com sucesso para {target_email}!"}
+
+
+@router.get("/pwa-manifest", summary="Obter Manifesto PWA dinâmico com base nos parâmetros configurados")
+def get_pwa_manifest(db: Session = Depends(get_db)):
+    """
+    Retorna o Web App Manifest gerado dinamicamente com o nome, cores e ícones
+    salvos pelo administrador do sistema em Parâmetros Gerais.
+    """
+    setting = db.query(SystemSetting).first()
+    name = (setting.pwa_name if setting and setting.pwa_name else "TIHFSA — Hotel Fasano Salvador")
+    short_name = (setting.pwa_short_name if setting and setting.pwa_short_name else "TIHFSA")
+    theme_color = (setting.pwa_theme_color if setting and setting.pwa_theme_color else "#0f172a")
+    bg_color = (setting.pwa_bg_color if setting and setting.pwa_bg_color else "#0f172a")
+    icon_url = (setting.pwa_icon_url if setting and setting.pwa_icon_url else "/icons/icon-512.png")
+
+    return {
+        "name": name,
+        "short_name": short_name,
+        "description": "Sistema Integrado de Gestão de TI, Helpdesk, NOC e Termos Digitais do Hotel Fasano Salvador",
+        "id": "/?source=pwa",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "display_override": ["standalone", "window-controls-overlay"],
+        "background_color": bg_color,
+        "theme_color": theme_color,
+        "orientation": "portrait-primary",
+        "icons": [
+            {
+                "src": "/icons/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any maskable"
+            },
+            {
+                "src": icon_url,
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any"
+            },
+            {
+                "src": "/icons/icon-maskable-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable"
+            },
+            {
+                "src": "/icons/apple-touch-icon.png",
+                "sizes": "180x180",
+                "type": "image/png",
+                "purpose": "any"
+            }
+        ]
+    }
+
+
+from fastapi import UploadFile, File
+import os
+import shutil
+
+@router.post("/pwa-icon", summary="Fazer upload de novo ícone para o aplicativo PWA")
+def upload_pwa_icon(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if not file.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".svg")):
+        raise HTTPException(status_code=400, detail="Formato de imagem inválido. Use PNG, JPG ou WebP.")
+
+    # Salva na pasta pública de ícones do frontend
+    upload_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "public", "icons"))
+    os.makedirs(upload_dir, exist_ok=True)
+
+    dest_filename = f"custom-icon-{file.filename}"
+    dest_path = os.path.join(upload_dir, dest_filename)
+
+    with open(dest_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    icon_url = f"/icons/{dest_filename}"
+
+    setting = db.query(SystemSetting).first()
+    if not setting:
+        setting = SystemSetting()
+        db.add(setting)
+
+    setting.pwa_icon_url = icon_url
+    db.commit()
+    db.refresh(setting)
+
+    return {"success": True, "icon_url": icon_url, "message": "Ícone do aplicativo atualizado com sucesso!"}
+
 

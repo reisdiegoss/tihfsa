@@ -307,6 +307,11 @@ async def lifespan(app: FastAPI):
                     notify_technician_on_assign BOOLEAN DEFAULT TRUE NOT NULL
                 );
                 ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS email_body_title VARCHAR(255) DEFAULT 'Notificação de Atendimento' NOT NULL;
+                ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS pwa_name VARCHAR(255) DEFAULT 'TIHFSA — Hotel Fasano Salvador';
+                ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS pwa_short_name VARCHAR(50) DEFAULT 'TIHFSA';
+                ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS pwa_theme_color VARCHAR(30) DEFAULT '#0f172a';
+                ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS pwa_bg_color VARCHAR(30) DEFAULT '#0f172a';
+                ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS pwa_icon_url VARCHAR(500) DEFAULT '/icons/icon-512.png';
                 CREATE TABLE IF NOT EXISTS ticket_satisfaction_surveys (
                     id SERIAL PRIMARY KEY,
                     ticket_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE UNIQUE NOT NULL,

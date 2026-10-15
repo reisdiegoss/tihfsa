@@ -1009,8 +1009,112 @@ export default function TicketList() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <>
+            {/* Visualização de Chamados em Cards para Telas Mobile & Tablet (< 1024px) */}
+            <div className="block lg:hidden divide-y divide-slate-100">
+              {paginatedTickets.map((t) => {
+                const dt = formatDateTime(t.created_at);
+                const isZabbix = t.title?.includes("[NOC Zabbix]");
+                const isUniFi = t.title?.includes("[NOC UniFi]");
+                const isAtivoAuto = t.title?.includes("NOC Auto-Alerta");
+                const isSelected = selectedTicketIds.includes(t.id);
+
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => setActiveTicketId(t.id)}
+                    className={`p-4 transition-colors cursor-pointer space-y-3 ${
+                      isSelected ? "bg-blue-50/70" : "hover:bg-slate-50/80 active:bg-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        {isStaff && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelectTicket(t.id);
+                            }}
+                            className="pr-1 text-slate-400 hover:text-blue-600"
+                          >
+                            {isSelected ? <CheckSquare size={18} className="text-blue-600" /> : <Square size={18} />}
+                          </div>
+                        )}
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                          isUniFi ? "bg-cyan-50 text-cyan-600 border border-cyan-100" :
+                          isZabbix ? "bg-amber-50 text-amber-600 border border-amber-100" :
+                          isAtivoAuto ? "bg-purple-50 text-purple-600 border border-purple-100" :
+                          "bg-blue-50 text-blue-600 border border-blue-100"
+                        }`}>
+                          {isUniFi ? <Wifi size={14} /> : isZabbix ? <Activity size={14} /> : <FileText size={14} />}
+                        </div>
+                        <div>
+                          <span className="font-mono text-xs font-black text-slate-400">#{t.id}</span>
+                          <span className="text-[11px] font-bold text-slate-500 ml-2">
+                            {t.category_name || "Geral"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold inline-flex items-center gap-1 ${
+                          t.priority === "Crítica" ? "bg-red-100 text-red-700" :
+                          t.priority === "Alta" ? "bg-amber-100 text-amber-800" :
+                          t.priority === "Média" ? "bg-blue-100 text-blue-700" :
+                          "bg-slate-100 text-slate-700"
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            t.priority === "Crítica" ? "bg-red-500 animate-pulse" :
+                            t.priority === "Alta" ? "bg-amber-500" :
+                            t.priority === "Média" ? "bg-blue-500" :
+                            "bg-slate-400"
+                          }`} />
+                          {t.priority}
+                        </span>
+
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                          t.status === "Em Andamento" ? "bg-amber-100 text-amber-800" :
+                          t.status === "Fechado" ? "bg-emerald-100 text-emerald-700" :
+                          t.status === "Aguardando Validação" ? "bg-purple-100 text-purple-700" :
+                          "bg-blue-100 text-blue-700"
+                        }`}>
+                          {t.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm leading-snug line-clamp-2">
+                        {t.title}
+                      </h4>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100/80 flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 truncate max-w-[200px]">
+                        <User size={13} className="text-slate-400 shrink-0" />
+                        <span className="font-semibold truncate">{t.requester_name || "Sistema"}</span>
+                      </div>
+
+                      <div className="flex items-center gap-3 ml-auto text-[11px] font-medium text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <Calendar size={12} className="text-slate-400" />
+                          {dt.date}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock size={12} className="text-blue-500" />
+                          {dt.time}
+                        </span>
+                        <ChevronRight size={14} className="text-slate-400" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Visualização de Tabela para Desktop (>= 1024px) */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50">
                   {/* Master Checkbox (apenas equipe staff) */}
@@ -1214,7 +1318,8 @@ export default function TicketList() {
               </tbody>
             </table>
           </div>
-        )}
+        </>
+      )}
 
         {/* Pagination Controls */}
         {totalPages > 1 && pageSize !== "all" && (

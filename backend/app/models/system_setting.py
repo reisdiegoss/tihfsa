@@ -41,3 +41,10 @@ class SystemSetting(Base):
     # Notificação por E-mail ao Técnico Responsável
     notify_technician_on_assign = Column(Boolean, default=True, nullable=False)
 
+    # Parâmetros de Instalação e Identidade Visual PWA (Mobile & Desktop)
+    pwa_name = Column(String(255), default="TIHFSA — Hotel Fasano Salvador", nullable=True)
+    pwa_short_name = Column(String(50), default="TIHFSA", nullable=True)
+    pwa_theme_color = Column(String(30), default="#0f172a", nullable=True)
+    pwa_bg_color = Column(String(30), default="#0f172a", nullable=True)
+    pwa_icon_url = Column(String(500), default="/icons/icon-512.png", nullable=True)
+

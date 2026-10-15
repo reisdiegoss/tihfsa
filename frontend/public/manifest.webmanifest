@@ -1,18 +1,39 @@
 {
-  "name": "TIHFSA - Hotel Fasano Salvador",
-  "short_name": "TIHFSA Termos",
-  "description": "Sistema de Gestão de TI, Helpdesk e Termos Digitais de Entrega de Equipamentos do Hotel Fasano Salvador",
-  "start_url": "/admin/terms",
+  "name": "TIHFSA — Hotel Fasano Salvador",
+  "short_name": "TIHFSA",
+  "description": "Sistema Integrado de Gestão de TI, Helpdesk, NOC e Termos Digitais do Hotel Fasano Salvador",
+  "id": "/?source=pwa",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay"],
   "background_color": "#0f172a",
-  "theme_color": "#2563eb",
-  "orientation": "any",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

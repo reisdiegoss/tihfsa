@@ -665,8 +665,101 @@ export default function Contracts() {
                 <p className="text-xs">Cadastre seu primeiro contrato para controlar vigência e faturas.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
+              <>
+                {/* Visualização em Cards para Telas Móveis e Tablets (< 1024px) */}
+                <div className="block lg:hidden divide-y divide-slate-100">
+                  {filteredContracts.map((c) => {
+                    const isExpiring = c.is_expiring_soon;
+                    const isExpired = c.is_expired;
+
+                    return (
+                      <div key={c.id} className="p-4 space-y-3 hover:bg-slate-50/60 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className="font-bold text-slate-900 text-sm">{c.title}</h4>
+                            <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                              {c.supplier_trade_name || c.supplier_name}
+                            </p>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              #{c.contract_number || `CTR-${c.id}`} • {c.services?.length || 0} serviço(s)
+                            </span>
+                          </div>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            c.status === "ACTIVE" ? "bg-emerald-100 text-emerald-800" :
+                            c.status === "EXPIRING_SOON" ? "bg-amber-100 text-amber-800" :
+                            c.status === "EXPIRED" ? "bg-red-100 text-red-800" :
+                            "bg-slate-100 text-slate-700"
+                          }`}>
+                            {c.status === "ACTIVE" ? "Vigente" : c.status === "EXPIRING_SOON" ? "A Vencer" : c.status === "EXPIRED" ? "Vencido" : c.status}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Vigência</span>
+                            <span className="font-semibold text-slate-700">{formatDate(c.end_date)}</span>
+                            <div className="mt-0.5">
+                              {isExpired ? (
+                                <span className="text-[10px] font-extrabold text-red-600 bg-red-50 px-1.5 py-0.2 rounded-full border border-red-200">
+                                  Vencido há {Math.abs(c.days_until_expiration)}d
+                                </span>
+                              ) : isExpiring ? (
+                                <span className="text-[10px] font-extrabold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-full border border-amber-200">
+                                  Vence em {c.days_until_expiration}d
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded-full border border-emerald-100">
+                                  Restam {c.days_until_expiration}d
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Custo Mensal</span>
+                            <span className="font-mono font-extrabold text-sm text-slate-900">
+                              {formatCurrency(c.monthly_cost)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100/60">
+                          {c.notification_emails ? (
+                            <span className="text-[11px] text-blue-700 truncate max-w-[180px] flex items-center gap-1 font-medium">
+                              <Mail size={11} className="shrink-0" /> {c.notification_emails}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">Padrão TI</span>
+                          )}
+
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            {c.attachment_path && (
+                              <a
+                                href={c.attachment_path}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Baixar Contrato PDF"
+                              >
+                                <Download size={14} />
+                              </a>
+                            )}
+                            <button
+                              onClick={() => { setSelectedContract(c); setIsDetailDrawerOpen(true); }}
+                              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                            >
+                              Detalhes <ChevronRight size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Tabela para Desktop (>= 1024px) */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <table className="w-full text-left">
                   <thead>
                     <tr className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                       <th className="pb-3 pl-2">Contrato / Objeto</th>
@@ -781,7 +874,8 @@ export default function Contracts() {
                   </tbody>
                 </table>
               </div>
-            )}
+            </>
+          )}
           </div>
         )}
 
@@ -911,7 +1005,86 @@ export default function Contracts() {
               </select>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Visualização de Faturas em Cards para Telas Mobile/Tablet (< 1024px) */}
+            <div className="block lg:hidden divide-y divide-slate-100">
+              {filteredInvoices.map((inv) => (
+                <div key={inv.id} className="p-4 space-y-3 hover:bg-slate-50/60 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm">{inv.contract_title}</h4>
+                      <p className="text-xs text-slate-500 font-semibold">{inv.supplier_name}</p>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Fatura: {inv.invoice_number || "Sem nº"} • Competência: {inv.competence || "—"}
+                      </span>
+                    </div>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                      inv.status === "PAID" ? "bg-emerald-100 text-emerald-800" :
+                      inv.is_overdue ? "bg-red-100 text-red-800 animate-pulse" :
+                      "bg-amber-100 text-amber-800"
+                    }`}>
+                      {inv.status === "PAID" ? "Pago" : inv.is_overdue ? "Vencida" : "A Vencer"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Vencimento</span>
+                      <span className={`font-mono font-bold ${
+                        inv.status === "PAID" ? "text-slate-500" :
+                        inv.is_overdue ? "text-red-600 font-extrabold" : "text-slate-800"
+                      }`}>
+                        {formatDate(inv.due_date)}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Valor</span>
+                      <span className="font-mono font-black text-sm text-slate-900">
+                        {formatCurrency(inv.amount)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100/60 flex-wrap">
+                    {inv.payment_code && (
+                      <button
+                        onClick={() => copyToClipboard(inv.payment_code, "Linha Digitável / PIX copiado!")}
+                        className="flex items-center gap-1 text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded-lg hover:bg-slate-200 cursor-pointer"
+                        title={inv.payment_code}
+                      >
+                        <Copy size={11} /> Copiar PIX/Linha
+                      </button>
+                    )}
+
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      {inv.file_attachment && (
+                        <a
+                          href={inv.file_attachment}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Baixar Boleto / NF"
+                        >
+                          <Download size={14} />
+                        </a>
+                      )}
+                      {inv.status !== "PAID" && (
+                        <button
+                          onClick={() => handlePayInvoice(inv.id)}
+                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                        >
+                          <Check size={12} />
+                          Dar Baixa
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabela de Faturas para Desktop (>= 1024px) */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
                   <tr className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">

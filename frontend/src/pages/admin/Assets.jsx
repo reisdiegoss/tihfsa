@@ -1770,31 +1770,37 @@ export default function Assets() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:items-center gap-2.5">
           <button
             onClick={() => fetchAssets()}
-            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-3 rounded-2xl text-xs font-extrabold transition-all cursor-pointer"
+            className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 sm:py-3 rounded-2xl text-xs font-extrabold transition-all cursor-pointer"
             title="Atualizar status dos ativos"
           >
-            <RefreshCw size={16} className={loading ? "animate-spin text-blue-600" : ""} /> Atualizar Status
+            <RefreshCw size={15} className={loading ? "animate-spin text-blue-600" : ""} />
+            <span className="truncate">Atualizar</span>
           </button>
           <button
             onClick={() => setIsSyncModalOpen(true)}
-            className="flex items-center gap-2 bg-slate-900 text-white px-5 py-3 rounded-2xl text-xs font-extrabold shadow-md hover:bg-slate-800 transition-all cursor-pointer"
+            className="flex items-center justify-center gap-1.5 bg-slate-900 text-white px-3.5 py-2.5 sm:py-3 rounded-2xl text-xs font-extrabold shadow-md hover:bg-slate-800 transition-all cursor-pointer"
+            title="Sincronizar com Servidor Zabbix"
           >
-            <CloudDownload size={18} className="text-blue-400" /> Importar do Zabbix
+            <CloudDownload size={16} className="text-blue-400" />
+            <span className="truncate">Zabbix</span>
           </button>
           <button
             onClick={() => setIsUnifiSyncModalOpen(true)}
-            className="flex items-center gap-2 bg-blue-900 text-white px-5 py-3 rounded-2xl text-xs font-extrabold shadow-md hover:bg-blue-800 transition-all cursor-pointer"
+            className="flex items-center justify-center gap-1.5 bg-blue-900 text-white px-3.5 py-2.5 sm:py-3 rounded-2xl text-xs font-extrabold shadow-md hover:bg-blue-800 transition-all cursor-pointer"
+            title="Sincronizar com Controladora UniFi"
           >
-            <CloudDownload size={18} className="text-blue-400" /> Importar da UniFi
+            <CloudDownload size={16} className="text-cyan-400" />
+            <span className="truncate">UniFi</span>
           </button>
           <button
             onClick={openNewAssetModal}
-            className="flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-2xl text-xs font-extrabold shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all cursor-pointer"
+            className="flex items-center justify-center gap-1.5 bg-blue-600 text-white px-4 py-2.5 sm:py-3 rounded-2xl text-xs font-extrabold shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all cursor-pointer col-span-2 sm:col-span-1"
           >
-            <Plus size={18} /> Novo Ativo
+            <Plus size={16} />
+            <span>Novo Ativo</span>
           </button>
         </div>
       </div>
