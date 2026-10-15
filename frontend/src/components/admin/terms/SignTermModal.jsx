@@ -14,13 +14,22 @@ import api from "../../../api/client";
 // Compatível 100% com usuários de óculos (elimina piscadas sensíveis a reflexos/aros)
 const LIVENESS_CHALLENGES = [
   {
-    id: "look_up",
-    title: "Olhe para cima",
-    instruction: "Incline o queixo suavemente e olhe para cima",
-    icon: ArrowUp,
-    emoji: "👆",
-    color: "text-blue-500",
-    bg: "bg-blue-500/10",
+    id: "center",
+    title: "Centralize o rosto",
+    instruction: "Mantenha o rosto fixo no círculo por 1 segundo",
+    icon: ShieldCheck,
+    emoji: "🎯",
+    color: "text-emerald-500",
+    bg: "bg-emerald-500/10",
+  },
+  {
+    id: "smile",
+    title: "Dê um sorriso",
+    instruction: "Sorria naturalmente olhando para a câmera",
+    icon: Smile,
+    emoji: "😊",
+    color: "text-amber-500",
+    bg: "bg-amber-500/10",
   },
   {
     id: "turn_left",
@@ -41,13 +50,13 @@ const LIVENESS_CHALLENGES = [
     bg: "bg-indigo-500/10",
   },
   {
-    id: "smile",
-    title: "Dê um sorriso",
-    instruction: "Sorria naturalmente olhando para a câmera",
-    icon: Smile,
-    emoji: "😊",
-    color: "text-emerald-500",
-    bg: "bg-emerald-500/10",
+    id: "look_up",
+    title: "Olhe para cima",
+    instruction: "Incline o queixo suavemente e olhe para cima",
+    icon: ArrowUp,
+    emoji: "👆",
+    color: "text-blue-500",
+    bg: "bg-blue-500/10",
   },
 ];
 
@@ -104,8 +113,11 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
   const [challengeCompleted, setChallengeCompleted] = useState(false);
   const [allChallengesPassed, setAllChallengesPassed] = useState(false);
 
-  // Estados temporais para detecção de liveness
+  // Estados temporais e travas para detecção de liveness
   const detectionIntervalRef = useRef(null);
+  const isAdvancingRef = useRef(false);
+  const challengeTimeoutRef = useRef(null);
+  const centerFramesRef = useRef(0);
 
   // Inicializa modelos do face-api
   useEffect(() => {
@@ -145,6 +157,12 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
     setChallengeProgress(0);
     setChallengeCompleted(false);
     setAllChallengesPassed(false);
+    isAdvancingRef.current = false;
+    centerFramesRef.current = 0;
+    if (challengeTimeoutRef.current) {
+      clearTimeout(challengeTimeoutRef.current);
+      challengeTimeoutRef.current = null;
+    }
   };
 
   // Liga a câmera somente quando estiver na Etapa 2
@@ -233,6 +251,12 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
       clearInterval(detectionIntervalRef.current);
       detectionIntervalRef.current = null;
     }
+    if (challengeTimeoutRef.current) {
+      clearTimeout(challengeTimeoutRef.current);
+      challengeTimeoutRef.current = null;
+    }
+    isAdvancingRef.current = false;
+    centerFramesRef.current = 0;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -247,6 +271,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
 
     detectionIntervalRef.current = setInterval(async () => {
       if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
+      if (isAdvancingRef.current || allChallengesPassed) return;
 
       try {
         const detection = await faceapi
@@ -260,6 +285,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
         if (!detection) {
           setFaceDetected(false);
           setFaceConfidence(null);
+          centerFramesRef.current = 0;
           return;
         }
 
@@ -268,8 +294,10 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
         setFaceDetected(true);
         setFaceConfidence(confidenceVal);
 
-        // Se já concluiu todos ou não tem desafios sorteados, ignora
-        if (challenges.length === 0 || allChallengesPassed) return;
+        // Se já concluiu todos ou índice está fora dos limites, aborta loop
+        if (challenges.length === 0 || allChallengesPassed || currentChallengeIndex >= challenges.length) {
+          return;
+        }
 
         const activeChallenge = challenges[currentChallengeIndex];
         if (!activeChallenge) return;
@@ -279,8 +307,18 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
 
         let passed = false;
 
+        // 0. DESAFIO: CENTRALIZAR E MANTER FIXO (Validação Passiva Estável)
+        if (activeChallenge.id === "center") {
+          centerFramesRef.current += 1;
+          const progress = Math.min(Math.round((centerFramesRef.current / 4) * 100), 100);
+          setChallengeProgress(progress);
+          if (centerFramesRef.current >= 4) {
+            passed = true;
+          }
+        }
+
         // 1. DESAFIO: OLHAR PARA CIMA
-        if (activeChallenge.id === "look_up") {
+        else if (activeChallenge.id === "look_up") {
           const nose = landmarks.getNose();
           const leftEye = landmarks.getLeftEye();
           const rightEye = landmarks.getRightEye();
@@ -363,21 +401,34 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
 
         // Se o desafio atual foi superado
         if (passed) {
+          if (isAdvancingRef.current) return;
+          isAdvancingRef.current = true;
+
           playSuccessBeep();
           setChallengeProgress(100);
           setChallengeCompleted(true);
 
-          setTimeout(() => {
-            if (currentChallengeIndex + 1 < challenges.length) {
-              // Avança para o próximo desafio
-              setCurrentChallengeIndex((prev) => prev + 1);
-              setChallengeProgress(0);
-              setChallengeCompleted(false);
-            } else {
-              // Todos os desafios de prova de vida foram concluídos!
-              setAllChallengesPassed(true);
-              captureSnapshotFromVideo();
-            }
+          if (challengeTimeoutRef.current) {
+            clearTimeout(challengeTimeoutRef.current);
+          }
+
+          challengeTimeoutRef.current = setTimeout(() => {
+            setCurrentChallengeIndex((prevIndex) => {
+              const nextIndex = prevIndex + 1;
+              if (nextIndex < challenges.length) {
+                // Avança para o próximo desafio
+                setChallengeProgress(0);
+                setChallengeCompleted(false);
+                centerFramesRef.current = 0;
+                isAdvancingRef.current = false;
+                return nextIndex;
+              } else {
+                // Todos os desafios foram concluídos!
+                setAllChallengesPassed(true);
+                captureSnapshotFromVideo();
+                return prevIndex;
+              }
+            });
           }, 600);
         }
       } catch (err) {
@@ -388,6 +439,11 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
     return () => {
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
+        detectionIntervalRef.current = null;
+      }
+      if (challengeTimeoutRef.current) {
+        clearTimeout(challengeTimeoutRef.current);
+        challengeTimeoutRef.current = null;
       }
     };
   }, [currentStep, cameraActive, modelsLoaded, currentChallengeIndex, challenges, allChallengesPassed]);
@@ -751,7 +807,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10px] uppercase font-bold text-amber-400 block leading-none">
-                              Desafio {currentChallengeIndex + 1}/{challenges.length}
+                              Desafio {Math.min(currentChallengeIndex + 1, challenges.length)}/{challenges.length}
                             </span>
                             {challengeCompleted ? (
                               <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-500/30 text-emerald-300 rounded border border-emerald-400/40">
@@ -764,7 +820,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
                             ) : null}
                           </div>
                           <span className="text-xs sm:text-sm font-black text-white block leading-tight mt-0.5 truncate">
-                            {activeChallenge ? activeChallenge.title : "Posicione o rosto"}
+                            {activeChallenge ? activeChallenge.title : "Validação Concluída"}
                           </span>
                         </div>
                       </div>

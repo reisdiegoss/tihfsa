@@ -1442,3 +1442,14 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - O limiar anterior de 1.85 exigia uma torção de pescoço excessiva (~40°), o que frequentemente fazia a rede neural perder os marcos faciais de um dos olhos. O novo limiar de 1.55 valida de forma natural e confortável.
     - **Feedback Visual de Progresso Gradual em Tempo Real**:
       - Conforme o usuário começa a virar a cabeça ou a sorrir, a barra superior neon avança proporcionalmente de 15% até 100%, dando certeza visual de que o sistema está acompanhando ativamente o movimento.
+
+46. **Eliminação de Race Condition na Transição de Desafios ("Desafio 5/2") e Desafio de Centralização Estável (`SignTermModal.jsx`)**:
+    - **Diagnóstico da Falha "Desafio 5/2: Posicione o rosto"**:
+      - **Causa Raiz**: O intervalo de detecção (`setInterval`) executava a cada 280ms enquanto o avanço de desafio utilizava um `setTimeout` de 600ms sem trava de concorrência (`isAdvancing`). Se a condição do desafio permanecesse satisfeita durante esse intervalo, múltiplos `setTimeout` eram enfileirados no Event Loop do JavaScript. Isso fazia o `currentChallengeIndex` saltar sucessivamente além do tamanho do array (índice 4 ou 5 para um array de 2 itens).
+      - **Sintoma Visual**: Como `challenges[5]` era `undefined`, a interface exibia `Desafio 5/2` e caía no fallback de texto `"Posicione o rosto"`. Nesse estado zumbi, o loop não encontrava desafio ativo e nunca validava.
+    - **Solução Definitiva com Trava Atômica (`isAdvancingRef`)**:
+      - Implementada a flag `isAdvancingRef.current = true` assim que o primeiro `passed = true` é detectado, ignorando qualquer frame subsequente até que a transição seja concluída.
+      - Utilizado atualizador funcional de estado com trava de teto (`Math.min(prevIndex + 1, challenges.length)`) garantindo que o índice nunca ultrapasse `challenges.length - 1` e acione o snapshot fotográfico imediatamente.
+      - Clamp visual no HUD: `Desafio {Math.min(currentChallengeIndex + 1, challenges.length)}/{challenges.length}`.
+    - **Novo Desafio: Centralização Estável ("Centralize o rosto" 🎯)**:
+      - Adicionado como desafio ativo e 100% acessível: exige apenas manter o rosto dentro do círculo por 1 segundo (~4 frames estáveis). A barra avança em tempo real e valida sem exigir qualquer movimento ou desvio de olhar.
