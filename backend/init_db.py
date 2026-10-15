@@ -125,6 +125,7 @@ def apply_migrations():
         ("locations.order_index", "ALTER TABLE locations ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 0 NOT NULL;"),
         ("users.floor", "ALTER TABLE users ADD COLUMN IF NOT EXISTS floor VARCHAR(100);"),
         ("users.allowed_modules", "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_modules JSON;"),
+        ("users.module_permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS module_permissions JSON;"),
         ("qrcodes.url", "ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS url VARCHAR(500);"),
 
         # Vínculo N:N Localizações Físicas x Setores
@@ -1159,6 +1160,18 @@ def cleanup_corrupted_logon_history():
     except Exception as e:
         print(f"[INIT_DB] Aviso ao higienizar histórico de logon: {e}")
 
+    try:
+        from app.models.system_setting import SystemSetting
+        from app.routers.system_settings import sync_pwa_files
+        db = SessionLocal()
+        s = db.query(SystemSetting).first()
+        sync_pwa_files(s)
+        db.close()
+        print("[INIT_DB] Arquivos estáticos do PWA e manifesto sincronizados com sucesso.")
+    except Exception as e:
+        print(f"[INIT_DB] Aviso ao sincronizar arquivos do PWA: {e}")
+
 
 if __name__ == "__main__":
     main()
+

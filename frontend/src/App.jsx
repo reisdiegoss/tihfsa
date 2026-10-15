@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import api from "./api/client";
 
 // Layout
 import AdminLayout from "./layouts/AdminLayout";
@@ -72,6 +74,39 @@ import QRCodeManager from "./pages/admin/QRCodeManager";
 import SatisfactionSurvey from "./pages/public/SatisfactionSurvey";
 
 export default function App() {
+  useEffect(() => {
+    // Sincroniza dinamicamente título, favicon, apple-touch-icon e manifesto PWA
+    api.get("/settings/general")
+      .then((res) => {
+        const s = res.data;
+        if (!s) return;
+        if (s.pwa_name) {
+          document.title = s.pwa_name;
+        }
+        if (s.pwa_theme_color) {
+          const themeMeta = document.querySelector("meta[name='theme-color']");
+          if (themeMeta) themeMeta.setAttribute("content", s.pwa_theme_color);
+        }
+        if (s.pwa_icon_url) {
+          const iconUrl = s.pwa_icon_url;
+          // Favicon dinâmico
+          let fav = document.querySelector("link[rel='icon']");
+          if (fav) fav.setAttribute("href", iconUrl);
+          // Apple Touch Icon para iOS Safari
+          document.querySelectorAll("link[rel='apple-touch-icon']").forEach((el) => {
+            el.setAttribute("href", iconUrl);
+          });
+          // Força atualização imediata do manifesto com hash/timestamp do ícone
+          let man = document.querySelector("link[rel='manifest']");
+          if (man) {
+            const v = encodeURIComponent(iconUrl.split("/").pop() || "latest");
+            man.setAttribute("href", `/manifest.webmanifest?v=${v}`);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <BrowserRouter>
       <AuthProvider>

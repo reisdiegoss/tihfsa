@@ -20,6 +20,7 @@ from app.models.qrcode import QRCodeItem, QRCodeConfig
 from app.models.notification_log import NotificationLog
 from app.models.contract import Supplier, SupplierContact, Contract, ContractService, ContractInvoice
 from app.models.term import EquipmentTerm, EquipmentTermItem, EquipmentTermTemplate
+from app.models.project import Project, ProjectTask, ProjectStatus, ProjectPriority, TaskStatus, TaskPriority
 
 __all__ = [
     "User",
@@ -55,6 +56,12 @@ __all__ = [
     "EquipmentTerm",
     "EquipmentTermItem",
     "EquipmentTermTemplate",
+    "Project",
+    "ProjectTask",
+    "ProjectStatus",
+    "ProjectPriority",
+    "TaskStatus",
+    "TaskPriority",
 ]
 
 

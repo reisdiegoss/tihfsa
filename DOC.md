@@ -1475,7 +1475,13 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Cor do Tema da Barra de Status / Topo (`pwa_theme_color` e `pwa_bg_color`).
         - Upload e substituição do Ícone Oficial do App (`/api/v1/settings/general/pwa-icon`).
       - *Live Preview do Smartphone*: Coluna lateral com simulação em tempo real da tela inicial de um smartphone (iOS e Android), refletindo o ícone, o nome curto e a cor da barra de status instantaneamente.
-      - *Endpoint de Manifesto Dinâmico*: `/api/v1/settings/general/pwa-manifest` serve o manifesto JSON atualizado com as preferências salvas no banco de dados.
+      - *Endpoint de Manifesto Dinâmico & Proxy Direto*:
+        - As rotas `@app.get("/manifest.webmanifest")` e `@app.get("/manifest.json")` no FastAPI servem o manifesto dinâmico gerado a partir do banco de dados com headers `Cache-Control: no-cache, no-store, must-revalidate`.
+        - Todos os tamanhos e propósitos (`192x192 any`, `192x192 maskable`, `512x512 any`, `512x512 maskable`, `180x180 any`) apontam explicitamente para o `pwa_icon_url` configurado.
+        - No Nginx (`start.sh`), o bloco `location ~* ^/(manifest\.webmanifest|manifest\.json)$` faz proxy direto para o backend, impedindo que o Nginx entregue um arquivo estático antigo do disco.
+        - Ao fazer upload ou salvar parâmetros gerais (`upload_pwa_icon`), o sistema executa `sync_pwa_files()`, replicando o ícone físico sobre `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` e `apple-touch-icon.png` em `public`, `dist` e `/var/www/tihfsa/`.
+        - No frontend (`App.jsx`), um hook sincroniza dinamicamente o título, `meta[theme-color]`, favicon e `link[rel="apple-touch-icon"]` garantindo que o Safari do iOS e o Chrome do Android instalem o app com o ícone exato.
+
 
 48. **Responsividade Universal dos Módulos (Cards Mobile & Grids Flexíveis)**:
     - **TicketList.jsx (Gestão de Chamados)**:

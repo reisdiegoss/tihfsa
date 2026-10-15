@@ -652,6 +652,17 @@ server {
         autoindex on;
     }
 
+    # Manifesto PWA Dinâmico (Sempre atualizado com o ícone e nome da base de dados)
+    location ~* ^/(manifest\.webmanifest|manifest\.json)$ {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
     location / {
         try_files \$uri \$uri/ /index.html;
     }
@@ -732,6 +743,17 @@ server {
     location /cert/ {
         alias $WEB_ROOT/cert/;
         autoindex on;
+    }
+
+    # Manifesto PWA Dinâmico (Sempre atualizado com o ícone e nome da base de dados)
+    location ~* ^/(manifest\.webmanifest|manifest\.json)$ {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
     # SPA (Single Page Application) Routing

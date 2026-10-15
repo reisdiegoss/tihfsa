@@ -541,6 +541,29 @@ app.include_router(terms.router)
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+@app.get("/manifest.webmanifest", include_in_schema=False)
+@app.get("/manifest.json", include_in_schema=False)
+def get_root_manifest():
+    from app.models.system_setting import SystemSetting
+    from app.routers.system_settings import build_pwa_manifest_dict
+    from fastapi.responses import JSONResponse
+    
+    db = SessionLocal()
+    try:
+        setting = db.query(SystemSetting).first()
+        data = build_pwa_manifest_dict(setting)
+        return JSONResponse(
+            content=data,
+            media_type="application/manifest+json",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            }
+        )
+    finally:
+        db.close()
+
 @app.get("/", tags=["Health"])
 def health_check():
     return {

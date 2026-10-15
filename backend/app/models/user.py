@@ -33,7 +33,8 @@ class User(Base):
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     roles = Column(JSON, nullable=True)  # Lista de múltiplos papéis: ["user", "manager", "technician", "admin"]
     support_level = Column(String(10), default="N1", nullable=True)  # Nível de atuação do técnico no Service Desk: N1, N2, N3
-    allowed_modules = Column(JSON, nullable=True)  # Módulos permitidos: ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"]
+    allowed_modules = Column(JSON, nullable=True)  # Módulos permitidos: ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts", "terms"]
+    module_permissions = Column(JSON, nullable=True)  # Permissões granulares por ação: {"modulo": {"view": true, "create": true, "edit": true, "delete": false, "manage": false}}
     is_room = Column(Boolean, default=False, nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     phone = Column(String(50), nullable=True)

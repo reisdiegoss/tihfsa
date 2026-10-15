@@ -121,6 +121,12 @@ def update_general_settings(
     db.commit()
     db.refresh(setting)
 
+    # Sincroniza arquivos físicos do manifesto e ícones PWA
+    try:
+        sync_pwa_files(setting)
+    except Exception as e:
+        print(f"[WARN] Falha ao sincronizar PWA no update_general_settings: {e}")
+
     return SystemSettingsSchema(
         support_notification_email=setting.support_notification_email,
         email_header_title=setting.email_header_title,
@@ -218,18 +224,50 @@ def send_test_email_endpoint(
     return {"success": True, "message": f"E-mail de teste enviado com sucesso para {target_email}!"}
 
 
-@router.get("/pwa-manifest", summary="Obter Manifesto PWA dinâmico com base nos parâmetros configurados")
-def get_pwa_manifest(db: Session = Depends(get_db)):
+def build_pwa_manifest_dict(setting: SystemSetting | None) -> dict:
     """
-    Retorna o Web App Manifest gerado dinamicamente com o nome, cores e ícones
-    salvos pelo administrador do sistema em Parâmetros Gerais.
+    Constrói o dicionário do Web App Manifest com o ícone customizado aplicado
+    a todas as resoluções (192, 512, 180) e propósitos ('any' e 'maskable')
+    para plena compatibilidade com Android WebAPK, Chrome, Edge e iOS.
     """
-    setting = db.query(SystemSetting).first()
     name = (setting.pwa_name if setting and setting.pwa_name else "TIHFSA — Hotel Fasano Salvador")
     short_name = (setting.pwa_short_name if setting and setting.pwa_short_name else "TIHFSA")
     theme_color = (setting.pwa_theme_color if setting and setting.pwa_theme_color else "#0f172a")
     bg_color = (setting.pwa_bg_color if setting and setting.pwa_bg_color else "#0f172a")
     icon_url = (setting.pwa_icon_url if setting and setting.pwa_icon_url else "/icons/icon-512.png")
+
+    icons = [
+        {
+            "src": icon_url,
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": icon_url,
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": icon_url,
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": icon_url,
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": icon_url,
+            "sizes": "180x180",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
 
     return {
         "name": name,
@@ -243,33 +281,79 @@ def get_pwa_manifest(db: Session = Depends(get_db)):
         "background_color": bg_color,
         "theme_color": theme_color,
         "orientation": "portrait-primary",
-        "icons": [
-            {
-                "src": "/icons/icon-192.png",
-                "sizes": "192x192",
-                "type": "image/png",
-                "purpose": "any maskable"
-            },
-            {
-                "src": icon_url,
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any"
-            },
-            {
-                "src": "/icons/icon-maskable-512.png",
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "maskable"
-            },
-            {
-                "src": "/icons/apple-touch-icon.png",
-                "sizes": "180x180",
-                "type": "image/png",
-                "purpose": "any"
-            }
-        ]
+        "icons": icons
     }
+
+
+def sync_pwa_files(setting: SystemSetting | None):
+    """
+    Sincroniza os arquivos físicos do manifesto (manifest.webmanifest) e copia o ícone
+    customizado para as pastas públicas e canônicas (/icons/icon-192.png, icon-512.png, etc.).
+    """
+    import os
+    import shutil
+    import json
+
+    manifest_dict = build_pwa_manifest_dict(setting)
+    manifest_json_str = json.dumps(manifest_dict, ensure_ascii=False, indent=2)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+    target_manifest_files = [
+        os.path.abspath(os.path.join(base_dir, "..", "frontend", "public", "manifest.webmanifest")),
+        os.path.abspath(os.path.join(base_dir, "..", "frontend", "dist", "manifest.webmanifest")),
+        "/var/www/tihfsa/manifest.webmanifest",
+    ]
+
+    for m_path in target_manifest_files:
+        try:
+            if os.path.exists(os.path.dirname(m_path)):
+                with open(m_path, "w", encoding="utf-8") as f:
+                    f.write(manifest_json_str)
+        except Exception:
+            pass
+
+    # Se o ícone for customizado em /uploads/, encontra o arquivo fonte no disco e replica
+    if setting and setting.pwa_icon_url and setting.pwa_icon_url.startswith("/uploads/"):
+        rel_icon_path = setting.pwa_icon_url.lstrip("/")
+        possible_sources = [
+            os.path.abspath(os.path.join(base_dir, rel_icon_path)),
+            os.path.abspath(os.path.join(base_dir, "..", rel_icon_path)),
+            f"/root/TIHFSA/{rel_icon_path}",
+            f"/root/TIHFSA/backend/{rel_icon_path}",
+            f"/var/www/tihfsa/{rel_icon_path}",
+        ]
+
+        found_src = None
+        for p in possible_sources:
+            if os.path.exists(p) and os.path.isfile(p):
+                found_src = p
+                break
+
+        if found_src:
+            target_icon_dirs = [
+                os.path.abspath(os.path.join(base_dir, "..", "frontend", "public", "icons")),
+                os.path.abspath(os.path.join(base_dir, "..", "frontend", "dist", "icons")),
+                "/var/www/tihfsa/icons",
+            ]
+            for idir in target_icon_dirs:
+                try:
+                    if os.path.exists(os.path.dirname(idir)):
+                        os.makedirs(idir, exist_ok=True)
+                        for std_name in ["icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"]:
+                            shutil.copy(found_src, os.path.join(idir, std_name))
+                except Exception:
+                    pass
+
+
+@router.get("/pwa-manifest", summary="Obter Manifesto PWA dinâmico com base nos parâmetros configurados")
+def get_pwa_manifest(db: Session = Depends(get_db)):
+    """
+    Retorna o Web App Manifest gerado dinamicamente com o nome, cores e ícones
+    salvos pelo administrador do sistema em Parâmetros Gerais.
+    """
+    setting = db.query(SystemSetting).first()
+    return build_pwa_manifest_dict(setting)
 
 
 from fastapi import UploadFile, File
@@ -286,31 +370,19 @@ def upload_pwa_icon(
     if not file.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".svg")):
         raise HTTPException(status_code=400, detail="Formato de imagem inválido. Use PNG, JPG ou WebP.")
 
-    # 1. Salvar na pasta uploads/pwa (servida nativamente pelo FastAPI e Nginx)
-    upload_pwa_dir = os.path.join("uploads", "pwa")
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    upload_pwa_dir = os.path.join(base_dir, "uploads", "pwa")
     os.makedirs(upload_pwa_dir, exist_ok=True)
 
     ext = os.path.splitext(file.filename)[1].lower() or ".png"
     unique_filename = f"pwa-icon-{uuid.uuid4().hex[:10]}{ext}"
     dest_path = os.path.join(upload_pwa_dir, unique_filename)
 
+    file_content = file.file.read()
     with open(dest_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(file_content)
 
     icon_url = f"/uploads/pwa/{unique_filename}"
-
-    # 2. Replicar para pastas públicas do frontend se existirem
-    try:
-        frontend_dirs = [
-            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "public", "icons")),
-            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "dist", "icons")),
-        ]
-        for fdir in frontend_dirs:
-            if os.path.exists(os.path.dirname(fdir)):
-                os.makedirs(fdir, exist_ok=True)
-                shutil.copy(dest_path, os.path.join(fdir, unique_filename))
-    except Exception:
-        pass
 
     setting = db.query(SystemSetting).first()
     if not setting:
@@ -320,6 +392,12 @@ def upload_pwa_icon(
     setting.pwa_icon_url = icon_url
     db.commit()
     db.refresh(setting)
+
+    # Sincroniza arquivos físicos e substitui os ícones canônicos
+    try:
+        sync_pwa_files(setting)
+    except Exception as e:
+        print(f"[WARN] Falha ao sincronizar PWA no upload_pwa_icon: {e}")
 
     return {"success": True, "icon_url": icon_url, "message": "Ícone do aplicativo atualizado com sucesso!"}
 
