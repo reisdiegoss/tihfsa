@@ -291,7 +291,11 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
           const chinY = jaw[8].y;
 
           const ratio = (noseY - eyeCenterY) / Math.max(chinY - noseY, 1);
-          if (ratio < 0.68) {
+          if (ratio < 0.85) {
+            const progress = Math.min(Math.round(((0.85 - ratio) / 0.16) * 100), 100);
+            setChallengeProgress(Math.max(progress, 15));
+          }
+          if (ratio < 0.70) {
             passed = true;
           }
         }
@@ -302,8 +306,13 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
           const jaw = landmarks.getJawOutline();
           const distToLeft = Math.abs(nose[3].x - jaw[0].x);
           const distToRight = Math.abs(jaw[16].x - nose[3].x);
-          // Rosto virado para a esquerda
-          if (distToRight / Math.max(distToLeft, 1) > 1.85) {
+          // Quando o usuário vira a cabeça para a SUA ESQUERDA, seu nariz se desloca para jaw[16] (lado esquerdo do próprio rosto), aumentando a distância até jaw[0]
+          const yawRatio = distToLeft / Math.max(distToRight, 1);
+          if (yawRatio > 1.15) {
+            const progress = Math.min(Math.round(((yawRatio - 1.15) / 0.40) * 100), 100);
+            setChallengeProgress(Math.max(progress, 15));
+          }
+          if (yawRatio > 1.55) {
             passed = true;
           }
         }
@@ -314,15 +323,25 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
           const jaw = landmarks.getJawOutline();
           const distToLeft = Math.abs(nose[3].x - jaw[0].x);
           const distToRight = Math.abs(jaw[16].x - nose[3].x);
-          // Rosto virado para a direita
-          if (distToLeft / Math.max(distToRight, 1) > 1.85) {
+          // Quando o usuário vira a cabeça para a SUA DIREITA, seu nariz se desloca para jaw[0] (lado direito do próprio rosto), aumentando a distância até jaw[16]
+          const yawRatio = distToRight / Math.max(distToLeft, 1);
+          if (yawRatio > 1.15) {
+            const progress = Math.min(Math.round(((yawRatio - 1.15) / 0.40) * 100), 100);
+            setChallengeProgress(Math.max(progress, 15));
+          }
+          if (yawRatio > 1.55) {
             passed = true;
           }
         }
 
         // 4. DESAFIO: SORRIR
         else if (activeChallenge.id === "smile") {
-          if (expressions && expressions.happy > 0.65) {
+          const happyScore = expressions?.happy || 0;
+          if (happyScore > 0.2) {
+            const progress = Math.min(Math.round((happyScore / 0.6) * 100), 100);
+            setChallengeProgress(Math.max(progress, 15));
+          }
+          if (happyScore > 0.60) {
             passed = true;
           } else {
             // Análise por largura da boca relativa aos olhos
@@ -331,7 +350,12 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
             const rightEye = landmarks.getRightEye();
             const mouthWidth = Math.hypot(mouth[6].x - mouth[0].x, mouth[6].y - mouth[0].y);
             const eyeDist = Math.hypot(rightEye[3].x - leftEye[0].x, rightEye[3].y - leftEye[0].y);
-            if (mouthWidth / Math.max(eyeDist, 1) > 0.88) {
+            const mouthRatio = mouthWidth / Math.max(eyeDist, 1);
+            if (mouthRatio > 0.78) {
+              const progress = Math.min(Math.round(((mouthRatio - 0.75) / 0.12) * 100), 100);
+              setChallengeProgress(Math.max(progress, 15));
+            }
+            if (mouthRatio > 0.86) {
               passed = true;
             }
           }

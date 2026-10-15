@@ -1431,3 +1431,14 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         3. *Virar para a Direita* (`turn_right` - yaw/rotação horizontal de perfil).
         4. *Dar um Sorriso* (`smile` - abertura labial e rede de expressões faciais).
       - Todos os 4 desafios restantes funcionam com máxima precisão e agilidade independentemente do colaborador estar utilizando óculos.
+
+45. **Correção Geométrica de Rotação Cefálica (Yaw) e Progresso Dinâmico na Prova de Vida (`SignTermModal.jsx`)**:
+    - **Inversão dos Eixos de Rotação Cefálica**:
+      - **Causa Raiz**: Na matriz de pontos 68-landmarks do `face-api.js`, o ponto `jaw[0]` fica na borda esquerda da matriz do sensor e `jaw[16]` na borda direita. Quando o usuário vira a cabeça para a sua esquerda física, seu nariz desloca-se em direção a `jaw[16]`, aumentando a distância até `jaw[0]` (`distToLeft`). A lógica anterior calculava a razão oposta (`distToRight / distToLeft`), fazendo com que o desafio "Vire para a esquerda" fosse validado apenas quando o usuário virava para a direita e vice-versa.
+      - **Solução Definitiva**: Os cálculos de razão trigonométrica foram corrigidos para corresponder perfeitamente à anatomia do signatário:
+        - *Vire para a Esquerda* (`turn_left`): `distToLeft / distToRight > 1.55`.
+        - *Vire para a Direita* (`turn_right`): `distToRight / distToLeft > 1.55`.
+    - **Suavização do Limiar de Validação (1.55 em vez de 1.85)**:
+      - O limiar anterior de 1.85 exigia uma torção de pescoço excessiva (~40°), o que frequentemente fazia a rede neural perder os marcos faciais de um dos olhos. O novo limiar de 1.55 valida de forma natural e confortável.
+    - **Feedback Visual de Progresso Gradual em Tempo Real**:
+      - Conforme o usuário começa a virar a cabeça ou a sorrir, a barra superior neon avança proporcionalmente de 15% até 100%, dando certeza visual de que o sistema está acompanhando ativamente o movimento.
