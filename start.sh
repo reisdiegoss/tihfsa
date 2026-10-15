@@ -854,8 +854,14 @@ run_database_migrations() {
     log_step "DB" "Executando inicialização do banco e migrações (backend/init_db.py)..."
 
     local py_exec="$VENV_DIR/bin/python"
+    local pip_exec="$VENV_DIR/bin/pip"
     if [[ ! -x "$py_exec" ]]; then
         py_exec="python3"
+    fi
+
+    # Garante que pacotes novos (como Pillow) estejam instalados no ambiente virtual
+    if [[ -x "$pip_exec" ]]; then
+        "$pip_exec" install -r "$BACKEND_DIR/requirements.txt" -q 2>/dev/null || true
     fi
 
     cd "$SCRIPT_DIR"
