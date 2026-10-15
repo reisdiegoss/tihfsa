@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -236,6 +236,7 @@ def get_helpdesk_summary_endpoint(
 def agent_checkin(
     data: AgentCheckinPayload,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     x_agent_token: Optional[str] = Header(None),
 ):
@@ -851,6 +852,46 @@ def agent_checkin(
                     db.add(new_ticket)
                     db.commit()
                     db.refresh(new_ticket)
+
+                    # 4. Disparo de Notificações Automáticas (Grupo WhatsApp TI e E-mail de Suporte)
+                    try:
+                        from app.services.evolution_service import EvolutionService
+                        from app.services.email_service import send_ticket_created_staff_notification
+                        from app.models.system_setting import SystemSetting
+                        from app.config import get_app_base_url
+
+                        base_url = get_app_base_url()
+                        icon = "🛡️" if b_status == "Success" else "🚨"
+                        msg_type = "Backup Veritas: Aguardando Validação" if b_status == "Success" else "Alerta Crítico: Falha no Backup"
+                        status_label = "Aguardando Validação Técnica" if new_ticket.status == TicketStatus.PENDING_VALIDATION else new_ticket.status.value
+
+                        wa_text = (
+                            f"{icon} *[{msg_type}]*\n\n"
+                            f"*Ticket ID:* #{new_ticket.id}\n"
+                            f"*Título:* {new_ticket.title}\n"
+                            f"*Servidor:* {hostname_clean} ({ip_clean})\n"
+                            f"*Prioridade:* {new_ticket.priority.value}\n"
+                            f"*Status:* {status_label}\n"
+                            f"*Conclusão:* {comp_time_str or now.strftime('%d/%m/%Y %H:%M:%S')}\n"
+                            f"*Volume:* {byte_gb} GB\n\n"
+                            f"🔗 *Acessar chamado:* {base_url}/admin/tickets?ticketId={new_ticket.id}"
+                        )
+                        background_tasks.add_task(EvolutionService.send_whatsapp_message, wa_text, ticket_id=new_ticket.id)
+
+                        setting = db.query(SystemSetting).first()
+                        notify_ti = getattr(setting, "notify_ti_on_create", True) if setting else True
+                        if notify_ti:
+                            asset_label = new_ticket.asset.name if new_ticket.asset else f"Servidor {hostname_clean}"
+                            background_tasks.add_task(
+                                send_ticket_created_staff_notification,
+                                ticket=new_ticket,
+                                requester_name="Sentinel Agent (Veritas)",
+                                requester_dept="Infraestrutura & Redes",
+                                origin="Veritas Backup Exec 23.0",
+                                location_or_asset=asset_label,
+                            )
+                    except Exception as notif_err:
+                        print(f"[Monitoring] Erro ao disparar notificações de backup: {notif_err}")
         except Exception as e:
             db.rollback()
             print(f"[Monitoring] Erro ao processar telemetria do Backup Exec: {e}")
