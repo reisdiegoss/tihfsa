@@ -468,6 +468,7 @@ async def lifespan(app: FastAPI):
             """))
             conn.commit()
     except Exception as e:
+        print(f"[DB Auto-Migration Error] {e}")
     _seed_default_asset_types()
 
     # Sincroniza e gera todos os ícones PWA canônicos (192, 512, maskable, apple-touch-icon 180 RGB)
