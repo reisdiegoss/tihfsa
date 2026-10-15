@@ -275,6 +275,7 @@ def get_pwa_manifest(db: Session = Depends(get_db)):
 from fastapi import UploadFile, File
 import os
 import shutil
+import uuid
 
 @router.post("/pwa-icon", summary="Fazer upload de novo ícone para o aplicativo PWA")
 def upload_pwa_icon(
@@ -285,17 +286,31 @@ def upload_pwa_icon(
     if not file.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".svg")):
         raise HTTPException(status_code=400, detail="Formato de imagem inválido. Use PNG, JPG ou WebP.")
 
-    # Salva na pasta pública de ícones do frontend
-    upload_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "public", "icons"))
-    os.makedirs(upload_dir, exist_ok=True)
+    # 1. Salvar na pasta uploads/pwa (servida nativamente pelo FastAPI e Nginx)
+    upload_pwa_dir = os.path.join("uploads", "pwa")
+    os.makedirs(upload_pwa_dir, exist_ok=True)
 
-    dest_filename = f"custom-icon-{file.filename}"
-    dest_path = os.path.join(upload_dir, dest_filename)
+    ext = os.path.splitext(file.filename)[1].lower() or ".png"
+    unique_filename = f"pwa-icon-{uuid.uuid4().hex[:10]}{ext}"
+    dest_path = os.path.join(upload_pwa_dir, unique_filename)
 
     with open(dest_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    icon_url = f"/icons/{dest_filename}"
+    icon_url = f"/uploads/pwa/{unique_filename}"
+
+    # 2. Replicar para pastas públicas do frontend se existirem
+    try:
+        frontend_dirs = [
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "public", "icons")),
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "dist", "icons")),
+        ]
+        for fdir in frontend_dirs:
+            if os.path.exists(os.path.dirname(fdir)):
+                os.makedirs(fdir, exist_ok=True)
+                shutil.copy(dest_path, os.path.join(fdir, unique_filename))
+    except Exception:
+        pass
 
     setting = db.query(SystemSetting).first()
     if not setting:
@@ -307,5 +322,6 @@ def upload_pwa_icon(
     db.refresh(setting)
 
     return {"success": True, "icon_url": icon_url, "message": "Ícone do aplicativo atualizado com sucesso!"}
+
 
 

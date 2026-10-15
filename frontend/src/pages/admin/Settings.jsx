@@ -258,10 +258,16 @@ export default function Settings() {
   const [testEmailFeedback, setTestEmailFeedback] = useState(null);
   const [uploadingPwaIcon, setUploadingPwaIcon] = useState(false);
   const [pwaIconMsg, setPwaIconMsg] = useState(null);
+  const [localPwaIconPreview, setLocalPwaIconPreview] = useState(null);
 
   const handlePwaIconUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Preview instantâneo antes mesmo do término da requisição
+    const localUrl = URL.createObjectURL(file);
+    setLocalPwaIconPreview(localUrl);
+
     setUploadingPwaIcon(true);
     setPwaIconMsg(null);
     const formData = new FormData();
@@ -270,6 +276,7 @@ export default function Settings() {
       const { data } = await api.post("/settings/general/pwa-icon", formData, {
         headers: { "Content-Type": "multipart/form-data" }
       });
+      // Atualiza o estado oficial com a URL persistida no backend
       setGeneralSettings(prev => ({ ...prev, pwa_icon_url: data.icon_url }));
       setPwaIconMsg({ type: "success", text: "Ícone do aplicativo atualizado com sucesso!" });
       setTimeout(() => setPwaIconMsg(null), 4000);
@@ -278,6 +285,7 @@ export default function Settings() {
       setPwaIconMsg({ type: "error", text: formatApiError(err, "Falha ao enviar ícone do app.") });
     } finally {
       setUploadingPwaIcon(false);
+      if (e.target) e.target.value = "";
     }
   };
 
@@ -2503,10 +2511,14 @@ export default function Settings() {
                   <div className="flex items-center gap-3.5">
                     <div className="w-16 h-16 rounded-2xl shadow-md border-2 border-white overflow-hidden bg-slate-900 flex items-center justify-center shrink-0">
                       <img
-                        src={generalSettings.pwa_icon_url || "/icons/icon-512.png"}
+                        src={localPwaIconPreview || generalSettings.pwa_icon_url || "/icons/icon-512.png"}
                         alt="Ícone do Aplicativo"
                         className="w-full h-full object-cover"
-                        onError={(e) => { e.target.src = "/icons/apple-touch-icon.png"; }}
+                        onError={(e) => {
+                          if (!localPwaIconPreview) {
+                            e.target.src = "/icons/apple-touch-icon.png";
+                          }
+                        }}
                       />
                     </div>
                     <div>
@@ -2627,10 +2639,14 @@ export default function Settings() {
                     <div className="w-18 h-18 rounded-2xl shadow-2xl border-2 border-white/20 overflow-hidden relative group transition-transform hover:scale-105"
                          style={{ backgroundColor: generalSettings.pwa_theme_color || "#0f172a" }}>
                       <img
-                        src={generalSettings.pwa_icon_url || "/icons/icon-512.png"}
+                        src={localPwaIconPreview || generalSettings.pwa_icon_url || "/icons/icon-512.png"}
                         alt="Preview Ícone"
                         className="w-full h-full object-cover"
-                        onError={(e) => { e.target.src = "/icons/apple-touch-icon.png"; }}
+                        onError={(e) => {
+                          if (!localPwaIconPreview) {
+                            e.target.src = "/icons/apple-touch-icon.png";
+                          }
+                        }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/20 pointer-events-none" />
                     </div>
