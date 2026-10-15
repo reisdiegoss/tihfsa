@@ -18,6 +18,7 @@ class UserCreate(UserBase):
     role: str = "user"
     roles: list[str] | None = None
     allowed_modules: list[str] | None = None
+    support_level: str | None = "N1"
     password: str | None = None  # Apenas para admin root
 
 
@@ -30,6 +31,7 @@ class UserUpdate(BaseModel):
     manager_id: int | None = None
     role: str | None = None
     roles: list[str] | None = None
+    support_level: str | None = None
     allowed_modules: list[str] | None = None
     is_active: bool | None = None
     managed_department_ids: list[int] | None = None
@@ -42,6 +44,7 @@ class UserResponse(UserBase):
     ad_username: str | None = None
     role: str
     roles: list[str] = ["user"]
+    support_level: str = "N1"
     allowed_modules: list[str] = []
     is_active: bool
     department_id: int | None = None
@@ -62,3 +65,4 @@ class UserSimple(BaseModel):
     is_room: bool
     room_number: str | None = None
     department_id: int | None = None
+    support_level: str | None = "N1"

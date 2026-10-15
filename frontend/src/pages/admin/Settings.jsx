@@ -1378,6 +1378,7 @@ export default function Settings() {
       ad_username: u.ad_username || "",
       email: u.email || "",
       phone: u.phone || "",
+      support_level: u.support_level || "N1",
       is_active: u.is_active !== undefined ? u.is_active : true,
     });
     const rList = u.roles && u.roles.length > 0 ? u.roles : [u.role || "user"];
@@ -1429,6 +1430,7 @@ export default function Settings() {
         display_name: userFormData.display_name.trim(),
         email: userFormData.email ? userFormData.email.trim() : null,
         phone: userFormData.phone ? userFormData.phone.trim() : null,
+        support_level: userFormData.support_level || "N1",
         is_active: userFormData.is_active,
         roles: selectedRoles,
         department_id: selectedUserDept ? Number(selectedUserDept) : null,
@@ -1871,9 +1873,16 @@ export default function Settings() {
                                     </span>
                                   );
                                 } else if (rLower === "technician" || rLower === "tecnico") {
+                                  const lvl = u.support_level || "N1";
+                                  const lvlBadge = lvl === "N3" ? "bg-rose-100 text-rose-800 border-rose-300" :
+                                                   lvl === "N2" ? "bg-purple-100 text-purple-800 border-purple-300" :
+                                                   "bg-sky-100 text-sky-800 border-sky-300";
                                   return (
-                                    <span key={rIdx} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold whitespace-nowrap">
-                                      🛠️ Atendente (TI)
+                                    <span key={rIdx} className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-lg text-[10px] font-extrabold whitespace-nowrap">
+                                      <span>🛠️ Atendente (TI)</span>
+                                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-black border ${lvlBadge}`}>
+                                        {lvl}
+                                      </span>
                                     </span>
                                   );
                                 } else if (rLower === "manager" || rLower === "gerente") {
@@ -3016,6 +3025,77 @@ export default function Settings() {
                   })}
                 </div>
               </div>
+
+              {/* 2.1. NÍVEL DE ATENDIMENTO SERVICE DESK (ITIL 4 / COBIT DSS02) */}
+              {(selectedRoles.includes("technician") || selectedRoles.includes("admin")) && (
+                <div className="bg-sky-50/70 border border-sky-200/80 rounded-2xl p-4.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-extrabold text-sky-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>🎯</span> Nível de Atuação Service Desk (Governança ITIL 4 / COBIT DSS02)
+                    </label>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg bg-sky-200/80 text-sky-900 border border-sky-300">
+                      Nível Definido: {userFormData.support_level || "N1"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-sky-800 font-medium leading-relaxed">
+                    Classifique a especialidade técnica do colaborador para esteira de chamados, transferências e escalações:
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {[
+                      {
+                        lvl: "N1",
+                        title: "N1 — Service Desk",
+                        sub: "Triagem & Operacional",
+                        desc: "Primeiro contato, suporte presencial imediato, dúvidas de usuários e incidentes corriqueiros.",
+                        active: "border-sky-600 bg-white ring-2 ring-sky-500/30 text-sky-950 shadow-xs",
+                        badge: "bg-sky-100 text-sky-800 border border-sky-200"
+                      },
+                      {
+                        lvl: "N2",
+                        title: "N2 — Suporte Avançado",
+                        sub: "Field Service & Sistemas",
+                        desc: "Diagnósticos profundos, sistemas de gestão hoteleira (Opera PMS, CMNET, Micros) e hardware.",
+                        active: "border-purple-600 bg-white ring-2 ring-purple-500/30 text-purple-950 shadow-xs",
+                        badge: "bg-purple-100 text-purple-800 border border-purple-200"
+                      },
+                      {
+                        lvl: "N3",
+                        title: "N3 — Engenharia & NOC",
+                        sub: "Redes, Servidores & TI",
+                        desc: "Switches core, firewall Fortinet, APs UniFi, servidores físicos/virtuais, storage e telecom.",
+                        active: "border-rose-600 bg-white ring-2 ring-rose-500/30 text-rose-950 shadow-xs",
+                        badge: "bg-rose-100 text-rose-800 border border-rose-200"
+                      },
+                    ].map((item) => {
+                      const isSelected = (userFormData.support_level || "N1") === item.lvl;
+                      return (
+                        <button
+                          key={item.lvl}
+                          type="button"
+                          onClick={() => setUserFormData({ ...userFormData, support_level: item.lvl })}
+                          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? item.active
+                              : "border-slate-200 hover:border-slate-300 bg-white/70"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-extrabold text-xs text-slate-900">{item.title}</span>
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${item.badge}`}>
+                              {item.lvl}
+                            </span>
+                          </div>
+                          <div className="text-[10px] font-bold text-slate-600 mb-1">{item.sub}</div>
+                          <p className="text-[10px] text-slate-500 font-medium leading-tight">
+                            {item.desc}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* 3. PARAMETRIZAÇÃO GRANULAR DE MÓDULOS (PARA TÉCNICOS / ANALISTAS) */}
               <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-2xl p-4.5">

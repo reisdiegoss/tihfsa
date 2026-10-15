@@ -1537,5 +1537,9 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Ação rápida de 1 clique para *"Assumir"* chamado diretamente na linha da tabela quando estiver na Fila Livre.
       - **Abertura de Chamado (`NewTicket.jsx`)**:
         - Seletor visual do Nível de Atendimento ITIL (N1 Padrão, N2 Avançado, N3 Infraestrutura) integrado ao fluxo de abertura pelo analista.
+      - **Gestão de Usuários e Técnicos (`Settings.jsx`)**:
+        - Atribuição de Nível de Atendimento ITIL (`N1`, `N2` ou `N3`) por colaborador técnico no modal de edição de usuário.
+        - Identificação visual com badge do nível de atendimento de cada técnico na tabela de usuários.
+        - Exibição do nível de atendimento nos selects de transferência e escalação (`Nome • Nível N1/N2/N3 (Cargo)`).
 
 

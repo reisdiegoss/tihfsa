@@ -960,7 +960,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                     .filter((t) => t.id !== ticket?.technician_id)
                     .map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.display_name} ({t.role || "Técnico"})
+                        {t.display_name} • Nível {t.support_level || "N1"} ({t.role || "Técnico"})
                       </option>
                     ))}
                 </select>
@@ -1113,7 +1113,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                   <option value="">Fila Geral do Nível (Sem técnico atribuído inicial)</option>
                   {techniciansList.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.display_name} ({t.role || "Técnico"})
+                      {t.display_name} • Nível {t.support_level || "N1"} ({t.role || "Técnico"})
                     </option>
                   ))}
                 </select>

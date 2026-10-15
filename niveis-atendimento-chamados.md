@@ -166,6 +166,17 @@ graph TD
 
 ---
 
-## 4. Pergunta de Alinhamento para Aprovação
+## 3. Configuração de Técnicos por Nível (N1, N2, N3)
 
-Você concorda com essa estrutura de Níveis (N1, N2, N3) e com o fluxo proposto para **Assumir**, **Transferir** e **Escalar**, ou gostaria de ajustar algum detalhe das regras de negócio antes de iniciarmos o código?
+- **Onde Configurar**: No painel administrativo em **Configurações ⚙️ ➔ Usuários / Colaboradores**, clicando em **"Editar Usuário"**.
+- **Seletor de Nível ITIL 4**:
+  - **N1 — Service Desk**: Triagem inicial, atendimento operacional rápido, dúvidas de usuários e chamados corriqueiros.
+  - **N2 — Suporte Avançado / Field & Sistemas**: Especialista em sistemas corporativos (Opera PMS, CMNET, Micros) e diagnósticos aprofundados de hardware/software.
+  - **N3 — Engenharia de Redes & NOC**: Infraestrutura crítica, firewall Fortinet, switches core, servidores físicos/virtuais, storage e telecom.
+- **Roteamento de Chamados**:
+  - Novos chamados abertos por usuários ou apartamentos entram por padrão no **N1 (Service Desk)**.
+  - Alertas automáticos do NOC (Zabbix/UniFi) entram catalogados diretamente no **N3 (Infraestrutura)**.
+  - Técnicos N1 escalam funcionalmente para N2 ou N3 com diagnóstico prévio e justificativa técnica auditada.
+  - Técnicos podem transferir para outro colega do mesmo nível com justificativa registrada.
+  - No dropdown de seleção de técnicos (Transferência e Escalação), o nível de cada especialista é exibido explicitamente (`Nome • Nível N1/N2/N3 (Cargo)`).
+

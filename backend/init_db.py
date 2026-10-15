@@ -447,6 +447,22 @@ def apply_migrations():
             CREATE INDEX IF NOT EXISTS idx_term_templates_category ON equipment_term_templates(category);
         """),
         ("equipment_terms.template_id", "ALTER TABLE equipment_terms ADD COLUMN IF NOT EXISTS template_id INTEGER REFERENCES equipment_term_templates(id) ON DELETE SET NULL;"),
+        # Governança ITIL 4 & COBIT DSS02 (Níveis de Atendimento N1/N2/N3, Escalação e Transferência)
+        ("users.allowed_modules", "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_modules JSON;"),
+        ("users.support_level", "ALTER TABLE users ADD COLUMN IF NOT EXISTS support_level VARCHAR(10) DEFAULT 'N1';"),
+        ("tickets.support_level", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS support_level VARCHAR(10) DEFAULT 'N1' NOT NULL;"),
+        ("tickets.first_response_at", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS first_response_at TIMESTAMP WITH TIME ZONE;"),
+        ("tickets.escalated_at", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMP WITH TIME ZONE;"),
+        ("tickets.escalated_by_id", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"),
+        ("tickets.escalation_reason", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalation_reason TEXT;"),
+        ("tickets.escalation_type", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalation_type VARCHAR(30);"),
+        ("tickets.previous_level", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS previous_level VARCHAR(10);"),
+        ("tickets.transferred_at", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS transferred_at TIMESTAMP WITH TIME ZONE;"),
+        ("tickets.transferred_by_id", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS transferred_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"),
+        ("tickets.transfer_reason", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS transfer_reason TEXT;"),
+        ("tickets.previous_technician_id", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS previous_technician_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"),
+        ("tickets.idx_support_level", "CREATE INDEX IF NOT EXISTS idx_tickets_support_level ON tickets(support_level);"),
+        ("ticket_interactions.interaction_type", "ALTER TABLE ticket_interactions ADD COLUMN IF NOT EXISTS interaction_type VARCHAR(40) DEFAULT 'comment' NOT NULL;"),
     ]
 
 

@@ -38,6 +38,7 @@ def _format_user_response(user: User) -> dict:
         "phone": user.phone,
         "role": role_str,
         "roles": user_roles,
+        "support_level": user.support_level or "N1",
         "allowed_modules": user_modules,
         "is_active": user.is_active,
         "department_id": user.department_id,
@@ -123,6 +124,7 @@ def create_user(
         department_id=data.department_id,
         manager_id=data.manager_id,
         role=UserRole(data.role) if data.role else UserRole.USER,
+        support_level=data.support_level or "N1",
     )
     if data.password:
         user.password_hash = hash_password(data.password)
