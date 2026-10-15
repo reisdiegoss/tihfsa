@@ -88,18 +88,17 @@ export default function App() {
           if (themeMeta) themeMeta.setAttribute("content", s.pwa_theme_color);
         }
         if (s.pwa_icon_url) {
-          const iconUrl = s.pwa_icon_url;
+          const v = encodeURIComponent(s.pwa_icon_url.split("/").pop() || "v2");
           // Favicon dinâmico
           let fav = document.querySelector("link[rel='icon']");
-          if (fav) fav.setAttribute("href", iconUrl);
-          // Apple Touch Icon para iOS Safari
-          document.querySelectorAll("link[rel='apple-touch-icon']").forEach((el) => {
-            el.setAttribute("href", iconUrl);
+          if (fav) fav.setAttribute("href", `/icons/icon-192.png?v=${v}`);
+          // Apple Touch Icon para iOS Safari (deve apontar para o endpoint canônico 180x180 RGB)
+          document.querySelectorAll("link[rel='apple-touch-icon'], link[rel='apple-touch-icon-precomposed']").forEach((el) => {
+            el.setAttribute("href", `/apple-touch-icon.png?v=${v}`);
           });
           // Força atualização imediata do manifesto com hash/timestamp do ícone
           let man = document.querySelector("link[rel='manifest']");
           if (man) {
-            const v = encodeURIComponent(iconUrl.split("/").pop() || "latest");
             man.setAttribute("href", `/manifest.webmanifest?v=${v}`);
           }
         }

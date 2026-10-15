@@ -12,3 +12,4 @@ aiosmtplib
 jinja2
 httpx
 python-dotenv
+Pillow

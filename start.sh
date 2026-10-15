@@ -652,8 +652,8 @@ server {
         autoindex on;
     }
 
-    # Manifesto PWA Dinâmico e Ícones Apple Touch iOS (Sempre atualizados)
-    location ~* ^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png)$ {
+    # Manifesto PWA Dinâmico e Ícones Apple Touch iOS / Android (Sempre atualizados)
+    location ~* ^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png|favicon\.ico)$ {
         proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -661,6 +661,17 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    # Ícones canônicos do PWA atendidos dinamicamente pelo backend
+    location /icons/ {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT/icons/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "public, max-age=86400, must-revalidate";
     }
 
     location / {
@@ -745,8 +756,8 @@ server {
         autoindex on;
     }
 
-    # Manifesto PWA Dinâmico e Ícones Apple Touch iOS (Sempre atualizados)
-    location ~* ^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png)$ {
+    # Manifesto PWA Dinâmico e Ícones Apple Touch iOS / Android (Sempre atualizados)
+    location ~* ^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png|favicon\.ico)$ {
         proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -754,6 +765,17 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    # Ícones canônicos do PWA atendidos dinamicamente pelo backend
+    location /icons/ {
+        proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT/icons/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "public, max-age=86400, must-revalidate";
     }
 
     # SPA (Single Page Application) Routing
@@ -883,8 +905,15 @@ start_services() {
     # 1. Garantir que o banco de dados está pronto
     run_database_migrations
 
-    # 2. Se a pasta dist do frontend não existir, compila; caso contrário, sincroniza com /var/www/tihfsa
-    if [[ ! -d "$FRONTEND_DIR/dist" ]]; then
+    # 2. Verifica se o Frontend precisa ser compilado (se dist não existir ou se houver código modificado)
+    local need_build=false
+    if [[ ! -d "$FRONTEND_DIR/dist" || ! -f "$FRONTEND_DIR/dist/index.html" ]]; then
+        need_build=true
+    elif [[ -n "$(find "$FRONTEND_DIR/src" "$FRONTEND_DIR/index.html" "$FRONTEND_DIR/public" -newer "$FRONTEND_DIR/dist/index.html" 2>/dev/null | head -n 1)" ]]; then
+        need_build=true
+    fi
+
+    if $need_build; then
         build_frontend
     else
         deploy_frontend

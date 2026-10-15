@@ -226,43 +226,47 @@ def send_test_email_endpoint(
 
 def build_pwa_manifest_dict(setting: SystemSetting | None) -> dict:
     """
-    Constrói o dicionário do Web App Manifest com o ícone customizado aplicado
-    a todas as resoluções (192, 512, 180) e propósitos ('any' e 'maskable')
-    para plena compatibilidade com Android WebAPK, Chrome, Edge e iOS.
+    Constrói o dicionário do Web App Manifest com referências aos ícones canônicos
+    gerados especificamente para Android Chrome (any + maskable) e Apple iOS Safari (180x180 RGB).
     """
     name = (setting.pwa_name if setting and setting.pwa_name else "TIHFSA — Hotel Fasano Salvador")
     short_name = (setting.pwa_short_name if setting and setting.pwa_short_name else "TIHFSA")
     theme_color = (setting.pwa_theme_color if setting and setting.pwa_theme_color else "#0f172a")
     bg_color = (setting.pwa_bg_color if setting and setting.pwa_bg_color else "#0f172a")
-    icon_url = (setting.pwa_icon_url if setting and setting.pwa_icon_url else "/icons/icon-512.png")
+
+    version_hash = "v2"
+    if setting and setting.pwa_icon_url:
+        cleaned = setting.pwa_icon_url.split("/")[-1].replace("pwa-icon-", "").replace(".png", "")[:8]
+        if cleaned:
+            version_hash = cleaned
 
     icons = [
         {
-            "src": icon_url,
+            "src": f"/icons/icon-192.png?v={version_hash}",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "any"
         },
         {
-            "src": icon_url,
+            "src": f"/icons/icon-maskable-192.png?v={version_hash}",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "maskable"
         },
         {
-            "src": icon_url,
+            "src": f"/icons/icon-512.png?v={version_hash}",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any"
         },
         {
-            "src": icon_url,
+            "src": f"/icons/icon-maskable-512.png?v={version_hash}",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
         },
         {
-            "src": icon_url,
+            "src": f"/icons/apple-touch-icon.png?v={version_hash}",
             "sizes": "180x180",
             "type": "image/png",
             "purpose": "any"
@@ -273,7 +277,7 @@ def build_pwa_manifest_dict(setting: SystemSetting | None) -> dict:
         "name": name,
         "short_name": short_name,
         "description": "Sistema Integrado de Gestão de TI, Helpdesk, NOC e Termos Digitais do Hotel Fasano Salvador",
-        "id": "/?source=pwa",
+        "id": "/",
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
@@ -287,77 +291,12 @@ def build_pwa_manifest_dict(setting: SystemSetting | None) -> dict:
 
 def sync_pwa_files(setting: SystemSetting | None):
     """
-    Sincroniza os arquivos físicos do manifesto (manifest.webmanifest) e copia o ícone
-    customizado para as pastas públicas e canônicas (/icons/icon-192.png, icon-512.png, etc.).
+    Sincroniza os arquivos físicos do manifesto (manifest.webmanifest) e gera
+    todos os ícones canônicos com Pillow para /icons/ e /apple-touch-icon.png.
     """
-    import os
-    import shutil
-    import json
+    from app.services.pwa_service import sync_all_pwa_assets
+    return sync_all_pwa_assets(setting)
 
-    manifest_dict = build_pwa_manifest_dict(setting)
-    manifest_json_str = json.dumps(manifest_dict, ensure_ascii=False, indent=2)
-
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-    target_manifest_files = [
-        os.path.abspath(os.path.join(base_dir, "..", "frontend", "public", "manifest.webmanifest")),
-        os.path.abspath(os.path.join(base_dir, "..", "frontend", "dist", "manifest.webmanifest")),
-        "/var/www/tihfsa/manifest.webmanifest",
-    ]
-
-    for m_path in target_manifest_files:
-        try:
-            if os.path.exists(os.path.dirname(m_path)):
-                with open(m_path, "w", encoding="utf-8") as f:
-                    f.write(manifest_json_str)
-        except Exception:
-            pass
-
-    # Se o ícone for customizado em /uploads/, encontra o arquivo fonte no disco e replica
-    if setting and setting.pwa_icon_url and setting.pwa_icon_url.startswith("/uploads/"):
-        rel_icon_path = setting.pwa_icon_url.lstrip("/")
-        possible_sources = [
-            os.path.abspath(os.path.join(base_dir, rel_icon_path)),
-            os.path.abspath(os.path.join(base_dir, "..", rel_icon_path)),
-            f"/root/TIHFSA/{rel_icon_path}",
-            f"/root/TIHFSA/backend/{rel_icon_path}",
-            f"/var/www/tihfsa/{rel_icon_path}",
-        ]
-
-        found_src = None
-        for p in possible_sources:
-            if os.path.exists(p) and os.path.isfile(p):
-                found_src = p
-                break
-
-        if found_src:
-            target_icon_dirs = [
-                os.path.abspath(os.path.join(base_dir, "..", "frontend", "public", "icons")),
-                os.path.abspath(os.path.join(base_dir, "..", "frontend", "dist", "icons")),
-                "/var/www/tihfsa/icons",
-            ]
-            for idir in target_icon_dirs:
-                try:
-                    if os.path.exists(os.path.dirname(idir)):
-                        os.makedirs(idir, exist_ok=True)
-                        for std_name in ["icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"]:
-                            shutil.copy(found_src, os.path.join(idir, std_name))
-                except Exception:
-                    pass
-
-            # Também copia diretamente na raiz pública para clientes Apple/Safari que buscam /apple-touch-icon.png na raiz
-            root_public_dirs = [
-                os.path.abspath(os.path.join(base_dir, "..", "frontend", "public")),
-                os.path.abspath(os.path.join(base_dir, "..", "frontend", "dist")),
-                "/var/www/tihfsa",
-            ]
-            for rdir in root_public_dirs:
-                try:
-                    if os.path.exists(rdir):
-                        for std_apple in ["apple-touch-icon.png", "apple-touch-icon-precomposed.png", "apple-touch-icon-180x180.png", "apple-touch-icon-180x180-precomposed.png"]:
-                            shutil.copy(found_src, os.path.join(rdir, std_apple))
-                except Exception:
-                    pass
 
 
 @router.get("/pwa-manifest", summary="Obter Manifesto PWA dinâmico com base nos parâmetros configurados")

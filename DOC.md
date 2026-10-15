@@ -1552,4 +1552,20 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Identificação visual com badge do nível de atendimento de cada técnico na tabela de usuários.
         - Exibição do nível de atendimento nos selects de transferência e escalação (`Nome • Nível N1/N2/N3 (Cargo)`).
 
+51. **Arquitetura de Ícones PWA Dinâmicos e Compatibilidade com iOS Safari e Android WebAPK**:
+    - **Diagnóstico e Solução de Falha de Monograma no iOS Safari**:
+      - *Causa Raiz*: O WebKit / iOS Safari rejeita rigorosamente redirecionamentos HTTP 301/302/307 para `apple-touch-icon`, bem como imagens que contenham canal de transparência (canal alpha). Quando isso ocorre, o Safari descarta o ícone e exibe um monograma quadrado com a inicial do título do site ("T") sobre a cor do `theme-color`. Além disso, o Safari armazena esse estado de falha no banco interno `WebpageIcons.db`.
+      - *Correção*:
+        - Implementado o serviço `pwa_service.py` utilizando `Pillow` (PIL) para geração automatizada de `apple-touch-icon.png` em **modo RGB estrito (180x180 pixels, fundo 100% opaco, sem canal alpha)**.
+        - Os endpoints `/apple-touch-icon.png` e `/icons/{icon_name}` no FastAPI entregam **bytes binários diretos com código HTTP 200 OK** (sem redirecionamentos 307).
+        - Implementado cache-busting dinâmico (`?v=hash`) no `index.html` e no ciclo de vida do `App.jsx` para forçar o Safari a descarregar caches corrompidos.
+        - Removidas do `index.html` as tags `<link rel="apple-touch-icon">` com dimensões 192x192 e 512x512, que conflitam com a heurística do Safari.
+    - **Compatibilidade Estrita com Android Chrome & WebAPK Minting**:
+      - O Google Chrome no Android valida os cabeçalhos de imagem do manifesto. Imagens declaradas com `sizes: "192x192"` ou `sizes: "512x512"` agora possuem dimensões binárias exatas de 192x192 e 512x512 pixels, respectivamente.
+      - Geração automática de ícones maskable (`icon-maskable-192.png` e `icon-maskable-512.png`) com safe-zone circular de 78% centralizada sobre o fundo configurado em Parâmetros Gerais (`pwa_bg_color`), garantindo aprovação pelo serviço de minting de WebAPK do Google.
+    - **Proxy Reverso Nginx & Sincronização Autônoma**:
+      - Atualizado `start.sh` com proxies dedicados para `^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png|favicon\.ico)$` e `/icons/`, direcionando diretamente para o FastAPI.
+      - Sincronização e geração de ícones integrada ao startup da aplicação (`lifespan`), ao script de migração (`init_db.py`) e ao endpoint de upload administrativo (`POST /api/v1/settings/pwa-icon`).
+
+
 

@@ -468,10 +468,21 @@ async def lifespan(app: FastAPI):
             """))
             conn.commit()
     except Exception as e:
-        print(f"[DB Auto-Migration Error] {e}")
     _seed_default_asset_types()
-    
-    # Iniciar os background pollers do Zabbix, UniFi e Agendador de Resumo
+
+    # Sincroniza e gera todos os ícones PWA canônicos (192, 512, maskable, apple-touch-icon 180 RGB)
+    try:
+        from app.models.system_setting import SystemSetting
+        from app.services.pwa_service import sync_all_pwa_assets
+        db_pwa = SessionLocal()
+        try:
+            s_pwa = db_pwa.query(SystemSetting).first()
+            sync_all_pwa_assets(s_pwa)
+        finally:
+            db_pwa.close()
+    except Exception as e:
+        print(f"[PWA Auto-Sync Error] {e}")
+
     zabbix_task = asyncio.create_task(zabbix_poller_task())
     unifi_task = asyncio.create_task(unifi_poller_task())
     summary_task = asyncio.create_task(ticket_summary_scheduler_task())
@@ -568,39 +579,149 @@ def get_root_manifest():
 @app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
 @app.get("/apple-touch-icon-180x180.png", include_in_schema=False)
 @app.get("/apple-touch-icon-180x180-precomposed.png", include_in_schema=False)
-@app.get("/icons/apple-touch-icon.png", include_in_schema=False)
 def get_apple_touch_icon():
     from app.models.system_setting import SystemSetting
-    from fastapi.responses import FileResponse, RedirectResponse
+    from app.services.pwa_service import sync_all_pwa_assets
+    from fastapi.responses import Response
 
     db = SessionLocal()
     try:
         setting = db.query(SystemSetting).first()
-        icon_url = getattr(setting, "pwa_icon_url", None)
-        if icon_url and icon_url.startswith("/uploads/"):
-            rel_path = icon_url.lstrip("/")
-            for base_dir in [".", "backend", "..", "/root/TIHFSA", "/root/TIHFSA/backend", "/var/www/tihfsa"]:
-                candidate = os.path.abspath(os.path.join(base_dir, rel_path))
-                if os.path.exists(candidate) and os.path.isfile(candidate):
-                    return FileResponse(
-                        candidate,
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+
+        # 1. Procura o ícone customizado gerado para Apple Touch
+        candidates = [
+            os.path.abspath(os.path.join(base_dir, "..", "uploads", "pwa", "generated", "apple-touch-icon.png")),
+            os.path.abspath(os.path.join(base_dir, "..", "..", "uploads", "pwa", "generated", "apple-touch-icon.png")),
+            "/root/TIHFSA/backend/uploads/pwa/generated/apple-touch-icon.png",
+            "/root/tihfsa/backend/uploads/pwa/generated/apple-touch-icon.png",
+            "/var/www/tihfsa/apple-touch-icon.png",
+        ]
+
+        for cand in candidates:
+            if os.path.exists(cand) and os.path.isfile(cand):
+                with open(cand, "rb") as f:
+                    return Response(
+                        content=f.read(),
                         media_type="image/png",
-                        headers={"Cache-Control": "no-cache, must-revalidate"}
+                        status_code=200,
+                        headers={
+                            "Cache-Control": "public, max-age=86400, must-revalidate",
+                            "Access-Control-Allow-Origin": "*",
+                        }
                     )
-            return RedirectResponse(url=icon_url, status_code=307)
-        
-        # Fallback para o ícone padrão
-        for default_candidate in [
-            "frontend/public/icons/apple-touch-icon.png",
-            "../frontend/public/icons/apple-touch-icon.png",
+
+        # 2. Se há ícone configurado mas ainda não foi gerado, tenta gerar on-the-fly
+        if setting and setting.pwa_icon_url:
+            try:
+                sync_all_pwa_assets(setting)
+                for cand in candidates:
+                    if os.path.exists(cand) and os.path.isfile(cand):
+                        with open(cand, "rb") as f:
+                            return Response(
+                                content=f.read(),
+                                media_type="image/png",
+                                status_code=200,
+                                headers={
+                                    "Cache-Control": "public, max-age=86400, must-revalidate",
+                                    "Access-Control-Allow-Origin": "*",
+                                }
+                            )
+            except Exception as e:
+                print(f"[PWA] Erro ao sincronizar ícones on-the-fly: {e}")
+
+        # 3. Fallback para o ícone padrão estático
+        for default_cand in [
+            os.path.abspath(os.path.join(base_dir, "..", "..", "frontend", "public", "icons", "apple-touch-icon.png")),
+            os.path.abspath(os.path.join(base_dir, "..", "frontend", "public", "icons", "apple-touch-icon.png")),
             "/var/www/tihfsa/icons/apple-touch-icon.png",
         ]:
-            cand = os.path.abspath(default_candidate)
-            if os.path.exists(cand) and os.path.isfile(cand):
-                return FileResponse(cand, media_type="image/png")
-        return RedirectResponse(url="/icons/apple-touch-icon.png", status_code=307)
+            if os.path.exists(default_cand) and os.path.isfile(default_cand):
+                with open(default_cand, "rb") as f:
+                    return Response(content=f.read(), media_type="image/png", status_code=200)
+
+        return Response(status_code=404)
     finally:
         db.close()
+
+
+@app.get("/icons/{icon_name}", include_in_schema=False)
+def get_pwa_icon(icon_name: str):
+    from app.models.system_setting import SystemSetting
+    from app.services.pwa_service import sync_all_pwa_assets
+    from fastapi.responses import Response
+
+    clean_name = os.path.basename(icon_name.split("?")[0].split("#")[0])
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+
+    # 1. Procura nos gerados customizados
+    candidates = [
+        os.path.abspath(os.path.join(base_dir, "..", "uploads", "pwa", "generated", clean_name)),
+        os.path.abspath(os.path.join(base_dir, "..", "..", "uploads", "pwa", "generated", clean_name)),
+        f"/root/TIHFSA/backend/uploads/pwa/generated/{clean_name}",
+        f"/root/tihfsa/backend/uploads/pwa/generated/{clean_name}",
+    ]
+
+    for cand in candidates:
+        if os.path.exists(cand) and os.path.isfile(cand):
+            with open(cand, "rb") as f:
+                return Response(
+                    content=f.read(),
+                    media_type="image/png",
+                    status_code=200,
+                    headers={
+                        "Cache-Control": "public, max-age=86400, must-revalidate",
+                        "Access-Control-Allow-Origin": "*",
+                    }
+                )
+
+    # 2. Se não encontrou, tenta gerar se houver pwa_icon_url
+    db = SessionLocal()
+    try:
+        setting = db.query(SystemSetting).first()
+        if setting and setting.pwa_icon_url:
+            try:
+                sync_all_pwa_assets(setting)
+                for cand in candidates:
+                    if os.path.exists(cand) and os.path.isfile(cand):
+                        with open(cand, "rb") as f:
+                            return Response(
+                                content=f.read(),
+                                media_type="image/png",
+                                status_code=200,
+                                headers={
+                                    "Cache-Control": "public, max-age=86400, must-revalidate",
+                                    "Access-Control-Allow-Origin": "*",
+                                }
+                            )
+            except Exception:
+                pass
+    finally:
+        db.close()
+
+    # 3. Fallback para os ícones padrão no frontend
+    fallback_candidates = [
+        os.path.abspath(os.path.join(base_dir, "..", "..", "frontend", "public", "icons", clean_name)),
+        os.path.abspath(os.path.join(base_dir, "..", "frontend", "public", "icons", clean_name)),
+        f"/var/www/tihfsa/icons/{clean_name}",
+    ]
+    for fcand in fallback_candidates:
+        if os.path.exists(fcand) and os.path.isfile(fcand):
+            with open(fcand, "rb") as f:
+                return Response(
+                    content=f.read(),
+                    media_type="image/png",
+                    status_code=200,
+                    headers={"Cache-Control": "public, max-age=86400"}
+                )
+
+    return Response(status_code=404)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def get_favicon():
+    return get_pwa_icon("icon-192.png")
+
 
 @app.get("/", tags=["Health"])
 def health_check():
