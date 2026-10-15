@@ -25,6 +25,8 @@ param(
     [int]$IntervalMinutes = 15
 )
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
 
@@ -429,7 +431,7 @@ function Get-BackupExecTelemetry {
                 $telemetry.last_job_name = $matches[1]
             }
             if (-not $telemetry.last_job_name) {
-                $telemetry.last_job_name = "Rotina Diária de Backup Veritas"
+                $telemetry.last_job_name = "Rotina Diaria de Backup Veritas"
             }
 
             # Determinar status com base no Event ID se ainda estiver Unknown
@@ -750,14 +752,15 @@ Ensure-SentinelTaskBatterySettings
 # Execução do Check-in
 $payloadObj = Get-SystemMetrics
 $payloadJson = $payloadObj | ConvertTo-Json -Depth 5
+$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($payloadJson)
 $headers = @{
-    "Content-Type"  = "application/json"
+    "Content-Type"  = "application/json; charset=utf-8"
     "X-Agent-Token" = $AgentSecret
 }
 
 $sent = $false
 try {
-    $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $payloadJson -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+    $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $bodyBytes -Headers $headers -TimeoutSec 5 -ErrorAction Stop
     $sent = $true
     if (-not $Silent) {
         Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $ServerUrl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
@@ -766,8 +769,11 @@ try {
     }
 } catch {
     try {
-        # Fallback resiliente via curl.exe nativo do Windows
-        $curlOut = $payloadJson | curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AgentSecret" --data-binary "@-" $ServerUrl 2>$null
+        # Fallback resiliente via curl.exe nativo do Windows com arquivo UTF-8
+        $tempJson = "$env:TEMP\tihfsa_checkin_$([System.Guid]::NewGuid().ToString('N')).json"
+        [System.IO.File]::WriteAllText($tempJson, $payloadJson, [System.Text.Encoding]::UTF8)
+        $curlOut = curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json; charset=utf-8" -H "X-Agent-Token: $AgentSecret" --data-binary "@$tempJson" $ServerUrl 2>$null
+        Remove-Item $tempJson -Force -ErrorAction SilentlyContinue
         if ($curlOut -like '*"status":"ok"*') {
             $sent = $true
             if (-not $Silent) {

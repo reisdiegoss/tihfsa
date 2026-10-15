@@ -739,7 +739,21 @@ def agent_checkin(
         try:
             b_info = data.backup_exec
             b_status = str(b_info.get("last_job_status") or "").strip()
-            job_name = str(b_info.get("last_job_name") or "Rotina de Backup Diário").strip()
+            job_raw = str(b_info.get("last_job_name") or "Rotina de Backup Diário").strip()
+            # Normalização e higienização automática contra caracteres e mojibake do Windows PowerShell
+            for bad, good in [
+                ("Di??ria", "Diária"),
+                ("Di?ria", "Diária"),
+                ("Rotina Diaria", "Rotina Diária"),
+                ("Conclu??do", "Concluído"),
+                ("Conclu?do", "Concluído"),
+                ("??xito", "Êxito"),
+                ("?xito", "Êxito"),
+                ("N??cleo", "Núcleo"),
+                ("N?cleo", "Núcleo"),
+            ]:
+                job_raw = job_raw.replace(bad, good)
+            job_name = job_raw
             comp_time_str = str(b_info.get("last_job_completion_time") or "").strip()
             byte_gb = b_info.get("last_job_byte_count_gb", 0.0)
             elapsed = str(b_info.get("last_job_elapsed_time") or "N/A").strip()
@@ -1722,6 +1736,8 @@ param(
     [int]$IntervalMinutes = 15
 )
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {{$true}}
 
@@ -2150,7 +2166,7 @@ function Get-BackupExecTelemetry {{
                 $telemetry.last_job_name = $matches[1]
             }}
             if (-not $telemetry.last_job_name) {{
-                $telemetry.last_job_name = "Rotina Diária de Backup Veritas"
+                $telemetry.last_job_name = "Rotina Diaria de Backup Veritas"
             }}
 
             if ($telemetry.last_job_status -eq "Unknown") {{
@@ -2688,33 +2704,35 @@ Ensure-SentinelTaskBatterySettings
 
 $metrics = Get-SystemMetrics
 $payload = $metrics | ConvertTo-Json -Depth 5
+$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
 $headers = @{{
-    "Content-Type"  = "application/json"
+    "Content-Type"  = "application/json; charset=utf-8"
     "X-Agent-Token" = $AGENT_SECRET
 }}
 
 $sent = $false
-# Prioriza curl.exe nativo do Windows (resposta instantanea sem timeout de handshake .NET)
 try {{
-    $curlOut = $payload | curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json" -H "X-Agent-Token: $AGENT_SECRET" --data-binary "@-" $SERVER_URL 2>$null
-    if ($curlOut -like '*"status":"ok"*') {{
-        $sent = $true
-        if (-not $Silent) {{
-            Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $SERVER_URL ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
-        }} else {{
-            Log-AgentMessage "[OK] Telemetria enviada com sucesso ($($metrics.hostname) - $($metrics.logged_user))"
-        }}
+    $res = Invoke-RestMethod -Uri $SERVER_URL -Method POST -Body $bodyBytes -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+    $sent = $true
+    if (-not $Silent) {{
+        Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $SERVER_URL ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
+    }} else {{
+        Log-AgentMessage "[OK] Telemetria enviada com sucesso ($($metrics.hostname) - $($metrics.logged_user))"
     }}
-}} catch {{}}
-
-if (-not $sent) {{
+}} catch {{
     try {{
-        $res = Invoke-RestMethod -Uri $SERVER_URL -Method POST -Body $payload -Headers $headers -TimeoutSec 5 -ErrorAction Stop
-        $sent = $true
-        if (-not $Silent) {{
-            Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via Invoke-RestMethod ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
-        }} else {{
-            Log-AgentMessage "[OK] Telemetria enviada com sucesso via Invoke-RestMethod ($($metrics.hostname))"
+        # Fallback via curl.exe nativo do Windows com arquivo UTF-8
+        $tempJson = "$env:TEMP\\tihfsa_checkin_$([System.Guid]::NewGuid().ToString('N')).json"
+        [System.IO.File]::WriteAllText($tempJson, $payload, [System.Text.Encoding]::UTF8)
+        $curlOut = curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json; charset=utf-8" -H "X-Agent-Token: $AGENT_SECRET" --data-binary "@$tempJson" $SERVER_URL 2>$null
+        Remove-Item $tempJson -Force -ErrorAction SilentlyContinue
+        if ($curlOut -like '*"status":"ok"*') {{
+            $sent = $true
+            if (-not $Silent) {{
+                Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via curl ($($metrics.hostname) - $($metrics.logged_user))" -ForegroundColor Green
+            }} else {{
+                Log-AgentMessage "[OK] Telemetria enviada com sucesso via curl ($($metrics.hostname))"
+            }}
         }}
     }} catch {{}}
 }}
