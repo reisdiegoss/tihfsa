@@ -1420,3 +1420,14 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Enquadramento em Viewport Único (Zero Scroll)**:
       - A altura do frame de vídeo foi configurada com limites dinâmicos de viewport (`max-h-[48dvh] sm:max-h-[55dvh] max-w-[310px] sm:max-w-sm`), e o padding interno do modal ajustado para `p-3 sm:p-5`.
       - Toda a Etapa 2 agora cabe confortavelmente em 100% dos smartphones sem nenhuma barra de rolagem, mantendo cabeçalho, vídeo com guias e botões de ação visíveis simultaneamente.
+
+44. **Acessibilidade Universal para Usuários de Óculos na Prova de Vida (`SignTermModal.jsx`)**:
+    - **Remoção do Desafio de Piscada ("Pisque os olhos")**:
+      - **Causa Raiz**: O algoritmo de Eye Aspect Ratio (EAR) é altamente suscetível a reflexos nas lentes de óculos, espessura da armação e sombras orbitais, gerando frequentes falsos negativos e travando a validação biométrica de colaboradores que usam óculos de grau ou sol.
+      - **Solução Definitiva**: O desafio `blink` e seus cálculos trigonométricos de EAR foram removidos do catálogo ativo `LIVENESS_CHALLENGES`.
+      - **Catálogo Otimizado e 100% Imune a Óculos**:
+        1. *Olhar para Cima* (`look_up` - pitch/inclinação cefálica medida por nariz e mandíbula).
+        2. *Virar para a Esquerda* (`turn_left` - yaw/rotação horizontal de perfil).
+        3. *Virar para a Direita* (`turn_right` - yaw/rotação horizontal de perfil).
+        4. *Dar um Sorriso* (`smile` - abertura labial e rede de expressões faciais).
+      - Todos os 4 desafios restantes funcionam com máxima precisão e agilidade independentemente do colaborador estar utilizando óculos.

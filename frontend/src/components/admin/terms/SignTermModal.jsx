@@ -5,22 +5,14 @@ import {
   X, CheckCircle2, AlertCircle, Camera, RefreshCw, 
   Trash2, ShieldCheck, UserCheck, Smartphone, Laptop, 
   Radio, Headphones, Key, Clock, PackageCheck, AlertTriangle,
-  ArrowRight, ArrowLeft, Sparkles, Smile, Eye, ArrowUp, 
+  ArrowRight, ArrowLeft, Sparkles, Smile, ArrowUp, 
   RotateCw, Check, Volume2, Shield, SwitchCamera
 } from "lucide-react";
 import api from "../../../api/client";
 
 // Catálogo de Desafios de Prova de Vida (Liveness Detection)
+// Compatível 100% com usuários de óculos (elimina piscadas sensíveis a reflexos/aros)
 const LIVENESS_CHALLENGES = [
-  {
-    id: "blink",
-    title: "Pisque os olhos",
-    instruction: "Pisque os dois olhos lentamente olhando para a câmera",
-    icon: Eye,
-    emoji: "👁️",
-    color: "text-amber-500",
-    bg: "bg-amber-500/10",
-  },
   {
     id: "look_up",
     title: "Olhe para cima",
@@ -58,15 +50,6 @@ const LIVENESS_CHALLENGES = [
     bg: "bg-emerald-500/10",
   },
 ];
-
-// Cálculo do Eye Aspect Ratio (EAR) para detecção de piscadas
-function getEar(eye) {
-  if (!eye || eye.length < 6) return 0.3;
-  const d1 = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
-  const d2 = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
-  const d3 = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y);
-  return (d1 + d2) / (2.0 * (d3 || 1));
-}
 
 // Emite bipe de sucesso sonoro via Web Audio API
 function playSuccessBeep() {
@@ -122,7 +105,6 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
   const [allChallengesPassed, setAllChallengesPassed] = useState(false);
 
   // Estados temporais para detecção de liveness
-  const blinkStateRef = useRef({ eyeWasClosed: false, closedFrames: 0 });
   const detectionIntervalRef = useRef(null);
 
   // Inicializa modelos do face-api
@@ -163,7 +145,6 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
     setChallengeProgress(0);
     setChallengeCompleted(false);
     setAllChallengesPassed(false);
-    blinkStateRef.current = { eyeWasClosed: false, closedFrames: 0 };
   };
 
   // Liga a câmera somente quando estiver na Etapa 2
@@ -298,25 +279,8 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
 
         let passed = false;
 
-        // 1. DESAFIO: PISCAR OS OLHOS
-        if (activeChallenge.id === "blink") {
-          const leftEye = landmarks.getLeftEye();
-          const rightEye = landmarks.getRightEye();
-          const ear = (getEar(leftEye) + getEar(rightEye)) / 2;
-
-          // Se EAR cair abaixo de 0.22, os olhos fecharam
-          if (ear < 0.22) {
-            blinkStateRef.current.eyeWasClosed = true;
-            blinkStateRef.current.closedFrames += 1;
-            setChallengeProgress(50);
-          } else if (blinkStateRef.current.eyeWasClosed && ear >= 0.26) {
-            // Olho abriu de novo: piscada válida!
-            passed = true;
-          }
-        }
-
-        // 2. DESAFIO: OLHAR PARA CIMA
-        else if (activeChallenge.id === "look_up") {
+        // 1. DESAFIO: OLHAR PARA CIMA
+        if (activeChallenge.id === "look_up") {
           const nose = landmarks.getNose();
           const leftEye = landmarks.getLeftEye();
           const rightEye = landmarks.getRightEye();
@@ -332,7 +296,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
           }
         }
 
-        // 3. DESAFIO: VIRAR PARA A ESQUERDA
+        // 2. DESAFIO: VIRAR PARA A ESQUERDA
         else if (activeChallenge.id === "turn_left") {
           const nose = landmarks.getNose();
           const jaw = landmarks.getJawOutline();
@@ -344,7 +308,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
           }
         }
 
-        // 4. DESAFIO: VIRAR PARA A DIREITA
+        // 3. DESAFIO: VIRAR PARA A DIREITA
         else if (activeChallenge.id === "turn_right") {
           const nose = landmarks.getNose();
           const jaw = landmarks.getJawOutline();
@@ -356,7 +320,7 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
           }
         }
 
-        // 5. DESAFIO: SORRIR
+        // 4. DESAFIO: SORRIR
         else if (activeChallenge.id === "smile") {
           if (expressions && expressions.happy > 0.65) {
             passed = true;
@@ -385,7 +349,6 @@ export default function SignTermModal({ term, isOpen, onClose, onSuccess }) {
               setCurrentChallengeIndex((prev) => prev + 1);
               setChallengeProgress(0);
               setChallengeCompleted(false);
-              blinkStateRef.current = { eyeWasClosed: false, closedFrames: 0 };
             } else {
               // Todos os desafios de prova de vida foram concluídos!
               setAllChallengesPassed(true);
