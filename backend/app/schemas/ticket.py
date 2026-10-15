@@ -7,6 +7,7 @@ class TicketCreate(BaseModel):
     title: str
     description: str | None = None
     priority: str = "Média"
+    support_level: str = "N1"  # N1, N2, N3 (Governança ITIL 4 / COBIT DSS02)
     requester_id: int
     technician_id: int | None = None
     asset_id: int | None = None
@@ -20,6 +21,7 @@ class TicketUpdate(BaseModel):
     description: str | None = None
     status: str | None = None
     priority: str | None = None
+    support_level: str | None = None
     technician_id: int | None = None
     asset_id: int | None = None
     category_id: int | None = None
@@ -38,6 +40,20 @@ class TicketValidate(BaseModel):
     action: str  # "approve" ou "reject"
     token: str | None = None
     rejection_reason: str | None = None
+
+
+class TicketTransfer(BaseModel):
+    """Payload COBIT DSS02.04 — Transferência de Custódia Técnica com Motivo Obrigatório."""
+    target_technician_id: int
+    reason: str
+
+
+class TicketEscalate(BaseModel):
+    """Payload COBIT DSS02.05 — Escalação Funcional ou Hierárquica com Diagnóstico."""
+    target_level: str  # "N1", "N2", "N3"
+    target_technician_id: int | None = None  # None = Fila Geral do Nível
+    reason: str  # Justificativa técnica / diagnóstico prévio
+    escalation_type: str = "Funcional"  # "Funcional" (Técnica) ou "Hierárquica" (Gerencial)
 
 
 class TicketBatchStatusUpdate(BaseModel):
@@ -60,6 +76,7 @@ class InteractionResponse(BaseModel):
     id: int
     message: str
     is_solution: bool
+    interaction_type: str = "comment"  # 'comment', 'system', 'take', 'transfer', 'escalate_functional', 'escalate_hierarchical'
     user_id: int
     user_name: str | None = None
     user_role: str | None = None
@@ -87,6 +104,8 @@ class TicketResponse(BaseModel):
     description: str | None = None
     status: str
     priority: str
+    support_level: str = "N1"  # ITIL 4 Service Desk Tier: N1, N2, N3
+    first_response_at: datetime | None = None
     requester_id: int
     technician_id: int | None = None
     asset_id: int | None = None
@@ -100,18 +119,30 @@ class TicketResponse(BaseModel):
     closure_reason: str | None = None
     reopened_at: datetime | None = None
     reopen_count: int = 0
-    # Campos expandidos (populados na listagem)
+
+    # Trilha de Auditoria COBIT DSS02 — Escalação e Transferência
+    escalated_at: datetime | None = None
+    escalated_by_id: int | None = None
+    escalation_reason: str | None = None
+    escalation_type: str | None = None
+    previous_level: str | None = None
+    transferred_at: datetime | None = None
+    transferred_by_id: int | None = None
+    transfer_reason: str | None = None
+    previous_technician_id: int | None = None
+
+    # Campos expandidos (populados na listagem e detalhe)
     requester_name: str | None = None
     technician_name: str | None = None
     category_name: str | None = None
+    escalated_by_name: str | None = None
+    transferred_by_name: str | None = None
+    previous_technician_name: str | None = None
 
 
 class TicketDetail(TicketResponse):
     """Ticket com dados expandidos para a tela de detalhe."""
-    requester_name: str | None = None
-    technician_name: str | None = None
     asset_name: str | None = None
-    category_name: str | None = None
     subcategory_name: str | None = None
     can_reopen: bool = False
     warranty_expires_at: datetime | None = None

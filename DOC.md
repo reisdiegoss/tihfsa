@@ -1503,3 +1503,39 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - **Checklist Operacional**: Bloco destacado com as etapas de validação física requeridas (inspeção de logs no servidor, validação dos catálogos/fitas LTO e homologação no portal).
         - **Identidade Visual Dinâmica**: Badge e botão de ação dedicados em roxo corporativo (*"🛡️ AGUARDANDO VALIDAÇÃO TÉCNICA"* e botão *"Homologar / Validar Backup #{id}"*) para rotinas concluídas com sucesso, e badges/botões em vermelho de emergência (*"🚨 FALHA CRÍTICA NO BACKUP"*) para falhas.
 
+50. **Níveis de Atendimento (N1, N2, N3), Assumir, Transferir e Escalar Chamados — Governança ITIL 4 & COBIT 2019 (DSS02)**:
+    - **Alinhamento Metodológico com Frameworks de TI**:
+      - **ITIL 4 (Prática de Gerenciamento de Incidentes & Service Desk)**:
+        - *Gestão de Custódia e Propriedade (Ownership)*: Eliminação de chamados órfãos por meio do mecanismo de atribuição rápida (1-click self-assignment).
+        - *First Contact Resolution (FCR) & SLA de Primeira Resposta*: Rastreamento do tempo de início de atendimento (`first_response_at`) no exato instante em que um técnico assume o chamado ou envia a primeira interação.
+        - *Segregação de Escalações*: Divisão formal entre **Escalação Funcional** (vertical entre equipes N1 &rarr; N2 &rarr; N3 por complexidade técnica) e **Escalação Hierárquica** (acionamento de lideranças e gestores de TI para decisões operacionais e alocação de recursos).
+      - **COBIT 2019 (Domínio DSS02 — Gerenciar Solicitações de Serviço e Incidentes)**:
+        - *DSS02.01 (Classificação e Priorização de Incidentes)*: Estrutura formalizada de níveis N1, N2 e N3.
+        - *DSS02.04 (Resolução e Recuperação de Incidentes)*: Custódia formal com responsabilidade técnica explícita.
+        - *DSS02.05 (Escalação de Incidentes)*: Procedimento padronizado de escalação com diagnóstico prévio e justificativa técnica obrigatória.
+        - *DSS02.07 (Rastreabilidade e Trilha de Auditoria Completa)*: Toda mudança de dono, transferência lateral ou escalação gera evento imutável na timeline com tipo específico (`interaction_type`), carimbo de tempo, executor e justificativa técnica (não-repúdio).
+    - **Classificação dos Níveis de Suporte (Support Tiers)**:
+      - **Nível 1 (N1 - Azul Sky `#0284c7`)**: Service Desk / Suporte Básico (senhas, impressoras, periféricos, e-mail corporativo, suporte a hóspedes/UH e dúvidas gerais).
+      - **Nível 2 (N2 - Roxo `#7e22ce`)**: Suporte Avançado / Field Services (estações de trabalho, hardware, redes locais, telefonia IP, sistemas operacionais e PMS/PDV).
+      - **Nível 3 (N3 - Vermelho/Rosa `#e11d48`)**: Infraestrutura, Redes Centrais & Servidores (servidores FASSA, Veritas Backup Exec, Switches Cisco/UniFi, Firewalls, Zabbix NOC e links de internet).
+    - **Novos Endpoints da API REST (`/api/v1/tickets`)**:
+      - `POST /{id}/take`: Atribui o chamado ao analista autenticado (`technician_id = current_user.id`), move status de "Novo" para "Em Andamento", grava `first_response_at`, cria interação de auditoria (`interaction_type="take"`) e dispara notificação por WhatsApp/e-mail ao solicitante.
+      - `POST /{id}/transfer`: Transfere a custódia do chamado para outro técnico ativo com validação de justificativa obrigatória, armazena `previous_technician_id`, `transferred_by_id`, `transferred_at`, `transfer_reason`, cria interação (`interaction_type="transfer"`) e notifica o novo técnico por WhatsApp e e-mail.
+      - `POST /{id}/escalate`: Altera o `support_level` do chamado, tipifica a escalação (`Funcional` vs `Hierárquica`), exige diagnóstico prévio e justificativa técnica, permite direcionar a um especialista específico ou mover para a **Fila Livre do Nível** (`technician_id = None`), cria interação de auditoria (`interaction_type="escalate_functional"` ou `"escalate_hierarchical"`) e dispara alerta no grupo da TI.
+      - `GET /` e `GET /stats`: Suporte a filtros de `support_level`, `unassigned` (fila livre) e contadores analíticos por nível.
+    - **Interface de Usuário (Frontend Web & Mobile)**:
+      - **Drawer de Detalhes (`TicketDetailDrawer.jsx`)**:
+        - Header com Badge elegante do Nível de Suporte (N1, N2, N3).
+        - Barra de Ações Operacionais ITIL/COBIT no topo (botão *"Assumir Chamado"* com feedback de custódia, botão *"Transferir"* e botão *"Escalar Nível"*).
+        - Card de Governança e Rastreabilidade exibindo histórico de escalações e transferências anteriores.
+        - Linha do Tempo (Timeline) com nós e balões estilizados por tipo de interação (`take`, `transfer`, `escalate_functional`, `escalate_hierarchical`, `solution`).
+        - Modais modais integrados com validações de justificativa, escolha de tipo ITIL e listas dinâmicas de técnicos.
+      - **Lista de Chamados (`TicketList.jsx`)**:
+        - Barra de filtros com Pills por Nível ITIL (`Todos`, `N1`, `N2`, `N3`) com contadores em tempo real.
+        - Botão toggle para **"Fila Livre (Sem Técnico)"** para visualização imediata de chamados pendentes de custódia.
+        - Coluna dedicada de **Nível** na tabela desktop e badge de nível nos cards mobile.
+        - Ação rápida de 1 clique para *"Assumir"* chamado diretamente na linha da tabela quando estiver na Fila Livre.
+      - **Abertura de Chamado (`NewTicket.jsx`)**:
+        - Seletor visual do Nível de Atendimento ITIL (N1 Padrão, N2 Avançado, N3 Infraestrutura) integrado ao fluxo de abertura pelo analista.
+
+

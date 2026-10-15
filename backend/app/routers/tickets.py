@@ -17,13 +17,14 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth.dependencies import get_current_user, require_technician
 from app.models.user import User, UserRole
-from app.models.ticket import Ticket, TicketStatus, TicketPriority
+from app.models.ticket import Ticket, TicketStatus, TicketPriority, SupportLevel, EscalationType
 from app.models.ticket_interaction import TicketInteraction
 from app.models.asset import Asset
 from app.models.category import Category, Subcategory
 from datetime import datetime, timezone
 from app.schemas.ticket import (
     TicketCreate, TicketUpdate, TicketSolve, TicketValidate, TicketBatchStatusUpdate,
+    TicketTransfer, TicketEscalate,
     TicketResponse, TicketDetail, InteractionCreate, InteractionResponse,
 )
 from app.services.ticket_service import TicketService
@@ -93,12 +94,23 @@ def create_ticket(
     - Técnico: pode abrir em nome de qualquer usuário/apto.
     - Usuário: abre para si mesmo.
     """
+    s_level = SupportLevel.N1
+    if data.support_level:
+        try:
+            s_level = SupportLevel(data.support_level)
+        except Exception:
+            s_level = SupportLevel.N1
+    elif any(term in (data.title or "") for term in ["NOC Auto-Alerta", "Backup Exec", "Zabbix", "Servidor", "Switch"]):
+        s_level = SupportLevel.N3
+
     ticket = Ticket(
         title=data.title,
         description=data.description,
         priority=TicketPriority(data.priority) if data.priority else TicketPriority.MEDIUM,
+        support_level=s_level,
+        first_response_at=datetime.now(timezone.utc) if data.technician_id else None,
         requester_id=data.requester_id,
-        technician_id=data.technician_id or current_user.id,
+        technician_id=data.technician_id or (current_user.id if current_user.role in (UserRole.ADMIN, UserRole.TECHNICIAN) else None),
         asset_id=data.asset_id,
         category_id=data.category_id,
         subcategory_id=data.subcategory_id,
@@ -106,8 +118,8 @@ def create_ticket(
         status=TicketStatus.NEW,
     )
 
-    # Se o técnico já está criando com solução, muda para IN_PROGRESS
-    if data.technician_id:
+    # Se já há técnico atribuído na abertura, avança para IN_PROGRESS
+    if ticket.technician_id:
         ticket.status = TicketStatus.IN_PROGRESS
 
     db.add(ticket)
@@ -291,6 +303,8 @@ def get_notifications(
 
 def list_tickets(
     status_filter: str | None = Query(None, alias="status"),
+    support_level: str | None = None,
+    unassigned: bool | None = None,
     technician_id: int | None = None,
     requester_id: int | None = None,
     category_id: int | None = None,
@@ -350,6 +364,16 @@ def list_tickets(
         if target_status:
             query = query.filter(Ticket.status == target_status)
 
+    if support_level and isinstance(support_level, str) and support_level.strip():
+        try:
+            s_enum = SupportLevel(support_level.strip().upper())
+            query = query.filter(Ticket.support_level == s_enum)
+        except Exception:
+            pass
+
+    if unassigned is True:
+        query = query.filter(Ticket.technician_id.is_(None))
+
     if priority and isinstance(priority, str) and priority.strip():
         target_prio = None
         for p in TicketPriority:
@@ -386,6 +410,8 @@ def list_tickets(
         sort_column = Ticket.priority
     elif order_by == "status":
         sort_column = Ticket.status
+    elif order_by == "support_level":
+        sort_column = Ticket.support_level
 
     if order_dir.lower() == "asc":
         query = query.order_by(sort_column.asc())
@@ -401,15 +427,30 @@ def list_tickets(
             description=t.description,
             status=t.status.value,
             priority=t.priority.value,
+            support_level=t.support_level.value if hasattr(t.support_level, "value") else str(t.support_level or "N1"),
+            first_response_at=t.first_response_at,
             requester_id=t.requester_id,
             technician_id=t.technician_id,
             asset_id=t.asset_id,
             category_id=t.category_id,
             subcategory_id=t.subcategory_id,
+            problem_type_id=t.problem_type_id,
             created_at=t.created_at,
             updated_at=t.updated_at,
             solved_at=t.solved_at,
             closed_at=t.closed_at,
+            closure_reason=t.closure_reason,
+            reopened_at=t.reopened_at,
+            reopen_count=t.reopen_count or 0,
+            escalated_at=t.escalated_at,
+            escalated_by_id=t.escalated_by_id,
+            escalation_reason=t.escalation_reason,
+            escalation_type=t.escalation_type.value if hasattr(t.escalation_type, "value") else str(t.escalation_type) if t.escalation_type else None,
+            previous_level=t.previous_level.value if hasattr(t.previous_level, "value") else str(t.previous_level) if t.previous_level else None,
+            transferred_at=t.transferred_at,
+            transferred_by_id=t.transferred_by_id,
+            transfer_reason=t.transfer_reason,
+            previous_technician_id=t.previous_technician_id,
             requester_name=t.requester.display_name if t.requester else None,
             technician_name=t.technician.display_name if t.technician else None,
             category_name=t.category.name if t.category else None,
@@ -423,12 +464,24 @@ def ticket_stats(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """KPIs do dashboard: contagem por status."""
+    """KPIs do dashboard: contagem por status e por nível de atendimento ITIL/COBIT."""
     total = db.query(Ticket).count()
     by_status = {}
     for s in TicketStatus:
         by_status[s.value] = db.query(Ticket).filter(Ticket.status == s).count()
-    return {"total": total, "by_status": by_status}
+
+    by_level = {}
+    for lvl in SupportLevel:
+        by_level[lvl.value] = db.query(Ticket).filter(Ticket.support_level == lvl).count()
+
+    unassigned_count = db.query(Ticket).filter(Ticket.technician_id.is_(None), Ticket.status != TicketStatus.CLOSED).count()
+
+    return {
+        "total": total,
+        "by_status": by_status,
+        "by_level": by_level,
+        "unassigned_count": unassigned_count,
+    }
 
 
 @router.get("/{ticket_id}", response_model=TicketDetail)
@@ -449,6 +502,10 @@ def get_ticket(
     asset = db.query(Asset).filter(Asset.id == ticket.asset_id).first() if ticket.asset_id else None
     category = db.query(Category).filter(Category.id == ticket.category_id).first() if ticket.category_id else None
     subcategory = db.query(Subcategory).filter(Subcategory.id == ticket.subcategory_id).first() if ticket.subcategory_id else None
+
+    escalated_by = db.query(User).filter(User.id == ticket.escalated_by_id).first() if ticket.escalated_by_id else None
+    transferred_by = db.query(User).filter(User.id == ticket.transferred_by_id).first() if ticket.transferred_by_id else None
+    prev_technician = db.query(User).filter(User.id == ticket.previous_technician_id).first() if ticket.previous_technician_id else None
 
     interactions = (
         db.query(TicketInteraction)
@@ -477,6 +534,7 @@ def get_ticket(
                 id=i.id,
                 message=i.message,
                 is_solution=i.is_solution,
+                interaction_type=i.interaction_type or "comment",
                 user_id=i.user_id,
                 user_name=u_name,
                 user_role=u_role,
@@ -508,6 +566,8 @@ def get_ticket(
         description=ticket.description,
         status=ticket.status.value,
         priority=ticket.priority.value,
+        support_level=ticket.support_level.value if hasattr(ticket.support_level, "value") else str(ticket.support_level or "N1"),
+        first_response_at=ticket.first_response_at,
         requester_id=ticket.requester_id,
         technician_id=ticket.technician_id,
         asset_id=ticket.asset_id,
@@ -524,11 +584,23 @@ def get_ticket(
         can_reopen=can_reopen,
         warranty_expires_at=warranty_expires_at,
         satisfaction_rating=satisfaction_rating,
+        escalated_at=ticket.escalated_at,
+        escalated_by_id=ticket.escalated_by_id,
+        escalation_reason=ticket.escalation_reason,
+        escalation_type=ticket.escalation_type.value if hasattr(ticket.escalation_type, "value") else str(ticket.escalation_type) if ticket.escalation_type else None,
+        previous_level=ticket.previous_level.value if hasattr(ticket.previous_level, "value") else str(ticket.previous_level) if ticket.previous_level else None,
+        transferred_at=ticket.transferred_at,
+        transferred_by_id=ticket.transferred_by_id,
+        transfer_reason=ticket.transfer_reason,
+        previous_technician_id=ticket.previous_technician_id,
         requester_name=requester.display_name if requester else None,
         technician_name=technician.display_name if technician else None,
         asset_name=asset.name if asset else None,
         category_name=category.name if category else None,
         subcategory_name=subcategory.name if subcategory else None,
+        escalated_by_name=escalated_by.display_name if escalated_by else None,
+        transferred_by_name=transferred_by.display_name if transferred_by else None,
+        previous_technician_name=prev_technician.display_name if prev_technician else None,
         interactions=interaction_responses,
         attachments=[TicketAttachmentResponse.model_validate(a) for a in attachments],
     )
@@ -1124,4 +1196,320 @@ def reopen_ticket(
     background_tasks.add_task(send_ticket_reopened_notification, ticket=ticket, user_name=current_user.display_name, reason=reason)
 
     return ticket
+
+
+@router.post("/{ticket_id}/take", response_model=TicketResponse, summary="Assumir chamado (ITIL Ownership & FCR)")
+def take_ticket(
+    ticket_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Assume a responsabilidade/custódia técnica do chamado (1-click self-assignment).
+    Regras ITIL 4 & COBIT DSS02:
+    - Define technician_id para o usuário autenticado.
+    - Se status for Novo, avança automaticamente para Em Andamento.
+    - Se não houver first_response_at registrado, carimba o timestamp atual (First Response SLA).
+    - Gera registro imutável de auditoria em TicketInteraction (interaction_type='take').
+    - Dispara notificação ao solicitante (se configurado).
+    """
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado")
+
+    if ticket.status == TicketStatus.CLOSED:
+        raise HTTPException(status_code=400, detail="Não é possível assumir um chamado já encerrado")
+
+    now = datetime.now(timezone.utc)
+    ticket.technician_id = current_user.id
+    ticket.updated_at = now
+
+    # Se novo, inicia atendimento
+    if ticket.status == TicketStatus.NEW:
+        ticket.status = TicketStatus.IN_PROGRESS
+
+    # ITIL: SLA de primeira resposta
+    if not ticket.first_response_at:
+        ticket.first_response_at = now
+
+    audit_msg = f"📌 [Custódia Assumida] O técnico {current_user.display_name} assumiu a responsabilidade pelo atendimento deste chamado."
+    interaction = TicketInteraction(
+        ticket_id=ticket.id,
+        user_id=current_user.id,
+        message=audit_msg,
+        interaction_type="take",
+        is_solution=False,
+    )
+    db.add(interaction)
+    db.commit()
+    db.refresh(ticket)
+
+    # Notificações
+    base_url = get_app_base_url()
+    try:
+        from app.models.system_setting import SystemSetting
+        from app.services.email_service import send_ticket_assigned_notification
+        setting = db.query(SystemSetting).first()
+        notify_assign = getattr(setting, "notify_requester_on_assign", True) if setting else True
+        req_user = db.query(User).filter(User.id == ticket.requester_id).first()
+        if notify_assign and req_user and req_user.email:
+            background_tasks.add_task(
+                send_ticket_assigned_notification,
+                ticket=ticket,
+                requester_name=req_user.display_name,
+                requester_email=req_user.email,
+                technician_name=current_user.display_name,
+            )
+        if req_user and req_user.phone:
+            wa_take = (
+                f"👤 *[TIHFSA] Chamado em Atendimento #{ticket.id}*\n\n"
+                f"Olá, *{req_user.display_name}*!\n"
+                f"O técnico *{current_user.display_name}* assumiu o atendimento do seu chamado *'{ticket.title}'*.\n\n"
+                f"🔗 *Acompanhar chamado:* {base_url}/app?ticketId={ticket.id}"
+            )
+            background_tasks.add_task(
+                EvolutionService.send_whatsapp_message,
+                wa_take,
+                recipient=req_user.phone,
+                ticket_id=ticket.id,
+                recipient_name=req_user.display_name,
+            )
+    except Exception as e:
+        print(f"[WARN] Falha nas notificações de take_ticket: {e}")
+
+    return ticket
+
+
+@router.post("/{ticket_id}/transfer", response_model=TicketResponse, summary="Transferir chamado (COBIT DSS02.04 & DSS02.07)")
+def transfer_ticket(
+    ticket_id: int,
+    data: TicketTransfer,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Transfere a custódia técnica de um chamado para outro especialista.
+    Regras COBIT DSS02.04 e DSS02.07:
+    - Justificativa obrigatória (não-repúdio).
+    - Validação de que o técnico de destino existe e está ativo.
+    - Armazena histórico completo (previous_technician_id, transferred_by_id, transferred_at, transfer_reason).
+    - Cria interação do tipo 'transfer' para trilha de auditoria.
+    - Notifica o novo técnico responsável.
+    """
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado")
+
+    if ticket.status == TicketStatus.CLOSED:
+        raise HTTPException(status_code=400, detail="Não é possível transferir um chamado já encerrado")
+
+    reason = data.reason.strip() if data.reason else ""
+    if not reason:
+        raise HTTPException(status_code=400, detail="A justificativa da transferência é obrigatória conforme COBIT DSS02.")
+
+    target_tech = db.query(User).filter(User.id == data.target_technician_id, User.is_active == True).first()
+    if not target_tech:
+        raise HTTPException(status_code=404, detail="Técnico de destino não encontrado ou inativo")
+
+    if ticket.technician_id == target_tech.id:
+        raise HTTPException(status_code=400, detail="O chamado já está atribuído a este técnico")
+
+    now = datetime.now(timezone.utc)
+    prev_tech_id = ticket.technician_id
+    prev_tech = db.query(User).filter(User.id == prev_tech_id).first() if prev_tech_id else None
+    prev_tech_name = prev_tech.display_name if prev_tech else "Fila Livre"
+
+    ticket.previous_technician_id = prev_tech_id
+    ticket.technician_id = target_tech.id
+    ticket.transferred_at = now
+    ticket.transferred_by_id = current_user.id
+    ticket.transfer_reason = reason
+    ticket.updated_at = now
+
+    if ticket.status == TicketStatus.NEW:
+        ticket.status = TicketStatus.IN_PROGRESS
+
+    audit_msg = (
+        f"🔄 [Custódia Transferida]\n"
+        f"De: {prev_tech_name}\n"
+        f"Para: {target_tech.display_name}\n"
+        f"Transferido por: {current_user.display_name}\n"
+        f"Motivo / Justificativa: {reason}"
+    )
+    interaction = TicketInteraction(
+        ticket_id=ticket.id,
+        user_id=current_user.id,
+        message=audit_msg,
+        interaction_type="transfer",
+        is_solution=False,
+    )
+    db.add(interaction)
+    db.commit()
+    db.refresh(ticket)
+
+    # Notificações ao novo técnico
+    base_url = get_app_base_url()
+    try:
+        from app.services.email_service import send_ticket_assigned_notification
+        req_user = db.query(User).filter(User.id == ticket.requester_id).first()
+        req_name = req_user.display_name if req_user else "Solicitante"
+
+        if target_tech.email:
+            background_tasks.add_task(
+                send_ticket_assigned_notification,
+                ticket=ticket,
+                requester_name=req_name,
+                requester_email=target_tech.email,
+                technician_name=target_tech.display_name,
+            )
+
+        if target_tech.phone:
+            wa_transfer = (
+                f"🔄 *[TIHFSA] Chamado Transferido para Você! #{ticket.id}*\n\n"
+                f"Olá, *{target_tech.display_name}*!\n"
+                f"O técnico *{current_user.display_name}* transferiu o chamado *'{ticket.title}'* para a sua responsabilidade.\n"
+                f"*Motivo:* {reason}\n\n"
+                f"🔗 *Acessar chamado:* {base_url}/admin/tickets?ticketId={ticket.id}"
+            )
+            background_tasks.add_task(
+                EvolutionService.send_whatsapp_message,
+                wa_transfer,
+                recipient=target_tech.phone,
+                ticket_id=ticket.id,
+                recipient_name=target_tech.display_name,
+            )
+    except Exception as e:
+        print(f"[WARN] Falha nas notificações de transfer_ticket: {e}")
+
+    return ticket
+
+
+@router.post("/{ticket_id}/escalate", response_model=TicketResponse, summary="Escalar chamado (ITIL Escalação Funcional/Hierárquica & COBIT DSS02.05)")
+def escalate_ticket(
+    ticket_id: int,
+    data: TicketEscalate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Escala o chamado de nível (N1 -> N2 -> N3) ou hierarquicamente (ITIL 4 / COBIT DSS02.05).
+    - Justificativa com diagnóstico técnico prévio obrigatória.
+    - Se target_technician_id for omitido, o chamado entra na Fila do Nível para assumir.
+    - Registra interaction_type ('escalate_functional' ou 'escalate_hierarchical').
+    - Dispara alerta imediato à equipe de TI.
+    """
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado")
+
+    if ticket.status == TicketStatus.CLOSED:
+        raise HTTPException(status_code=400, detail="Não é possível escalar um chamado já encerrado")
+
+    reason = data.reason.strip() if data.reason else ""
+    if not reason:
+        raise HTTPException(status_code=400, detail="O diagnóstico prévio / justificativa da escalação é obrigatório (ITIL/COBIT).")
+
+    # Validar nível
+    target_lvl = None
+    for lvl in SupportLevel:
+        if lvl.value == data.target_level:
+            target_lvl = lvl
+            break
+    if not target_lvl:
+        raise HTTPException(status_code=400, detail=f"Nível de suporte '{data.target_level}' inválido. Use N1, N2 ou N3.")
+
+    # Validar tipo de escalação
+    esc_type = EscalationType.FUNCTIONAL
+    for et in EscalationType:
+        if et.value.lower() == data.escalation_type.lower():
+            esc_type = et
+            break
+
+    target_tech = None
+    if data.target_technician_id:
+        target_tech = db.query(User).filter(User.id == data.target_technician_id, User.is_active == True).first()
+        if not target_tech:
+            raise HTTPException(status_code=404, detail="Técnico de destino não encontrado ou inativo")
+
+    now = datetime.now(timezone.utc)
+    old_level_val = ticket.support_level.value if hasattr(ticket.support_level, "value") else str(ticket.support_level or "N1")
+
+    ticket.previous_level = ticket.support_level
+    ticket.support_level = target_lvl
+    ticket.escalated_at = now
+    ticket.escalated_by_id = current_user.id
+    ticket.escalation_reason = reason
+    ticket.escalation_type = esc_type
+    ticket.previous_technician_id = ticket.technician_id
+
+    if target_tech:
+        ticket.technician_id = target_tech.id
+    else:
+        # Fila Livre do Nível especificado
+        ticket.technician_id = None
+
+    ticket.updated_at = now
+    if ticket.status == TicketStatus.NEW:
+        ticket.status = TicketStatus.IN_PROGRESS
+
+    target_desc = target_tech.display_name if target_tech else f"Fila Livre ({target_lvl.value})"
+    audit_msg = (
+        f"🚀 [Escalação {esc_type.value}]\n"
+        f"Nível: {old_level_val} ➔ {target_lvl.value}\n"
+        f"Atribuído a: {target_desc}\n"
+        f"Escalado por: {current_user.display_name}\n"
+        f"Diagnóstico / Justificativa: {reason}"
+    )
+    interaction = TicketInteraction(
+        ticket_id=ticket.id,
+        user_id=current_user.id,
+        message=audit_msg,
+        interaction_type="escalate_hierarchical" if esc_type == EscalationType.HIERARCHICAL else "escalate_functional",
+        is_solution=False,
+    )
+    db.add(interaction)
+    db.commit()
+    db.refresh(ticket)
+
+    # Notificações
+    base_url = get_app_base_url()
+    try:
+        # Notificação ao grupo de TI
+        wa_escalate = (
+            f"🚀 *[Chamado Escalado - {target_lvl.value}]*\n\n"
+            f"*Ticket ID:* #{ticket.id}\n"
+            f"*Título:* {ticket.title}\n"
+            f"*Tipo de Escalação:* {esc_type.value}\n"
+            f"*Transição:* {old_level_val} ➔ *{target_lvl.value}*\n"
+            f"*Destino:* {target_desc}\n"
+            f"*Escalado por:* {current_user.display_name}\n"
+            f"*Diagnóstico / Motivo:* {reason}\n\n"
+            f"🔗 *Ver no sistema:* {base_url}/admin/tickets?ticketId={ticket.id}"
+        )
+        background_tasks.add_task(EvolutionService.send_whatsapp_message, wa_escalate, ticket_id=ticket.id)
+
+        # Se tiver técnico individual designado, notifica-o diretamente
+        if target_tech and target_tech.phone:
+            wa_personal = (
+                f"🚀 *[TIHFSA] Chamado Escalado para Você! #{ticket.id}*\n\n"
+                f"Olá, *{target_tech.display_name}*!\n"
+                f"O chamado *'{ticket.title}'* foi escalado para o nível *{target_lvl.value}* e atribuído a você por {current_user.display_name}.\n"
+                f"*Diagnóstico / Motivo:* {reason}\n\n"
+                f"🔗 *Acessar chamado:* {base_url}/admin/tickets?ticketId={ticket.id}"
+            )
+            background_tasks.add_task(
+                EvolutionService.send_whatsapp_message,
+                wa_personal,
+                recipient=target_tech.phone,
+                ticket_id=ticket.id,
+                recipient_name=target_tech.display_name,
+            )
+    except Exception as e:
+        print(f"[WARN] Falha nas notificações de escalate_ticket: {e}")
+
+    return ticket
+
 

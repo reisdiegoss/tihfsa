@@ -6,7 +6,7 @@ import {
   Layers, AlertTriangle, ChevronLeft, ChevronsLeft, 
   ChevronsRight, CheckCircle2, User, Radio, Activity, Wifi,
   CheckSquare, Square, MinusSquare, ShieldCheck, MessageSquare, Send,
-  Star, Ticket
+  Star, Ticket, UserCheck
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../api/client";
@@ -138,6 +138,8 @@ export default function TicketList() {
   const [selectedPriority, setSelectedPriority] = useState("Todas");
   const [selectedCategory, setSelectedCategory] = useState("Todas");
   const [selectedOrigin, setSelectedOrigin] = useState("Todas");
+  const [selectedSupportLevel, setSelectedSupportLevel] = useState("Todos"); // "Todos", "N1", "N2", "N3"
+  const [onlyUnassigned, setOnlyUnassigned] = useState(false); // Fila Livre
   const [dateFilter, setDateFilter] = useState("all");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
@@ -167,6 +169,18 @@ export default function TicketList() {
       .then((r) => setTickets(Array.isArray(r.data) ? r.data : []))
       .catch(console.error)
       .finally(() => setLoading(false));
+  };
+
+  const handleTakeDirect = async (tId, e) => {
+    if (e) e.stopPropagation();
+    if (!confirm("Deseja assumir o atendimento deste chamado imediatamente sob sua custódia técnica?")) return;
+    try {
+      await api.post(`/tickets/${tId}/take`);
+      fetchTickets();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao assumir chamado.");
+    }
   };
 
   const fetchCategories = () => {
@@ -209,6 +223,17 @@ export default function TicketList() {
     return counts;
   }, [tickets]);
 
+  // Contadores de Níveis de Suporte ITIL e Chamados sem Técnico (Fila Livre)
+  const levelCounts = useMemo(() => {
+    const counts = { Todos: tickets.length, N1: 0, N2: 0, N3: 0, unassigned: 0 };
+    tickets.forEach((t) => {
+      const lvl = t.support_level || "N1";
+      if (counts[lvl] !== undefined) counts[lvl]++;
+      if (!t.technician_name && t.status !== "Fechado") counts.unassigned++;
+    });
+    return counts;
+  }, [tickets]);
+
   // Detector de filtros ativos
   const hasActiveFilters = useMemo(() => {
     return (
@@ -217,6 +242,8 @@ export default function TicketList() {
       selectedPriority !== "Todas" ||
       selectedCategory !== "Todas" ||
       selectedOrigin !== "Todas" ||
+      selectedSupportLevel !== "Todos" ||
+      onlyUnassigned ||
       dateFilter !== "all" ||
       customStartDate !== "" ||
       customEndDate !== "" ||
@@ -229,6 +256,8 @@ export default function TicketList() {
     selectedPriority,
     selectedCategory,
     selectedOrigin,
+    selectedSupportLevel,
+    onlyUnassigned,
     dateFilter,
     customStartDate,
     customEndDate,
@@ -243,6 +272,8 @@ export default function TicketList() {
     if (selectedPriority !== "Todas") count++;
     if (selectedCategory !== "Todas") count++;
     if (selectedOrigin !== "Todas") count++;
+    if (selectedSupportLevel !== "Todos") count++;
+    if (onlyUnassigned) count++;
     if (dateFilter !== "all") count++;
     if (sortField !== "created_at" || sortDirection !== "desc") count++;
     return count;
@@ -252,6 +283,8 @@ export default function TicketList() {
     selectedPriority,
     selectedCategory,
     selectedOrigin,
+    selectedSupportLevel,
+    onlyUnassigned,
     dateFilter,
     sortField,
     sortDirection,
@@ -264,6 +297,8 @@ export default function TicketList() {
     setSelectedPriority("Todas");
     setSelectedCategory("Todas");
     setSelectedOrigin("Todas");
+    setSelectedSupportLevel("Todos");
+    setOnlyUnassigned(false);
     setDateFilter("all");
     setCustomStartDate("");
     setCustomEndDate("");
@@ -339,7 +374,17 @@ export default function TicketList() {
           if (selectedOrigin === "Manuais" && (isZabbix || isUniFi || isAtivoAuto)) return false;
         }
 
-        // 6. Data e Hora
+        // 6. Nível de Atendimento ITIL (N1, N2, N3)
+        if (selectedSupportLevel !== "Todos" && (t.support_level || "N1") !== selectedSupportLevel) {
+          return false;
+        }
+
+        // 7. Fila Livre (Sem técnico responsável)
+        if (onlyUnassigned && t.technician_name) {
+          return false;
+        }
+
+        // 8. Data e Hora
         if (dateFilter !== "all" && t.created_at) {
           const ticketDate = new Date(t.created_at);
           const ticketTime = ticketDate.getTime();
@@ -719,6 +764,70 @@ export default function TicketList() {
           </div>
         </div>
 
+        {/* Níveis de Suporte ITIL 4 & Fila Livre */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100/80">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <Layers size={12} className="text-blue-600" /> Nível ITIL:
+            </span>
+            {[
+              { id: "Todos", label: "Todos os Níveis", count: levelCounts.Todos },
+              { id: "N1", label: "N1 (Service Desk)", count: levelCounts.N1 },
+              { id: "N2", label: "N2 (Avançado)", count: levelCounts.N2 },
+              { id: "N3", label: "N3 (Redes/Servidores)", count: levelCounts.N3 },
+            ].map((lvl) => {
+              const isSelected = selectedSupportLevel === lvl.id;
+              return (
+                <button
+                  key={lvl.id}
+                  onClick={() => {
+                    setSelectedSupportLevel(lvl.id);
+                    setCurrentPage(1);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    isSelected
+                      ? lvl.id === "N3" ? "bg-rose-600 text-white shadow-xs" :
+                        lvl.id === "N2" ? "bg-purple-600 text-white shadow-xs" :
+                        lvl.id === "N1" ? "bg-sky-600 text-white shadow-xs" :
+                        "bg-slate-800 text-white shadow-xs"
+                      : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                  }`}
+                >
+                  <span>{lvl.label}</span>
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-black ${
+                    isSelected ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                  }`}>
+                    {lvl.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Toggle Fila Livre (Chamados sem técnico) */}
+          <button
+            type="button"
+            onClick={() => {
+              setOnlyUnassigned(!onlyUnassigned);
+              setCurrentPage(1);
+            }}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-extrabold border transition-all cursor-pointer ${
+              onlyUnassigned
+                ? "bg-amber-100 text-amber-900 border-amber-300 shadow-xs"
+                : "bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100"
+            }`}
+            title="Filtrar chamados que ainda não possuem técnico atribuído (Fila Livre)"
+          >
+            <UserCheck size={14} className={onlyUnassigned ? "text-amber-700" : "text-slate-400"} />
+            <span>Fila Livre (Sem Técnico)</span>
+            <span className={`px-1.5 py-0.2 rounded text-[10px] font-black ${
+              onlyUnassigned ? "bg-amber-200/80 text-amber-950" : "bg-slate-200 text-slate-700"
+            }`}>
+              {levelCounts.unassigned}
+            </span>
+          </button>
+        </div>
+
         {/* Row 2: Advanced Filters & Sorting Controls (Expandable / Visible) */}
         <div className={`pt-3 border-t border-slate-100 ${showAdvancedFilters ? "block" : "hidden sm:block"}`}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
@@ -1072,6 +1181,15 @@ export default function TicketList() {
                           {t.priority}
                         </span>
 
+                        {/* Badge de Nível ITIL */}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                          t.support_level === "N3" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                          t.support_level === "N2" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                          "bg-sky-50 text-sky-700 border-sky-200"
+                        }`}>
+                          Nível {t.support_level || "N1"}
+                        </span>
+
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
                           t.status === "Em Andamento" ? "bg-amber-100 text-amber-800" :
                           t.status === "Fechado" ? "bg-emerald-100 text-emerald-700" :
@@ -1087,6 +1205,27 @@ export default function TicketList() {
                       <h4 className="font-bold text-slate-900 text-sm leading-snug line-clamp-2">
                         {t.title}
                       </h4>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-2">
+                      {t.technician_name ? (
+                        <span className="font-medium text-slate-600">• Técnico: {t.technician_name}</span>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200 font-extrabold text-[10px]">
+                            Fila Livre
+                          </span>
+                          {isStaff && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleTakeDirect(t.id, e)}
+                              className="text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                            >
+                              <UserCheck size={11} /> Assumir
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100/80 flex-wrap gap-2">
@@ -1141,6 +1280,7 @@ export default function TicketList() {
                   {renderSortHeader("created_at", "Data & Hora", "bg-blue-50/30 text-blue-900/80")}
                   {renderSortHeader("category", "Categoria")}
                   {renderSortHeader("priority", "Prioridade")}
+                  {renderSortHeader("support_level", "Nível")}
                   {renderSortHeader("status", "Status")}
                   <th className="px-6 py-4 text-right">Ação</th>
                 </tr>
@@ -1212,11 +1352,27 @@ export default function TicketList() {
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs font-semibold text-slate-400 mt-0.5 flex items-center gap-2">
+                            <p className="text-xs font-semibold text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
                               <span>#{t.id}</span>
-                              {t.technician_name && (
+                              {t.technician_name ? (
                                 <span className="text-[11px] text-slate-500 font-medium">
                                   • Técnico: {t.technician_name}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <span className="text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200/80 px-1.5 py-0.2 rounded">
+                                    Fila Livre
+                                  </span>
+                                  {isStaff && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleTakeDirect(t.id, e)}
+                                      className="text-[10px] font-black bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                                      title="Assumir este chamado imediatamente sob sua custódia técnica"
+                                    >
+                                      <UserCheck size={11} /> Assumir
+                                    </button>
+                                  )}
                                 </span>
                               )}
                             </p>
@@ -1281,7 +1437,23 @@ export default function TicketList() {
                         </span>
                       </td>
 
-                      {/* Coluna 6: Status */}
+                      {/* Coluna 6: Nível ITIL */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-black inline-flex items-center gap-1 border shadow-2xs ${
+                          t.support_level === "N3" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                          t.support_level === "N2" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                          "bg-sky-50 text-sky-700 border-sky-200"
+                        }`}>
+                          <Layers size={11} className={
+                            t.support_level === "N3" ? "text-rose-600" :
+                            t.support_level === "N2" ? "text-purple-600" :
+                            "text-sky-600"
+                          } />
+                          Nível {t.support_level || "N1"}
+                        </span>
+                      </td>
+
+                      {/* Coluna 7: Status */}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col gap-0.5">
                           <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-block w-fit ${

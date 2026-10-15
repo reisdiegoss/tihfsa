@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, ArrowLeft, MapPin, UploadCloud, X, File as FileIcon, Building2, Hotel, ChevronDown } from "lucide-react";
+import { Send, ArrowLeft, MapPin, UploadCloud, X, File as FileIcon, Building2, Hotel, ChevronDown, Layers } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -30,6 +30,7 @@ export default function NewTicket() {
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("Média");
+  const [supportLevel, setSupportLevel] = useState("N1"); // ITIL 4 Support Level: N1, N2, N3
   
   // Localização UH vs Local Físico / Setor (igual ao /suporte)
   const [locationType, setLocationType] = useState("LOCAL"); // "LOCAL" ou "UH"
@@ -183,6 +184,7 @@ export default function NewTicket() {
         title: finalTitle,
         description: description || null,
         priority,
+        support_level: supportLevel,
         requester_id: Number(requesterId),
         technician_id: user.id,
         category_id: Number(categoryId),
@@ -563,11 +565,46 @@ export default function NewTicket() {
           </div>
         </div>
 
-        {/* Prioridade e Submit */}
-        <div className="flex flex-col md:flex-row gap-6 items-end">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex-1 w-full">
+        {/* Nível de Suporte (ITIL 4) e Prioridade */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          {/* Nível de Suporte */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs">
+            <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-3 flex items-center gap-1.5">
+              <Layers size={14} className="text-blue-600" />
+              Nível de Suporte (ITIL 4)
+            </label>
+            <div className="grid grid-cols-3 gap-2.5">
+              {[
+                { lvl: "N1", label: "Nível 1", desc: "Service Desk", color: "sky" },
+                { lvl: "N2", label: "Nível 2", desc: "Field / Avançado", color: "purple" },
+                { lvl: "N3", label: "Nível 3", desc: "Redes / Servidores", color: "rose" },
+              ].map((item) => (
+                <button
+                  key={item.lvl}
+                  type="button"
+                  onClick={() => setSupportLevel(item.lvl)}
+                  className={`p-3 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                    supportLevel === item.lvl
+                      ? item.lvl === "N3"
+                        ? "border-rose-600 bg-rose-50 text-rose-950 ring-2 ring-rose-500/20"
+                        : item.lvl === "N2"
+                          ? "border-purple-600 bg-purple-50 text-purple-950 ring-2 ring-purple-500/20"
+                          : "border-sky-600 bg-sky-50 text-sky-950 ring-2 ring-sky-500/20"
+                      : "border-slate-100 bg-slate-50 text-slate-600 hover:border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <p className="font-extrabold text-xs">{item.label}</p>
+                  <p className="text-[10px] text-slate-500 font-medium mt-0.5">{item.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Prioridade */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs">
             <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block mb-3">Nível de Prioridade</label>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
               {priorities.map((prio) => (
                 <label
                   key={prio.value}
@@ -591,10 +628,14 @@ export default function NewTicket() {
             </div>
           </div>
 
+        </div>
+
+        {/* Submit Bar */}
+        <div className="flex justify-end pt-2">
           <button
             type="submit"
             disabled={loading}
-            className="flex-shrink-0 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 rounded-3xl font-bold shadow-lg shadow-blue-600/30 transition-all disabled:opacity-50 cursor-pointer w-full md:w-auto h-fit"
+            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-blue-600/30 transition-all disabled:opacity-50 cursor-pointer w-full md:w-auto"
           >
             {loading ? "Registrando..." : "Registrar Chamado"}
             <Send size={18} />

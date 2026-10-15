@@ -6,9 +6,11 @@ import { useState, useEffect, useRef } from "react";
 import { 
   X, Send, User, Tag, AlertCircle, Clock, CheckCircle, 
   ShieldCheck, Wrench, Paperclip, FileText, Download,
-  MessageSquare, Sparkles, Eye, PlusCircle, Trash2
+  MessageSquare, Sparkles, Eye, PlusCircle, Trash2,
+  UserCheck, ArrowRightLeft, TrendingUp, ShieldAlert, Layers
 } from "lucide-react";
 import api from "../../api/client";
+import { useAuth } from "../../contexts/AuthContext";
 import MediaViewerModal from "../ui/MediaViewerModal";
 
 export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
@@ -18,6 +20,9 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [updating, setUpdating] = useState(false);
 
+  // Contexto de Autenticação
+  const { user, isStaff } = useAuth();
+
   // Estado do Visualizador Interno Universal
   const [viewerFile, setViewerFile] = useState(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -25,6 +30,18 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
   // Estado do Modal de Fechamento com Motivo Obrigatório
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [closureReasonInput, setClosureReasonInput] = useState("");
+
+  // Estados de Governança ITIL / COBIT: Transferência & Escalação
+  const [techniciansList, setTechniciansList] = useState([]);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferTargetTechId, setTransferTargetTechId] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+
+  const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
+  const [escalateTargetLevel, setEscalateTargetLevel] = useState("N2");
+  const [escalateType, setEscalateType] = useState("Funcional"); // "Funcional" ou "Hierárquica"
+  const [escalateTargetTechId, setEscalateTargetTechId] = useState("");
+  const [escalateReason, setEscalateReason] = useState("");
 
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
@@ -41,6 +58,99 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
   useEffect(() => {
     fetchTicket();
   }, [ticketId]);
+
+  // Carregar lista de técnicos ativos para transferências e escalações
+  useEffect(() => {
+    api.get("/users/?is_active=true")
+      .then((r) => {
+        const all = Array.isArray(r.data) ? r.data : [];
+        const techs = all.filter((u) => {
+          const rStr = (u.role || "").toLowerCase();
+          const roles = (u.roles || []).map((x) => x.toLowerCase());
+          return !u.is_room && (
+            rStr.includes("tech") || rStr.includes("tecnico") || rStr.includes("admin") ||
+            roles.some((x) => x.includes("tech") || x.includes("tecnico") || x.includes("admin"))
+          );
+        });
+        setTechniciansList(techs);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Assumir Chamado (ITIL 4 Ownership & FCR)
+  const handleTakeTicket = async () => {
+    if (!confirm("Deseja assumir o atendimento deste chamado sob sua custódia técnica?")) return;
+    setUpdating(true);
+    try {
+      await api.post(`/tickets/${ticketId}/take`);
+      fetchTicket();
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao assumir chamado.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Transferir Chamado (COBIT DSS02.04 & DSS02.07)
+  const handleConfirmTransfer = async (e) => {
+    if (e) e.preventDefault();
+    if (!transferTargetTechId) {
+      alert("Selecione o técnico de destino.");
+      return;
+    }
+    if (!transferReason.trim()) {
+      alert("A justificativa técnica da transferência é obrigatória.");
+      return;
+    }
+    setUpdating(true);
+    try {
+      await api.post(`/tickets/${ticketId}/transfer`, {
+        target_technician_id: Number(transferTargetTechId),
+        reason: transferReason.trim(),
+      });
+      setIsTransferModalOpen(false);
+      setTransferTargetTechId("");
+      setTransferReason("");
+      fetchTicket();
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao transferir chamado.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Escalar Chamado (ITIL 4 Escalação Funcional/Hierárquica & COBIT DSS02.05)
+  const handleConfirmEscalate = async (e) => {
+    if (e) e.preventDefault();
+    if (!escalateReason.trim()) {
+      alert("O diagnóstico prévio e justificativa da escalação são obrigatórios conforme governança ITIL/COBIT.");
+      return;
+    }
+    setUpdating(true);
+    try {
+      await api.post(`/tickets/${ticketId}/escalate`, {
+        target_level: escalateTargetLevel,
+        target_technician_id: escalateTargetTechId ? Number(escalateTargetTechId) : null,
+        reason: escalateReason.trim(),
+        escalation_type: escalateType,
+      });
+      setIsEscalateModalOpen(false);
+      setEscalateTargetLevel("N2");
+      setEscalateTargetTechId("");
+      setEscalateReason("");
+      fetchTicket();
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || "Erro ao escalar chamado.");
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   // Handler para auto-expansão dinâmica da área de texto de comentário
   const handleCommentChange = (e) => {
@@ -176,8 +286,24 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
           
           {/* Drawer Header */}
           <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Chamado #{ticketId}</span>
+              
+              {/* Badge Nível de Suporte ITIL 4 */}
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-black inline-flex items-center gap-1.5 border shadow-2xs ${
+                ticket?.support_level === "N3" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                ticket?.support_level === "N2" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                "bg-sky-50 text-sky-700 border-sky-200"
+              }`}>
+                <Layers size={12} className={
+                  ticket?.support_level === "N3" ? "text-rose-600" :
+                  ticket?.support_level === "N2" ? "text-purple-600" :
+                  "text-sky-600"
+                } />
+                Nível {ticket?.support_level || "N1"}
+              </span>
+
+              {/* Status do Chamado */}
               <span className={`px-3 py-1 rounded-full text-xs font-extrabold ${
                 ticket?.status === "Em Andamento" ? "bg-amber-100 text-amber-700" :
                 ticket?.status === "Fechado" ? "bg-emerald-100 text-emerald-700" :
@@ -226,7 +352,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                   <div className="truncate">
                     <p className="text-[10px] font-black text-slate-400 uppercase">Técnico</p>
                     <p className="text-xs font-extrabold text-slate-900 truncate" title={ticket?.technician_name}>
-                      {ticket?.technician_name || "Não atribuído"}
+                      {ticket?.technician_name || "Fila Livre (Sem técnico)"}
                     </p>
                   </div>
                 </div>
@@ -263,6 +389,116 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                   <p className="text-xs text-emerald-950 font-medium leading-relaxed">
                     <strong className="font-bold text-emerald-800">Motivo do Fechamento:</strong> {ticket?.closure_reason || "Resolução concluída"}
                   </p>
+                </div>
+              )}
+
+              {/* Painel de Governança ITIL 4 & COBIT DSS02 — Auditoria e Transição */}
+              {(ticket?.first_response_at || ticket?.escalated_at || ticket?.transferred_at) && (
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5 text-xs shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                    <span className="font-extrabold text-slate-800 flex items-center gap-1.5 uppercase text-[10px] tracking-wider">
+                      <ShieldCheck size={14} className="text-blue-600" /> Governança & Rastreabilidade (ITIL / COBIT)
+                    </span>
+                    {ticket?.first_response_at && (
+                      <span className="text-[11px] text-slate-500 font-semibold">
+                        1ª Resposta: {new Date(ticket.first_response_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </div>
+
+                  {ticket?.escalated_at && (
+                    <div className="flex items-start gap-2 text-purple-950 bg-purple-50/60 p-2.5 rounded-xl border border-purple-100">
+                      <TrendingUp size={15} className="text-purple-600 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-[11px]">
+                          Escalação {ticket.escalation_type || "Funcional"}: {ticket.previous_level || "N1"} ➔ {ticket.support_level} por {ticket.escalated_by_name || "Técnico"}
+                          <span className="text-slate-400 font-normal ml-1">
+                            ({new Date(ticket.escalated_at).toLocaleString("pt-BR")})
+                          </span>
+                        </p>
+                        {ticket.escalation_reason && (
+                          <p className="text-[11px] text-purple-900 font-medium">
+                            <strong>Diagnóstico / Justificativa:</strong> {ticket.escalation_reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {ticket?.transferred_at && (
+                    <div className="flex items-start gap-2 text-amber-950 bg-amber-50/60 p-2.5 rounded-xl border border-amber-100">
+                      <ArrowRightLeft size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-[11px]">
+                          Custódia transferida de {ticket.previous_technician_name || "Fila Livre"} para {ticket.technician_name} por {ticket.transferred_by_name || "Técnico"}
+                          <span className="text-slate-400 font-normal ml-1">
+                            ({new Date(ticket.transferred_at).toLocaleString("pt-BR")})
+                          </span>
+                        </p>
+                        {ticket.transfer_reason && (
+                          <p className="text-[11px] text-amber-900 font-medium">
+                            <strong>Motivo:</strong> {ticket.transfer_reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Ações Operacionais ITIL 4 & COBIT DSS02 (Assumir, Transferir, Escalar) */}
+              {isStaff && ticket?.status !== "Fechado" && (
+                <div className="space-y-2">
+                  <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                    <span>Ações de Atendimento (ITIL / COBIT)</span>
+                    <span className="text-[10px] text-blue-600 font-bold lowercase">1-click ownership & alocação</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    
+                    {/* Botão Assumir Chamado */}
+                    {ticket?.technician_id === user?.id ? (
+                      <div className="py-2.5 px-3 rounded-xl bg-emerald-50 text-emerald-700 font-extrabold text-xs border border-emerald-200 flex items-center justify-center gap-1.5 shadow-2xs select-none">
+                        <UserCheck size={14} className="text-emerald-600" />
+                        <span>Você é o Responsável</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={updating}
+                        onClick={handleTakeTicket}
+                        className="py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
+                        title="Assumir a custódia técnica deste chamado imediatamente"
+                      >
+                        <UserCheck size={14} />
+                        <span>Assumir Chamado</span>
+                      </button>
+                    )}
+
+                    {/* Botão Transferir */}
+                    <button
+                      type="button"
+                      disabled={updating}
+                      onClick={() => setIsTransferModalOpen(true)}
+                      className="py-2.5 px-3 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 font-extrabold text-xs border border-amber-200 transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      title="Transferir custódia do chamado para outro técnico especialista com justificativa"
+                    >
+                      <ArrowRightLeft size={14} />
+                      <span>Transferir</span>
+                    </button>
+
+                    {/* Botão Escalar */}
+                    <button
+                      type="button"
+                      disabled={updating}
+                      onClick={() => setIsEscalateModalOpen(true)}
+                      className="py-2.5 px-3 rounded-xl bg-purple-50 text-purple-800 hover:bg-purple-100 font-extrabold text-xs border border-purple-200 transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      title="Escalar nível de suporte (N1 -> N2 -> N3) ou escalação hierárquica"
+                    >
+                      <TrendingUp size={14} />
+                      <span>Escalar Nível</span>
+                    </button>
+
+                  </div>
                 </div>
               )}
 
@@ -324,38 +560,82 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                           
                           {/* Timeline Node Icon */}
                           <div className={`absolute -left-6 top-1 w-5 h-5 rounded-full border-2 bg-white flex items-center justify-center z-10 ${
-                            item.is_solution
-                              ? "border-emerald-500 text-emerald-600 bg-emerald-50"
-                              : idx === 0
-                                ? "border-blue-600 text-blue-600 shadow-xs ring-2 ring-blue-100"
-                                : "border-slate-400 text-slate-500"
+                            item.interaction_type === "take"
+                              ? "border-sky-500 text-sky-600 bg-sky-50"
+                              : item.interaction_type === "transfer"
+                                ? "border-amber-500 text-amber-600 bg-amber-50"
+                                : item.interaction_type === "escalate_functional"
+                                  ? "border-purple-500 text-purple-600 bg-purple-50"
+                                  : item.interaction_type === "escalate_hierarchical"
+                                    ? "border-rose-500 text-rose-600 bg-rose-50"
+                                    : item.is_solution
+                                      ? "border-emerald-500 text-emerald-600 bg-emerald-50"
+                                      : idx === 0
+                                        ? "border-blue-600 text-blue-600 shadow-xs ring-2 ring-blue-100"
+                                        : "border-slate-400 text-slate-500"
                           }`}>
                             <div className={`w-2 h-2 rounded-full ${
-                              item.is_solution 
-                                ? "bg-emerald-500" 
-                                : idx === 0 
-                                  ? "bg-blue-600 animate-pulse" 
-                                  : "bg-slate-400"
+                              item.interaction_type === "take"
+                                ? "bg-sky-500"
+                                : item.interaction_type === "transfer"
+                                  ? "bg-amber-500"
+                                  : item.interaction_type === "escalate_functional"
+                                    ? "bg-purple-500"
+                                    : item.interaction_type === "escalate_hierarchical"
+                                      ? "bg-rose-500"
+                                      : item.is_solution 
+                                        ? "bg-emerald-500" 
+                                        : idx === 0 
+                                          ? "bg-blue-600 animate-pulse" 
+                                          : "bg-slate-400"
                             }`} />
                           </div>
 
                           {/* Message Card / Bubble */}
                           <div className={`p-4 rounded-2xl border transition-all ${
-                            item.is_solution
-                              ? "bg-emerald-50/70 border-emerald-200 shadow-xs"
-                              : idx === 0
-                                ? "bg-slate-50 border-blue-200/80 shadow-xs"
-                                : "bg-slate-50/80 border-slate-200/80 hover:bg-slate-50"
+                            item.interaction_type === "take"
+                              ? "bg-sky-50/70 border-sky-200/90 shadow-2xs"
+                              : item.interaction_type === "transfer"
+                                ? "bg-amber-50/70 border-amber-200/90 shadow-2xs"
+                                : item.interaction_type === "escalate_functional"
+                                  ? "bg-purple-50/70 border-purple-200/90 shadow-2xs"
+                                  : item.interaction_type === "escalate_hierarchical"
+                                    ? "bg-rose-50/70 border-rose-200/90 shadow-2xs"
+                                    : item.is_solution
+                                      ? "bg-emerald-50/70 border-emerald-200 shadow-xs"
+                                      : idx === 0
+                                        ? "bg-slate-50 border-blue-200/80 shadow-xs"
+                                        : "bg-slate-50/80 border-slate-200/80 hover:bg-slate-50"
                           }`}>
                             
                             {/* Header: User Name + Role Badge + Timestamp */}
                             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-extrabold text-slate-900 text-xs">{userName}</span>
                                 {getRoleBadge(item.user_role)}
                                 {idx === 0 && (
                                   <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase tracking-wider">
                                     Mais Recente
+                                  </span>
+                                )}
+                                {item.interaction_type === "take" && (
+                                  <span className="text-[10px] font-black bg-sky-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                    <UserCheck size={10} /> Custódia Assumida
+                                  </span>
+                                )}
+                                {item.interaction_type === "transfer" && (
+                                  <span className="text-[10px] font-black bg-amber-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                    <ArrowRightLeft size={10} /> Custódia Transferida
+                                  </span>
+                                )}
+                                {item.interaction_type === "escalate_functional" && (
+                                  <span className="text-[10px] font-black bg-purple-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                    <TrendingUp size={10} /> Escalação Funcional
+                                  </span>
+                                )}
+                                {item.interaction_type === "escalate_hierarchical" && (
+                                  <span className="text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                    <ShieldAlert size={10} /> Escalação Hierárquica
                                   </span>
                                 )}
                                 {item.is_solution && (
@@ -631,6 +911,253 @@ export default function TicketDetailDrawer({ ticketId, onClose, onUpdate }) {
                     <>
                       <CheckCircle size={14} />
                       <span>Confirmar Encerramento</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Transferência de Custódia (COBIT DSS02.04 & DSS02.07) */}
+      {isTransferModalOpen && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden p-6 space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                  <ArrowRightLeft size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">Transferir Chamado #{ticketId}</h3>
+                  <p className="text-[11px] text-slate-500">Governança COBIT DSS02.04 — Gestão de Custódia</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !updating && setIsTransferModalOpen(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmTransfer} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Novo Técnico Responsável: <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] font-semibold text-slate-400">Obrigatório</span>
+                </label>
+                <select
+                  value={transferTargetTechId}
+                  onChange={(e) => setTransferTargetTechId(e.target.value)}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs font-semibold rounded-xl p-3 outline-none focus:border-amber-500 focus:bg-white transition-all cursor-pointer"
+                >
+                  <option value="">Selecione o técnico de destino...</option>
+                  {techniciansList
+                    .filter((t) => t.id !== ticket?.technician_id)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.display_name} ({t.role || "Técnico"})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Justificativa da Transferência: <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] font-semibold text-slate-400">Auditoria COBIT</span>
+                </label>
+                <textarea
+                  value={transferReason}
+                  onChange={(e) => setTransferReason(e.target.value)}
+                  placeholder="Explique o motivo da transferência (ex: mudança de turno, especialidade em telefonia IP, indisponibilidade temporária, etc.)..."
+                  rows={3}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs font-medium rounded-xl p-3 outline-none focus:border-amber-500 focus:bg-white transition-all resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={updating}
+                  onClick={() => setIsTransferModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating || !transferTargetTechId || !transferReason.trim()}
+                  className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {updating ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Transferindo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRightLeft size={14} />
+                      <span>Confirmar Transferência</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Escalação de Chamado (ITIL 4 & COBIT DSS02.05) */}
+      {isEscalateModalOpen && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden p-6 space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                  <TrendingUp size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">Escalar Chamado #{ticketId}</h3>
+                  <p className="text-[11px] text-slate-500">Governança ITIL 4 & COBIT DSS02.05 — Escalação Estruturada</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !updating && setIsEscalateModalOpen(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmEscalate} className="space-y-4">
+              
+              {/* Seleção do Nível Alvo */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Nível de Suporte Alvo: <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { lvl: "N1", label: "Nível 1", desc: "Service Desk", color: "sky" },
+                    { lvl: "N2", label: "Nível 2", desc: "Field / Avançado", color: "purple" },
+                    { lvl: "N3", label: "Nível 3", desc: "Redes / Servidores", color: "rose" },
+                  ].map((item) => (
+                    <button
+                      key={item.lvl}
+                      type="button"
+                      onClick={() => setEscalateTargetLevel(item.lvl)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        escalateTargetLevel === item.lvl
+                          ? "border-purple-600 bg-purple-50/80 ring-2 ring-purple-500/20 shadow-xs"
+                          : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                      }`}
+                    >
+                      <p className="text-xs font-extrabold text-slate-900">{item.label}</p>
+                      <p className="text-[10px] text-slate-500 font-medium">{item.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Seleção de Tipo de Escalação ITIL 4 */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Tipo de Escalação (ITIL 4): <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEscalateType("Funcional")}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      escalateType === "Funcional"
+                        ? "border-purple-600 bg-purple-50 text-purple-900 font-extrabold ring-2 ring-purple-500/20"
+                        : "border-slate-200 bg-slate-50 text-slate-700 font-medium hover:bg-slate-100"
+                    }`}
+                  >
+                    <p className="text-xs">⚡ Funcional (Técnica)</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Especialista técnico de maior complexidade</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEscalateType("Hierárquica")}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      escalateType === "Hierárquica"
+                        ? "border-rose-600 bg-rose-50 text-rose-900 font-extrabold ring-2 ring-rose-500/20"
+                        : "border-slate-200 bg-slate-50 text-slate-700 font-medium hover:bg-slate-100"
+                    }`}
+                  >
+                    <p className="text-xs">🚨 Hierárquica (Gerencial)</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Liderança / Gestão de TI para decisão</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Técnico Especialista Opcional ou Fila Geral */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Atribuir Especialista Específico:</span>
+                  <span className="text-[10px] font-semibold text-slate-400">Opcional</span>
+                </label>
+                <select
+                  value={escalateTargetTechId}
+                  onChange={(e) => setEscalateTargetTechId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs font-semibold rounded-xl p-3 outline-none focus:border-purple-500 focus:bg-white transition-all cursor-pointer"
+                >
+                  <option value="">Fila Geral do Nível (Sem técnico atribuído inicial)</option>
+                  {techniciansList.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.display_name} ({t.role || "Técnico"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Diagnóstico Prévio & Motivo Obrigatório */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Diagnóstico Prévio & Motivo da Escalação: <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] font-semibold text-slate-400">ITIL / COBIT DSS02</span>
+                </label>
+                <textarea
+                  value={escalateReason}
+                  onChange={(e) => setEscalateReason(e.target.value)}
+                  placeholder="Descreva o que já foi testado no nível anterior, evidências obtidas e por que o chamado requer atendimento deste nível..."
+                  rows={3}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs font-medium rounded-xl p-3 outline-none focus:border-purple-500 focus:bg-white transition-all resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={updating}
+                  onClick={() => setIsEscalateModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating || !escalateReason.trim()}
+                  className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {updating ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Escalando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <TrendingUp size={14} />
+                      <span>Confirmar Escalação</span>
                     </>
                   )}
                 </button>

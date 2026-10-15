@@ -30,6 +30,17 @@ class TicketPriority(str, enum.Enum):
     CRITICAL = "Crítica"
 
 
+class SupportLevel(str, enum.Enum):
+    N1 = "N1"  # Service Desk / Suporte Operacional Básico
+    N2 = "N2"  # Suporte Avançado / Field Services / Redes Locais
+    N3 = "N3"  # Infraestrutura, Servidores, Redes Core & Especialistas
+
+
+class EscalationType(str, enum.Enum):
+    FUNCTIONAL = "Funcional"      # Escalação Técnica (N1 -> N2 -> N3)
+    HIERARCHICAL = "Hierárquica"  # Escalação Gerencial (Alerta à Liderança/Governança)
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
 
@@ -47,6 +58,15 @@ class Ticket(Base):
         default=TicketPriority.MEDIUM,
         nullable=False,
     )
+    # Governança ITIL 4 / COBIT DSS02 — Nível de Atendimento
+    support_level = Column(
+        Enum(SupportLevel),
+        default=SupportLevel.N1,
+        nullable=False,
+        index=True,
+    )
+    # ITIL SLA — Carimbo da primeira resposta / momento da assunção pelo técnico
+    first_response_at = Column(DateTime(timezone=True), nullable=True)
 
     # Token JWT de uso único para validação do gestor
     validation_token = Column(String(500), nullable=True)
@@ -70,6 +90,19 @@ class Ticket(Base):
     reopened_at = Column(DateTime(timezone=True), nullable=True)
     reopen_count = Column(Integer, default=0, nullable=False)
 
+    # Trilha de Auditoria COBIT DSS02.05 — Escalação
+    escalated_at = Column(DateTime(timezone=True), nullable=True)
+    escalated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    escalation_reason = Column(Text, nullable=True)
+    escalation_type = Column(Enum(EscalationType), nullable=True)
+    previous_level = Column(Enum(SupportLevel), nullable=True)
+
+    # Trilha de Auditoria COBIT DSS02.04 — Transferência / Handover
+    transferred_at = Column(DateTime(timezone=True), nullable=True)
+    transferred_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    transfer_reason = Column(Text, nullable=True)
+    previous_technician_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     # FK — Quem abriu o chamado (pessoa ou apartamento)
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
@@ -87,6 +120,9 @@ class Ticket(Base):
     # Relationships
     requester = relationship("User", foreign_keys=[requester_id], back_populates="tickets_opened")
     technician = relationship("User", foreign_keys=[technician_id], back_populates="tickets_assigned")
+    escalated_by = relationship("User", foreign_keys=[escalated_by_id])
+    transferred_by = relationship("User", foreign_keys=[transferred_by_id])
+    previous_technician = relationship("User", foreign_keys=[previous_technician_id])
     asset = relationship("Asset", back_populates="tickets")
     category = relationship("Category")
     subcategory = relationship("Subcategory")

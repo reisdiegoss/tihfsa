@@ -17,6 +17,9 @@ class TicketInteraction(Base):
     id = Column(Integer, primary_key=True, index=True)
     message = Column(Text, nullable=False)
     is_solution = Column(Boolean, default=False, nullable=False)
+    # Trilha de Auditoria COBIT DSS02 — Tipos de Interação / Evento de Ciclo de Vida
+    # 'comment' | 'system' | 'take' | 'transfer' | 'escalate_functional' | 'escalate_hierarchical' | 'solution' | 'reopen'
+    interaction_type = Column(String(40), default="comment", nullable=False)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
