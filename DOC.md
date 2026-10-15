@@ -1493,4 +1493,11 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - **Backup Concluído com Sucesso**: Abre chamado automaticamente no Helpdesk com status **"Aguardando Validação"** (`TicketStatus.PENDING_VALIDATION`) e prioridade Baixa/Média. Permite que o analista de TI valide fisicamente os catálogos/fitas antes de encerrar o chamado diário.
       - **Backup com Falha ou Erro**: Abre chamado com status **"Novo"** (`TicketStatus.NEW`) e prioridade **"Crítica"** (`TicketPriority.CRITICAL`), destacando o Event ID e a mensagem de erro do Backup Exec para intervenção emergencial.
       - **Deduplicação Inteligente (36 Horas)**: Utiliza hash combinada do servidor, nome do trabalho e data de conclusão (`[Backup Exec] {job_name} ({hostname}) - {YYYY-MM-DD}`), garantindo que apenas um chamado seja aberto por execução do job, independentemente do intervalo do agente (a cada 1 ou 15 minutos).
+    - **Notificações Automáticas em Tempo Real (WhatsApp & E-mail Corporativo)**:
+      - **WhatsApp**: Disparo instantâneo para o grupo da equipe de TI via Evolution API com identificação do servidor, rotina, status, volume e link direto para o chamado.
+      - **E-mail Corporativo de Suporte (`send_ticket_created_staff_notification`)**:
+        - Template em HTML responsivo 100% compatível com as regras de renderização do Microsoft Outlook (Word engine) e webmails, eliminando problemas de Markdown cru desformatado.
+        - **Tabela Estruturada de Telemetria**: Organização limpa dos parâmetros do backup (Servidor com IP, Rotina / Trabalho, Resultado com badge visual, Data de Conclusão, Duração e Volume Transferido em GB).
+        - **Checklist Operacional**: Bloco destacado com as etapas de validação física requeridas (inspeção de logs no servidor, validação dos catálogos/fitas LTO e homologação no portal).
+        - **Identidade Visual Dinâmica**: Badge e botão de ação dedicados em roxo corporativo (*"🛡️ AGUARDANDO VALIDAÇÃO TÉCNICA"* e botão *"Homologar / Validar Backup #{id}"*) para rotinas concluídas com sucesso, e badges/botões em vermelho de emergência (*"🚨 FALHA CRÍTICA NO BACKUP"*) para falhas.
 

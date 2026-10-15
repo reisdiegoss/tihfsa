@@ -3,6 +3,7 @@ Service EmailService — Motor de Envio de E-mails Corporativos TIHFSA.
 Layout Bulletproof testado contra Microsoft Outlook (Desktop, Web, Mobile e Dark Mode).
 Suporte a validação por gestores, alertas de infraestrutura NOC e pesquisa CSAT de 1 a 5 estrelas.
 """
+import re
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -363,6 +364,126 @@ def send_ticket_created_notification(ticket, requester_name: str, requester_emai
     )
 
 
+def format_email_description_html(desc: str) -> str:
+    """
+    Converte descrições de chamados (especialmente telemetrias do Veritas Backup Exec e Markdown)
+    em HTML compatível com Microsoft Outlook, Apple Mail e Webmails modernos.
+    """
+    if not desc:
+        return "<p style='margin: 0; color: #94a3b8; font-style: italic;'>Sem descrição adicional.</p>"
+
+    clean_desc = re.sub(r"<!--.*?-->", "", desc, flags=re.DOTALL).strip()
+
+    # 1. Tratamento dedicado para Telemetria do Veritas Backup Exec
+    if "Telemetria Veritas Backup Exec" in clean_desc or "Alerta Crítico — Veritas Backup Exec" in clean_desc:
+        server_line = "FASSA11"
+        job_line = "Rotina de Backup Veritas"
+        status_line = "Concluído com Êxito"
+        comp_line = "N/A"
+        dur_line = "N/A"
+        vol_line = "0 GB"
+        event_line = ""
+
+        for line in clean_desc.splitlines():
+            l = line.strip()
+            if l.startswith("**Servidor:**"):
+                server_line = l.replace("**Servidor:**", "").replace("`", "").strip()
+            elif l.startswith("**Trabalho:**"):
+                job_line = l.replace("**Trabalho:**", "").replace("`", "").strip()
+            elif l.startswith("**Status da Execução:**"):
+                status_line = l.replace("**Status da Execução:**", "").replace("**", "").replace("`", "").strip()
+            elif l.startswith("**Data/Hora"):
+                comp_line = re.sub(r"^\*\*Data/Hora[^:]*:\*\*", "", l).replace("**", "").replace("`", "").strip()
+            elif l.startswith("**Duração:**"):
+                dur_line = l.replace("**Duração:**", "").replace("**", "").replace("`", "").strip()
+            elif l.startswith("**Volume Transferido:**"):
+                vol_line = l.replace("**Volume Transferido:**", "").replace("**", "").replace("`", "").strip()
+            elif l.startswith("**Evento Windows:**"):
+                event_line = l.replace("**Evento Windows:**", "").replace("**", "").replace("`", "").strip()
+
+        msg_m = re.search(r"```(?:\n)?(.*?)(?:\n)?```", clean_desc, flags=re.DOTALL)
+
+        is_success = "Concluído com Êxito" in status_line or "Sucesso" in clean_desc
+        status_badge_bg = "#dcfce7" if is_success else "#fee2e2"
+        status_badge_color = "#15803d" if is_success else "#b91c1c"
+        status_text = "✅ Concluído com Êxito" if is_success else "❌ FALHA / ERRO NO BACKUP"
+
+        proc_html = ""
+        if "Procedimento de Validação Técnica Requerido" in clean_desc:
+            proc_html = f"""
+            <div style="margin-top: 14px; padding: 12px 16px; background-color: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px;">
+                <p style="margin: 0 0 8px; font-weight: 700; color: #6b21a8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    📋 Procedimento de Validação Técnica Requerido:
+                </p>
+                <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #4c1d95; line-height: 1.6;">
+                    <li style="margin-bottom: 4px;">Conferir o relatório detalhado do Veritas Backup Exec no servidor <strong>{server_line}</strong>.</li>
+                    <li style="margin-bottom: 4px;">Validar a integridade dos catálogos e mídias de armazenamento (fita LTO / disco pool).</li>
+                    <li>Homologar a validação técnica no portal de chamados para finalizar o atendimento.</li>
+                </ol>
+            </div>
+            """
+        elif "Ação Imediata Necessária" in clean_desc:
+            proc_html = f"""
+            <div style="margin-top: 14px; padding: 12px 16px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;">
+                <p style="margin: 0 0 6px; font-weight: 700; color: #991b1b; font-size: 12px; text-transform: uppercase;">
+                    ⚠️ Ação Imediata Necessária:
+                </p>
+                <p style="margin: 0; font-size: 13px; color: #7f1d1d; line-height: 1.5;">
+                    Acessar o console do Backup Exec no servidor <strong>{server_line}</strong> imediatamente para identificar a causa da falha (mídia cheia, serviço parado, falha de VSS ou timeout de rede) e reiniciar a rotina.
+                </p>
+            </div>
+            """
+
+        event_row = f"<tr><td style='padding: 8px 12px; color: #64748b; font-size: 13px; width: 150px; border-bottom: 1px solid #f1f5f9;'><strong>Evento Windows:</strong></td><td style='padding: 8px 12px; color: #b91c1c; font-size: 13px; font-weight: 700; border-bottom: 1px solid #f1f5f9;'>{event_line}</td></tr>" if event_line else ""
+        msg_row = f"<tr><td colspan='2' style='padding: 10px 12px;'><pre style='margin: 0; padding: 10px; background-color: #f1f5f9; border-radius: 6px; font-size: 11px; font-family: Consolas, monospace; color: #334155; white-space: pre-wrap;'>{msg_m.group(1).strip()}</pre></td></tr>" if msg_m else ""
+
+        return f"""
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <tr style="background-color: #f8fafc;">
+                <td style="padding: 8px 12px; color: #64748b; font-size: 13px; width: 150px; border-bottom: 1px solid #f1f5f9;"><strong>Servidor:</strong></td>
+                <td style="padding: 8px 12px; color: #0f172a; font-size: 13px; font-weight: 700; font-family: Consolas, monospace; border-bottom: 1px solid #f1f5f9;">{server_line}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 12px; color: #64748b; font-size: 13px; border-bottom: 1px solid #f1f5f9;"><strong>Rotina / Trabalho:</strong></td>
+                <td style="padding: 8px 12px; color: #1e293b; font-size: 13px; font-weight: 600; border-bottom: 1px solid #f1f5f9;">{job_line}</td>
+            </tr>
+            <tr style="background-color: #f8fafc;">
+                <td style="padding: 8px 12px; color: #64748b; font-size: 13px; border-bottom: 1px solid #f1f5f9;"><strong>Resultado:</strong></td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #f1f5f9;">
+                    <span style="display: inline-block; background-color: {status_badge_bg}; color: {status_badge_color}; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700;">
+                        {status_text}
+                    </span>
+                </td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 12px; color: #64748b; font-size: 13px; border-bottom: 1px solid #f1f5f9;"><strong>Data de Conclusão:</strong></td>
+                <td style="padding: 8px 12px; color: #1e293b; font-size: 13px; border-bottom: 1px solid #f1f5f9;">{comp_line}</td>
+            </tr>
+            <tr style="background-color: #f8fafc;">
+                <td style="padding: 8px 12px; color: #64748b; font-size: 13px; border-bottom: 1px solid #f1f5f9;"><strong>Duração:</strong></td>
+                <td style="padding: 8px 12px; color: #1e293b; font-size: 13px; border-bottom: 1px solid #f1f5f9;">{dur_line}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 12px; color: #64748b; font-size: 13px;"><strong>Volume Transferido:</strong></td>
+                <td style="padding: 8px 12px; color: #1e293b; font-size: 13px; font-weight: 700;">{vol_line}</td>
+            </tr>
+            {event_row}
+            {msg_row}
+        </table>
+        {proc_html}
+        """
+
+    # 2. Tratamento para chamados gerais com formatação Markdown
+    formatted = clean_desc
+    formatted = re.sub(r"^###\s+(.+)$", r"<h4 style='margin: 14px 0 6px; font-size: 13px; color: #1e293b; font-weight: 700;'>\1</h4>", formatted, flags=re.MULTILINE)
+    formatted = re.sub(r"^##\s+(.+)$", r"<h3 style='margin: 16px 0 8px; font-size: 14px; color: #1e293b; font-weight: 700;'>\1</h3>", formatted, flags=re.MULTILINE)
+    formatted = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", formatted)
+    formatted = re.sub(r"`([^`\n]+)`", r"<code style='background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; color: #0f172a;'>\1</code>", formatted)
+    formatted = re.sub(r"^---$", r"<hr style='border: 0; border-top: 1px solid #e2e8f0; margin: 14px 0;'>", formatted, flags=re.MULTILINE)
+    formatted = formatted.replace("\n", "<br>")
+    return f"<div style='font-size: 13px; line-height: 1.6; color: #334155;'>{formatted}</div>"
+
+
 def send_ticket_created_staff_notification(
     ticket,
     requester_name: str,
@@ -374,8 +495,38 @@ def send_ticket_created_staff_notification(
     base_url = get_app_base_url()
     target_email = get_support_email()
     prio_val = ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)
+    status_str = getattr(ticket.status, "value", str(ticket.status))
+    is_backup = "[Backup Exec]" in (ticket.title or "")
+    is_pending_val = status_str in ("Aguardando Validação", "PENDING_VALIDATION")
 
     loc_row = f"<tr><td style='padding: 6px 0; color: #64748b; font-size: 13px;'><strong>Local / Ativo:</strong></td><td style='padding: 6px 0; color: #1e293b; font-size: 13px;'>{location_or_asset}</td></tr>" if location_or_asset else ""
+
+    # Customização de identidade visual e botões
+    is_backup_success = is_backup and (is_pending_val or "Sucesso" in (ticket.title or ""))
+    if is_backup_success:
+        header_title = f"🛡️ Validação de Backup #{ticket.id}"
+        badge_text = "🛡️ AGUARDANDO VALIDAÇÃO TÉCNICA"
+        badge_bg = "#f3e8ff"
+        badge_color = "#7e22ce"
+        btn_text = f"Homologar / Validar Backup #{ticket.id}"
+        btn_bg = "#7e22ce"
+        subject_label = "[VALIDAÇÃO DE BACKUP]"
+    elif is_backup:
+        header_title = f"🚨 Alerta Crítico de Backup #{ticket.id}"
+        badge_text = "🚨 FALHA CRÍTICA NO BACKUP"
+        badge_bg = "#fee2e2"
+        badge_color = "#991b1b"
+        btn_text = f"Verificar Falha de Backup #{ticket.id}"
+        btn_bg = "#dc2626"
+        subject_label = "[FALHA NO BACKUP]"
+    else:
+        header_title = f"🎫 Novo Chamado Aberto #{ticket.id}"
+        badge_text = "NOVO CHAMADO NA FILA"
+        badge_bg = "#fee2e2" if prio_val in ("Alta", "Crítica") else "#e0f2fe"
+        badge_color = "#991b1b" if prio_val in ("Alta", "Crítica") else "#0369a1"
+        btn_text = f"Atender Chamado #{ticket.id}"
+        btn_bg = "#1e3a8a"
+        subject_label = f"[NOVO CHAMADO #{ticket.id}]"
 
     content = f"""
     <p style="margin: 0 0 14px;">Olá <strong>Equipe de TI</strong>,</p>
@@ -406,8 +557,10 @@ def send_ticket_created_staff_notification(
     </table>
 
     <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 8px; font-weight: 700; color: #334155; font-size: 12px; text-transform: uppercase;">Descrição da Solicitação:</p>
-        <p style="margin: 0; color: #475569; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">{ticket.description or 'Sem descrição adicional.'}</p>
+        <p style="margin: 0 0 10px; font-weight: 700; color: #334155; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+            {'Detalhes da Rotina de Backup:' if is_backup else 'Descrição da Solicitação:'}
+        </p>
+        {format_email_description_html(ticket.description)}
     </div>
     """
 
@@ -415,21 +568,18 @@ def send_ticket_created_staff_notification(
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 22px auto 6px;">
         <tr>
             <td align="center">
-                <a href="{base_url}/admin/tickets?ticketId={ticket.id}" style="display: inline-block; padding: 12px 28px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif;">
-                    Atender Chamado #{ticket.id}
+                <a href="{base_url}/admin/tickets?ticketId={ticket.id}" style="display: inline-block; padding: 12px 28px; background-color: {btn_bg}; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 13px; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                    {btn_text}
                 </a>
             </td>
         </tr>
     </table>
     """
 
-    badge_bg = "#fee2e2" if prio_val in ("Alta", "Crítica") else "#e0f2fe"
-    badge_color = "#991b1b" if prio_val in ("Alta", "Crítica") else "#0369a1"
-
     html = render_bulletproof_email(
-        header_title=f"🎫 Novo Chamado Aberto #{ticket.id}",
+        header_title=header_title,
         header_subtitle="TIHFSA — Hotel Fasano Salvador",
-        badge_text="NOVO CHAMADO NA FILA",
+        badge_text=badge_text,
         badge_bg=badge_bg,
         badge_color=badge_color,
         content_html=content,
@@ -438,7 +588,7 @@ def send_ticket_created_staff_notification(
 
     return send_system_email(
         to_email=target_email,
-        subject=f"[TIHFSA] [NOVO CHAMADO #{ticket.id}] {ticket.title}",
+        subject=f"[TIHFSA] {subject_label} {ticket.title}",
         html_body=html,
         notification_type="TICKET_CREATED_STAFF",
         ticket_id=ticket.id,
