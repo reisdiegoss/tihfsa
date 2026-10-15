@@ -577,6 +577,7 @@ def get_root_manifest():
         db.close()
 
 @app.get("/apple-touch-icon.png", include_in_schema=False)
+@app.get("/apple-touch-icon-v3.png", include_in_schema=False)
 @app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
 @app.get("/apple-touch-icon-180x180.png", include_in_schema=False)
 @app.get("/apple-touch-icon-180x180-precomposed.png", include_in_schema=False)
@@ -592,10 +593,15 @@ def get_apple_touch_icon():
 
         # 1. Procura o ícone customizado gerado para Apple Touch
         candidates = [
+            os.path.abspath(os.path.join(base_dir, "..", "uploads", "pwa", "generated", "apple-touch-icon-v3.png")),
             os.path.abspath(os.path.join(base_dir, "..", "uploads", "pwa", "generated", "apple-touch-icon.png")),
+            os.path.abspath(os.path.join(base_dir, "..", "..", "uploads", "pwa", "generated", "apple-touch-icon-v3.png")),
             os.path.abspath(os.path.join(base_dir, "..", "..", "uploads", "pwa", "generated", "apple-touch-icon.png")),
+            "/root/TIHFSA/backend/uploads/pwa/generated/apple-touch-icon-v3.png",
             "/root/TIHFSA/backend/uploads/pwa/generated/apple-touch-icon.png",
+            "/root/tihfsa/backend/uploads/pwa/generated/apple-touch-icon-v3.png",
             "/root/tihfsa/backend/uploads/pwa/generated/apple-touch-icon.png",
+            "/var/www/tihfsa/apple-touch-icon-v3.png",
             "/var/www/tihfsa/apple-touch-icon.png",
         ]
 

@@ -93,22 +93,35 @@ def generate_pwa_icons_from_source(source_path: str, bg_color_hex: str = "#0f172
         # 5. apple-touch-icon.png (180x180 RGB OPACO - SEM CANAL ALPHA)
         # CRÍTICO: iOS Safari rejeita ícones com transparência e substitui por monograma da letra inicial.
         # Deve ser estritamente modo RGB, tamanho 180x180 e fundo opaco.
-        apple_icon = Image.new("RGBA", (180, 180), bg_rgba)
-        thumb_apple = src.copy()
-        # Se a imagem tiver canal alpha (transparência), reduz para 156x156 para margem harmônica
-        thumb_apple.thumbnail((156, 156), Image.Resampling.LANCZOS)
-        offset_apple = ((180 - thumb_apple.width) // 2, (180 - thumb_apple.height) // 2)
-        apple_icon.paste(thumb_apple, offset_apple, thumb_apple)
-        # Converte para RGB eliminando qualquer canal alpha
-        apple_rgb = apple_icon.convert("RGB")
+        has_alpha = False
+        if src.mode in ("RGBA", "LA") or (src.mode == "P" and "transparency" in src.info):
+            try:
+                alpha_extrema = src.getchannel("A").getextrema()
+                if alpha_extrema[0] < 250:
+                    has_alpha = True
+            except Exception:
+                pass
+
+        if not has_alpha:
+            # Imagem já tem fundo opaco próprio (ex: logo dourado Fasano): faz resize direto 180x180 full-bleed
+            apple_rgb = src.resize((180, 180), Image.Resampling.LANCZOS).convert("RGB")
+        else:
+            # Imagem recortada com transparência: centraliza sobre a cor de fundo com margem harmônica
+            apple_icon = Image.new("RGBA", (180, 180), bg_rgba)
+            thumb_apple = src.copy()
+            thumb_apple.thumbnail((156, 156), Image.Resampling.LANCZOS)
+            offset_apple = ((180 - thumb_apple.width) // 2, (180 - thumb_apple.height) // 2)
+            apple_icon.paste(thumb_apple, offset_apple, thumb_apple)
+            apple_rgb = apple_icon.convert("RGB")
         
         p_apple = os.path.join(out_dir, "apple-touch-icon.png")
-        apple_rgb.save(p_apple, format="PNG", optimize=True)
-
-        # Variantes suportadas pelo Safari
+        p_apple_v3 = os.path.join(out_dir, "apple-touch-icon-v3.png")
         p_apple_180 = os.path.join(out_dir, "apple-touch-icon-180x180.png")
         p_apple_pre = os.path.join(out_dir, "apple-touch-icon-precomposed.png")
         p_apple_180_pre = os.path.join(out_dir, "apple-touch-icon-180x180-precomposed.png")
+
+        apple_rgb.save(p_apple, format="PNG", optimize=True)
+        apple_rgb.save(p_apple_v3, format="PNG", optimize=True)
         apple_rgb.save(p_apple_180, format="PNG", optimize=True)
         apple_rgb.save(p_apple_pre, format="PNG", optimize=True)
         apple_rgb.save(p_apple_180_pre, format="PNG", optimize=True)
@@ -119,6 +132,7 @@ def generate_pwa_icons_from_source(source_path: str, bg_color_hex: str = "#0f172
         "icon-maskable-512.png": p_mask_512,
         "icon-maskable-192.png": p_mask_192,
         "apple-touch-icon.png": p_apple,
+        "apple-touch-icon-v3.png": p_apple_v3,
         "apple-touch-icon-180x180.png": p_apple_180,
         "apple-touch-icon-precomposed.png": p_apple_pre,
         "apple-touch-icon-180x180-precomposed.png": p_apple_180_pre,

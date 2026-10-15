@@ -94,7 +94,7 @@ export default function App() {
           if (fav) fav.setAttribute("href", `/icons/icon-192.png?v=${v}`);
           // Apple Touch Icon para iOS Safari (deve apontar para o endpoint canônico 180x180 RGB)
           document.querySelectorAll("link[rel='apple-touch-icon'], link[rel='apple-touch-icon-precomposed']").forEach((el) => {
-            el.setAttribute("href", `/apple-touch-icon.png?v=${v}`);
+            el.setAttribute("href", `/apple-touch-icon-v3.png?v=${v}`);
           });
           // Força atualização imediata do manifesto com hash/timestamp do ícone
           let man = document.querySelector("link[rel='manifest']");

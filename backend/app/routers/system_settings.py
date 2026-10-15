@@ -242,34 +242,34 @@ def build_pwa_manifest_dict(setting: SystemSetting | None) -> dict:
 
     icons = [
         {
-            "src": f"/icons/icon-192.png?v={version_hash}",
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "any"
-        },
-        {
-            "src": f"/icons/icon-maskable-192.png?v={version_hash}",
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "maskable"
-        },
-        {
-            "src": f"/icons/icon-512.png?v={version_hash}",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "any"
-        },
-        {
-            "src": f"/icons/icon-maskable-512.png?v={version_hash}",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "maskable"
-        },
-        {
-            "src": f"/icons/apple-touch-icon.png?v={version_hash}",
+            "src": "/apple-touch-icon-v3.png",
             "sizes": "180x180",
             "type": "image/png",
             "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
         }
     ]
 
