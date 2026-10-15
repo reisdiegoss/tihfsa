@@ -652,8 +652,8 @@ server {
         autoindex on;
     }
 
-    # Manifesto PWA Dinâmico (Sempre atualizado com o ícone e nome da base de dados)
-    location ~* ^/(manifest\.webmanifest|manifest\.json)$ {
+    # Manifesto PWA Dinâmico e Ícones Apple Touch iOS (Sempre atualizados)
+    location ~* ^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png)$ {
         proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -745,8 +745,8 @@ server {
         autoindex on;
     }
 
-    # Manifesto PWA Dinâmico (Sempre atualizado com o ícone e nome da base de dados)
-    location ~* ^/(manifest\.webmanifest|manifest\.json)$ {
+    # Manifesto PWA Dinâmico e Ícones Apple Touch iOS (Sempre atualizados)
+    location ~* ^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png)$ {
         proxy_pass http://127.0.0.1:$INTERNAL_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;

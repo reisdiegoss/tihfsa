@@ -45,6 +45,13 @@ export default function Terms() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [isBannerDismissed, setIsBannerDismissed] = useState(() => {
+    try {
+      return localStorage.getItem("terms_pwa_banner_dismissed") === "true";
+    } catch {
+      return false;
+    }
+  });
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState("");
@@ -60,18 +67,43 @@ export default function Terms() {
   // Detecção de PWA e instalação
   useEffect(() => {
     if (typeof window !== "undefined") {
-      if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true) {
+      if (
+        window.matchMedia("(display-mode: standalone)").matches || 
+        window.navigator.standalone === true ||
+        document.referrer.includes("android-app://")
+      ) {
         setIsStandalone(true);
       }
+
       const handler = (e) => {
         e.preventDefault();
         setDeferredPrompt(e);
         setIsInstallable(true);
       };
+
+      const installedHandler = () => {
+        setIsStandalone(true);
+        setIsBannerDismissed(true);
+        try {
+          localStorage.setItem("terms_pwa_banner_dismissed", "true");
+        } catch {}
+      };
+
       window.addEventListener("beforeinstallprompt", handler);
-      return () => window.removeEventListener("beforeinstallprompt", handler);
+      window.addEventListener("appinstalled", installedHandler);
+      return () => {
+        window.removeEventListener("beforeinstallprompt", handler);
+        window.removeEventListener("appinstalled", installedHandler);
+      };
     }
   }, []);
+
+  const handleDismissBanner = () => {
+    setIsBannerDismissed(true);
+    try {
+      localStorage.setItem("terms_pwa_banner_dismissed", "true");
+    } catch {}
+  };
 
   const handleInstallPWA = async () => {
     if (deferredPrompt) {
@@ -79,6 +111,7 @@ export default function Terms() {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === "accepted") {
         setIsInstallable(false);
+        handleDismissBanner();
       }
       setDeferredPrompt(null);
     } else {
@@ -190,13 +223,13 @@ export default function Terms() {
     <div className="space-y-5 sm:space-y-6">
       
       {/* Banner PWA de Instalação no Aparelho (Tablet / Smartphone) */}
-      {!isStandalone && (
-        <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl p-4 sm:p-5 text-white shadow-xl shadow-blue-950/20 flex flex-col sm:flex-row items-center justify-between gap-4 border border-blue-800/40">
+      {!isStandalone && !isBannerDismissed && (
+        <div className="relative bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl p-4 sm:p-5 text-white shadow-xl shadow-blue-950/20 flex flex-col sm:flex-row items-center justify-between gap-4 border border-blue-800/40">
           <div className="flex items-center gap-3.5 w-full sm:w-auto">
             <div className="w-12 h-12 rounded-2xl bg-blue-600/30 border border-blue-400/30 flex items-center justify-center shrink-0 text-blue-300">
               <Smartphone size={24} />
             </div>
-            <div>
+            <div className="pr-8 sm:pr-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-extrabold tracking-tight">Aplicativo Termos TIHFSA</span>
                 <span className="text-[10px] uppercase font-black px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full border border-blue-400/30">PWA Tablet & Mobile</span>
@@ -206,13 +239,24 @@ export default function Terms() {
               </p>
             </div>
           </div>
-          <button
-            onClick={handleInstallPWA}
-            className="w-full sm:w-auto px-5 py-2.5 bg-white text-blue-900 hover:bg-blue-50 font-black text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 active:scale-95"
-          >
-            <ArrowDownToLine size={16} />
-            {isInstallable ? "Instalar no Aparelho" : "Como Instalar no Aparelho"}
-          </button>
+          
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              onClick={handleInstallPWA}
+              className="w-full sm:w-auto px-5 py-2.5 bg-white text-blue-900 hover:bg-blue-50 font-black text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 active:scale-95"
+            >
+              <ArrowDownToLine size={16} />
+              {isInstallable ? "Instalar no Aparelho" : "Como Instalar no Aparelho"}
+            </button>
+            <button
+              type="button"
+              onClick={handleDismissBanner}
+              className="p-2 text-blue-300 hover:text-white rounded-xl hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+              title="Dispensar aviso"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
       )}
 

@@ -564,6 +564,44 @@ def get_root_manifest():
     finally:
         db.close()
 
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+@app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+@app.get("/apple-touch-icon-180x180.png", include_in_schema=False)
+@app.get("/apple-touch-icon-180x180-precomposed.png", include_in_schema=False)
+@app.get("/icons/apple-touch-icon.png", include_in_schema=False)
+def get_apple_touch_icon():
+    from app.models.system_setting import SystemSetting
+    from fastapi.responses import FileResponse, RedirectResponse
+
+    db = SessionLocal()
+    try:
+        setting = db.query(SystemSetting).first()
+        icon_url = getattr(setting, "pwa_icon_url", None)
+        if icon_url and icon_url.startswith("/uploads/"):
+            rel_path = icon_url.lstrip("/")
+            for base_dir in [".", "backend", "..", "/root/TIHFSA", "/root/TIHFSA/backend", "/var/www/tihfsa"]:
+                candidate = os.path.abspath(os.path.join(base_dir, rel_path))
+                if os.path.exists(candidate) and os.path.isfile(candidate):
+                    return FileResponse(
+                        candidate,
+                        media_type="image/png",
+                        headers={"Cache-Control": "no-cache, must-revalidate"}
+                    )
+            return RedirectResponse(url=icon_url, status_code=307)
+        
+        # Fallback para o ícone padrão
+        for default_candidate in [
+            "frontend/public/icons/apple-touch-icon.png",
+            "../frontend/public/icons/apple-touch-icon.png",
+            "/var/www/tihfsa/icons/apple-touch-icon.png",
+        ]:
+            cand = os.path.abspath(default_candidate)
+            if os.path.exists(cand) and os.path.isfile(cand):
+                return FileResponse(cand, media_type="image/png")
+        return RedirectResponse(url="/icons/apple-touch-icon.png", status_code=307)
+    finally:
+        db.close()
+
 @app.get("/", tags=["Health"])
 def health_check():
     return {

@@ -345,6 +345,20 @@ def sync_pwa_files(setting: SystemSetting | None):
                 except Exception:
                     pass
 
+            # Também copia diretamente na raiz pública para clientes Apple/Safari que buscam /apple-touch-icon.png na raiz
+            root_public_dirs = [
+                os.path.abspath(os.path.join(base_dir, "..", "frontend", "public")),
+                os.path.abspath(os.path.join(base_dir, "..", "frontend", "dist")),
+                "/var/www/tihfsa",
+            ]
+            for rdir in root_public_dirs:
+                try:
+                    if os.path.exists(rdir):
+                        for std_apple in ["apple-touch-icon.png", "apple-touch-icon-precomposed.png", "apple-touch-icon-180x180.png", "apple-touch-icon-180x180-precomposed.png"]:
+                            shutil.copy(found_src, os.path.join(rdir, std_apple))
+                except Exception:
+                    pass
+
 
 @router.get("/pwa-manifest", summary="Obter Manifesto PWA dinâmico com base nos parâmetros configurados")
 def get_pwa_manifest(db: Session = Depends(get_db)):
