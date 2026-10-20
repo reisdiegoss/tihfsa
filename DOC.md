@@ -1621,6 +1621,35 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
     - **Registro de Rotas**:
       - Adicionadas rotas `/admin/projects` e alias `/admin/projetos` em `App.jsx`.
 
+54. **Correção do TIHFSA Sentinel Agent (Erro 500 no Download do Script PowerShell)**:
+    - **Diagnóstico da Falha**:
+      - Ao rodar o instalador de 1-clique via PowerShell (`(curl.exe -k -s "https://.../api/v1/monitoring/agent/install" | Out-String) | iex`), a estação baixava o arquivo `tihfsa-agent.ps1` contendo a mensagem de erro de texto bruto `Internal Server Error`.
+      - Ao tentar executar o script no primeiro check-in, o PowerShell emitia o erro: `Internal : O termo 'Internal' não é reconhecido como nome de cmdlet, função...`.
+      - **Causa Raiz**: No backend (`backend/app/routers/monitoring.py`), a assinatura do endpoint era `def get_agent_powershell_script(request: Request, download: bool = False, os: str = "windows"):`. O parâmetro `os: str` sobrescrevia o módulo nativo `import os` da biblioteca padrão do Python. Quando o código tentava resolver os caminhos do arquivo via `os.path.abspath` e `os.path.exists`, o Python tentava acessar atributos em uma string (`'windows'.path`), gerando um `AttributeError` e disparando um HTTP 500 instantâneo.
+    - **Correção Implementada**:
+      - Parâmetro renomeado para `os_type: str = Query("windows", alias="os")`, mantendo compatibilidade total com os parâmetros da URL sem qualquer conflito de escopo com o módulo `os`.
+      - Endpoint validado via `TestClient`, retornando HTTP 200 e entregando o script completo de 41 KB (`scripts/tihfsa-agent.ps1`).
+      - Adicionada validação de integridade no instalador do Windows (`/agent/install`): o instalador agora inspeciona o arquivo baixado antes de registrar ou executar, abortando de forma amigável e legível caso não contenha o cabeçalho válido do agente.
+
+55. **Matriz de Permissões: Restrição Estrita do Módulo de Termos para Setores e Gestores**:
+    - **Diagnóstico da Inconsistência**:
+      - Usuários com papel de gerente de departamento (`role == UserRole.MANAGER`) estavam visualizando o módulo de Termos de Responsabilidade na barra lateral e na navegação inferior móvel.
+      - Três fatores causavam o vazamento de permissão:
+        1. Em `Sidebar.jsx`, a regra continha `if (item.module === "terms") return isTechnician || isStaff || ...`. Como `isStaff` abrangia gerentes (`isManager`), eles recebiam acesso visual automático.
+        2. Em `BottomNav.jsx`, a barra móvel possuía "Termos" fixo no array principal sem verificação de permissões.
+        3. No backend (`backend/app/routers/auth.py`), a rota de login injetava `"terms"` e `"projects"` no array `allowed_modules` para qualquer usuário que possuísse a role `"manager"`.
+        4. No painel de Configurações (`Settings.jsx`), ao editar qualquer usuário sem `allowed_modules`, o fallback pré-selecionava todos os módulos técnicos por padrão.
+    - **Regra de Negócio Unificada**:
+      - Colaboradores de setores e gerentes de departamento (perfis não-técnicos) possuem acesso exclusivo e estrito ao módulo de **Chamados** (`tickets`) e às áreas comuns (Início e Base de Conhecimento).
+      - Módulos operacionais de TI como **Termos de Responsabilidade**, **Ativos (CMDB)**, **Monitoramento NOC** e **Topologia** são de acesso exclusivo para técnicos de TI (`TECHNICIAN`) e administradores (`ADMIN`).
+    - **Correções Aplicadas**:
+      - `backend/app/routers/auth.py` e `backend/app/routers/users.py`: Remoção do append de `"terms"` e `"projects"` para gerentes; não-técnicos recebem categoricamente `["tickets"]` por padrão e têm qualquer resquício de `terms` filtrado.
+      - `backend/app/auth/dependencies.py`: `check_user_module_access` bloqueia expressamente `module == "terms"` para quem não possui role técnica ou de admin.
+      - `frontend/src/components/admin/Sidebar.jsx`: O menu "Termos" agora exige estritamente `isAdmin || isTechnician`.
+      - `frontend/src/components/admin/BottomNav.jsx`: Gerentes e colaboradores agora visualizam Início, Chamados, Novo Chamado e Conhecimento na barra inferior, sem exibição indevida de Termos ou Ativos.
+      - `frontend/src/pages/admin/Settings.jsx`: Ao editar usuários não-técnicos, o padrão do modal passa a ser unicamente `["tickets"]`.
+      - `frontend/src/App.jsx`: Criado o wrapper `ProtectedTermsRoute` que redireciona automaticamente para `/admin/tickets` qualquer tentativa de acesso direto à URL `/admin/terms` por usuários sem perfil técnico.
+
 
 
 

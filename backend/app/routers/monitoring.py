@@ -1758,12 +1758,12 @@ def get_agent_root_ca():
 
 
 @router.get("/agent/script", summary="Download ou execução do script do Agente (Windows ou Linux)")
-def get_agent_powershell_script(request: Request, download: bool = False, os: str = "windows"):
+def get_agent_powershell_script(request: Request, download: bool = False, os_type: str = Query("windows", alias="os")):
     """
     Retorna o script do Sentinel Agent configurado para o servidor atual.
     Suporta ?os=windows (padrão) e ?os=linux.
     """
-    if os.lower() in ("linux", "ubuntu", "debian"):
+    if os_type.lower() in ("linux", "ubuntu", "debian"):
         return get_agent_linux_script(request=request, download=download)
 
     # Detecta a base URL do servidor a partir do Host da requisição
@@ -2753,16 +2753,22 @@ try {{
 }}
 
 if (Test-Path $tempScript) {{
-    try {{
-        [System.IO.File]::Copy($tempScript, $targetScript, $true)
-    }} catch {{
-        Copy-Item -Path $tempScript -Destination $targetScript -Force -ErrorAction SilentlyContinue
+    $contentTest = Get-Content $tempScript -Raw -ErrorAction SilentlyContinue
+    if ($contentTest -and ($contentTest -like "*TIHFSA Sentinel Agent*" -or $contentTest.Length -gt 1000) -and -not ($contentTest -like "*Internal Server Error*")) {{
+        try {{
+            [System.IO.File]::Copy($tempScript, $targetScript, $true)
+        }} catch {{
+            Copy-Item -Path $tempScript -Destination $targetScript -Force -ErrorAction SilentlyContinue
+        }}
+    }} else {{
+        Write-Host "[ERRO] Resposta invalida ao baixar agente de $scriptUrl:" -ForegroundColor Red
+        if ($contentTest) {{ Write-Host "       $contentTest" -ForegroundColor Yellow }}
     }}
     Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
 }}
 
 if (-not (Test-Path $targetScript)) {{
-    Write-Host "[ERRO] Nao foi possivel baixar o script do agente em $scriptUrl." -ForegroundColor Red
+    Write-Host "[ERRO] Nao foi possivel obter o script do agente em $scriptUrl." -ForegroundColor Red
     Write-Host "Pressione [ENTER] para fechar esta janela..." -ForegroundColor Cyan
     try {{ [void][System.Console]::ReadLine() }} catch {{}}
     return

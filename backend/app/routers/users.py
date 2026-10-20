@@ -17,15 +17,27 @@ def _format_user_response(user: User) -> dict:
     role_str = user.role.value if isinstance(user.role, UserRole) else str(user.role)
     user_roles = user.roles if (user.roles and isinstance(user.roles, list)) else [role_str]
     is_admin = role_str == "admin" or "admin" in user_roles
+    is_tech = role_str == "technician" or "technician" in user_roles or "tecnico" in user_roles
     
     if is_admin:
         user_modules = ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts", "terms"]
-    elif user.allowed_modules is not None:
-        user_modules = list(user.allowed_modules)
-    elif "technician" in user_roles or role_str == "technician" or "tecnico" in user_roles:
-        user_modules = ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"]
+    elif is_tech:
+        if user.allowed_modules is not None:
+            user_modules = list(user.allowed_modules)
+            if "terms" not in user_modules:
+                user_modules.append("terms")
+            if "projects" not in user_modules:
+                user_modules.append("projects")
+        else:
+            user_modules = ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"]
     else:
-        user_modules = ["tickets"]
+        # Usuários e gerentes de setor não-técnicos: apenas chamados por padrão, nunca termos
+        if user.allowed_modules is not None:
+            user_modules = [m for m in user.allowed_modules if m != "terms"]
+            if not user_modules:
+                user_modules = ["tickets"]
+        else:
+            user_modules = ["tickets"]
 
     return {
         "id": user.id,

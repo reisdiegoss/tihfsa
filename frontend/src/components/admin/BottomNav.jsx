@@ -13,16 +13,25 @@ export default function BottomNav() {
 
   const userModules = user?.allowed_modules || [];
 
-  const mainItems = [
+  const canSeeTerms = isAdmin || isTechnician;
+  const canSeeAssets = isAdmin || isTechnician || userModules.includes("assets");
+
+  const mainItems = canSeeTerms && canSeeAssets ? [
     { name: "Início", path: "/admin", icon: LayoutDashboard },
     { name: "Chamados", path: "/admin/tickets", icon: Ticket },
     { name: "Termos", path: "/admin/terms", icon: FileSignature, highlight: true },
     { name: "Ativos", path: "/admin/assets", icon: Monitor },
+  ] : [
+    { name: "Início", path: "/admin", icon: LayoutDashboard },
+    { name: "Chamados", path: "/admin/tickets", icon: Ticket },
+    { name: "Novo", path: "/admin/tickets/new", icon: PlusCircle, highlight: true },
+    { name: "Conhecimento", path: "/admin/knowledge", icon: BookOpen },
   ];
 
   const drawerItems = [
     { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle, module: "tickets" },
     { name: "Projetos", path: "/admin/projects", icon: FolderKanban, module: "projects" },
+    { name: "Termos", path: "/admin/terms", icon: FileSignature, module: "terms" },
     { name: "Contratos", path: "/admin/contracts", icon: Briefcase, module: "contracts" },
     { name: "Relatórios", path: "/admin/reports", icon: BarChart3, module: "reports" },
     { name: "QR Codes", path: "/admin/qrcodes", icon: QrCode, module: "qrcodes" },
@@ -30,12 +39,15 @@ export default function BottomNav() {
     { name: "Conhecimento", path: "/admin/knowledge", icon: BookOpen, module: "all" },
     { name: "Configurações", path: "/admin/settings", icon: Settings, module: "settings" },
   ].filter(item => {
-    if (isAdmin) return true;
-    if (item.module === "projects") {
-      return isAdmin || isTechnician || isStaff || userModules.includes("projects") || (can && can("projects", "view"));
+    if (item.module === "all" || isAdmin) return true;
+    if (item.module === "terms") {
+      return isAdmin || isTechnician;
     }
-    if (userModules.length > 0) return userModules.includes(item.module);
+    if (item.module === "projects") {
+      return isAdmin || isTechnician || (userModules.includes("projects") && (can ? can("projects", "view") : true));
+    }
     if (isTechnician) return true;
+    if (userModules.length > 0) return userModules.includes(item.module);
     return item.module === "tickets";
   });
 

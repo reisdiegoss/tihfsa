@@ -115,9 +115,13 @@ def check_user_module_access(user: User, module: str) -> bool:
     roles = _get_user_roles(user)
     if "admin" in roles:
         return True
+    is_tech = "technician" in roles or "tecnico" in roles
+    # O módulo de termos é exclusivo para técnicos e administradores
+    if module == "terms" and not is_tech:
+        return False
     if user.allowed_modules is None:
-        if "technician" in roles:
-            return module in {"tickets", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"}
+        if is_tech:
+            return module in {"tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"}
         return module == "tickets"
     return module in (user.allowed_modules or [])
 

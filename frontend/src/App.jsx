@@ -43,6 +43,15 @@ function ProtectedAdminRoute({ children }) {
   return children; 
 }
 
+function ProtectedTermsRoute({ children }) {
+  const { isAdmin, isTechnician, loading } = useAuth();
+  if (loading) return null;
+  if (!isAdmin && !isTechnician) {
+    return <Navigate to="/admin/tickets" replace />;
+  }
+  return children;
+}
+
 function ProtectedAppRoute({ children }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -147,8 +156,12 @@ export default function App() {
             <Route path="contratos" element={<Contracts />} />
             <Route path="projects" element={<Projects />} />
             <Route path="projetos" element={<Navigate to="/admin/projects" replace />} />
-            <Route path="terms" element={<Terms />} />
-            <Route path="termos" element={<Terms />} />
+            <Route path="terms" element={
+              <ProtectedTermsRoute>
+                <Terms />
+              </ProtectedTermsRoute>
+            } />
+            <Route path="termos" element={<Navigate to="/admin/terms" replace />} />
             <Route path="reports" element={<Reports />} />
             <Route path="relatorios" element={<Reports />} />
 

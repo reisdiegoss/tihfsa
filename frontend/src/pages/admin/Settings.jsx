@@ -1386,11 +1386,11 @@ export default function Settings() {
     setSelectedRoles(rList);
     setSelectedUserDept(u.department_id ? String(u.department_id) : "");
     setSelectedManagedDepts(u.managed_department_ids || []);
-    setSelectedModules(
-      u.allowed_modules && u.allowed_modules.length > 0
-        ? u.allowed_modules
-        : ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"]
-    );
+    const isTechOrAdmin = rList.some(r => ["admin", "technician", "tecnico"].includes(String(r).toLowerCase()));
+    const rawModules = u.allowed_modules && u.allowed_modules.length > 0
+      ? u.allowed_modules
+      : (isTechOrAdmin ? ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"] : ["tickets"]);
+    setSelectedModules(isTechOrAdmin ? rawModules : rawModules.filter(m => m !== "terms"));
     setSelectedModulePermissions(u.module_permissions || {});
   };
 

@@ -25,14 +25,14 @@ export default function Sidebar() {
   const menuItems = rawMenuItems.filter(item => {
     if (item.module === "all" || isAdmin) return true;
     if (item.module === "terms") {
-      // Garante visibilidade garantida para equipe técnica, gestores e admins
-      return isTechnician || isStaff || isAdmin || userModules.includes("terms");
+      // Módulo de Termos é exclusivo para técnicos e administradores
+      return isAdmin || isTechnician;
     }
     if (item.module === "projects") {
-      return isAdmin || isTechnician || isStaff || userModules.includes("projects") || (can && can("projects", "view"));
+      return isAdmin || isTechnician || (userModules.includes("projects") && (can ? can("projects", "view") : true));
     }
-    if (userModules.length > 0) return userModules.includes(item.module);
     if (isTechnician) return ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"].includes(item.module);
+    if (userModules.length > 0) return userModules.includes(item.module);
     return item.module === "tickets";
   });
 
