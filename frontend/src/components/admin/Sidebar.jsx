@@ -1,9 +1,9 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, QrCode, LogOut, Settings, Star, Briefcase, BarChart3, FileSignature } from "lucide-react";
+import { LayoutDashboard, Ticket, PlusCircle, Monitor, Activity, QrCode, LogOut, Settings, Star, Briefcase, BarChart3, FileSignature, FolderKanban, BookOpen } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function Sidebar() {
-  const { user, logout, isAdmin, isTechnician, isStaff } = useAuth();
+  const { user, logout, isAdmin, isTechnician, isStaff, can } = useAuth();
 
   const userModules = user?.allowed_modules || [];
 
@@ -11,12 +11,14 @@ export default function Sidebar() {
     { name: "Dashboard", path: "/admin", icon: LayoutDashboard, module: "all" },
     { name: "Chamados", path: "/admin/tickets", icon: Ticket, module: "tickets" },
     { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle, module: "tickets" },
+    { name: "Projetos", path: "/admin/projects", icon: FolderKanban, module: "projects" },
     { name: "Termos", path: "/admin/terms", icon: FileSignature, module: "terms" },
     { name: "Contratos", path: "/admin/contracts", icon: Briefcase, module: "contracts" },
     { name: "Relatórios", path: "/admin/reports", icon: BarChart3, module: "reports" },
     { name: "Ativos", path: "/admin/assets", icon: Monitor, module: "assets" },
     { name: "QR Codes", path: "/admin/qrcodes", icon: QrCode, module: "qrcodes" },
     { name: "Monitoramento", path: "/admin/monitoring", icon: Activity, module: "monitoring" },
+    { name: "Conhecimento", path: "/admin/knowledge", icon: BookOpen, module: "all" },
     { name: "Configurações", path: "/admin/settings", icon: Settings, module: "settings" },
   ];
 
@@ -26,8 +28,11 @@ export default function Sidebar() {
       // Garante visibilidade garantida para equipe técnica, gestores e admins
       return isTechnician || isStaff || isAdmin || userModules.includes("terms");
     }
+    if (item.module === "projects") {
+      return isAdmin || isTechnician || isStaff || userModules.includes("projects") || (can && can("projects", "view"));
+    }
     if (userModules.length > 0) return userModules.includes(item.module);
-    if (isTechnician) return ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"].includes(item.module);
+    if (isTechnician) return ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"].includes(item.module);
     return item.module === "tickets";
   });
 

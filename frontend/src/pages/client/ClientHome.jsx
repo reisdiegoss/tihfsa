@@ -3,7 +3,7 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, Ticket, Sparkles, ChevronRight, MapPin, LogOut, QrCode, ShieldCheck, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
+import { Plus, Ticket, Sparkles, ChevronRight, MapPin, LogOut, QrCode, ShieldCheck, RefreshCw, CheckCircle, AlertCircle, BookOpen, HelpCircle } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import StatusBadge from "../../components/ui/StatusBadge";
@@ -123,6 +123,14 @@ export default function ClientHome() {
             </div>
 
             <button
+              onClick={() => navigate("/ajuda")}
+              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all cursor-pointer"
+              title="Central de Ajuda & Dúvidas"
+            >
+              <HelpCircle size={18} />
+            </button>
+
+            <button
               onClick={logout}
               className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all cursor-pointer"
               title="Sair da Sessão"
@@ -160,21 +168,39 @@ export default function ClientHome() {
         </button>
 
         {/* Leitor de QR Code Rápido */}
-        <button
-          onClick={() => navigate("/scan")}
-          className="w-full bg-white hover:bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between shadow-xs transition-all cursor-pointer group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-              <QrCode size={20} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={() => navigate("/scan")}
+            className="w-full bg-white hover:bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between shadow-xs transition-all cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                <QrCode size={20} />
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-bold text-slate-800">Escanear QR</p>
+                <p className="text-[11px] text-slate-500">Tags & Wi-Fi</p>
+              </div>
             </div>
-            <div className="text-left">
-              <p className="text-xs font-bold text-slate-800">Escanear QR Code</p>
-              <p className="text-[11px] text-slate-500">Leitor de tags de equipamentos e Wi-Fi</p>
+            <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
+          </button>
+
+          <button
+            onClick={() => navigate("/ajuda")}
+            className="w-full bg-white hover:bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-center justify-between shadow-xs transition-all cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                <BookOpen size={20} />
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-bold text-slate-800">Central de Ajuda</p>
+                <p className="text-[11px] text-slate-500">Manuais & FAQ</p>
+              </div>
             </div>
-          </div>
-          <ChevronRight size={18} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
-        </button>
+            <ChevronRight size={16} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
+          </button>
+        </div>
 
         {/* Recent Tickets Section */}
         <div className="space-y-3">

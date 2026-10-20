@@ -117,6 +117,9 @@ class Ticket(Base):
     subcategory_id = Column(Integer, ForeignKey("subcategories.id"), nullable=True)
     problem_type_id = Column(Integer, ForeignKey("problem_types.id"), nullable=True)
 
+    # FK — Projeto (vinculação a projeto / entrega técnica)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Relationships
     requester = relationship("User", foreign_keys=[requester_id], back_populates="tickets_opened")
     technician = relationship("User", foreign_keys=[technician_id], back_populates="tickets_assigned")
@@ -127,6 +130,7 @@ class Ticket(Base):
     category = relationship("Category")
     subcategory = relationship("Subcategory")
     problem_type = relationship("ProblemType", back_populates="tickets")
+    project = relationship("Project", back_populates="tickets", foreign_keys=[project_id])
     interactions = relationship(
         "TicketInteraction",
         back_populates="ticket",

@@ -74,6 +74,7 @@ class Project(Base):
     manager = relationship("User", foreign_keys=[manager_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
     tasks = relationship("ProjectTask", back_populates="project", cascade="all, delete-orphan", order_by="ProjectTask.order")
+    tickets = relationship("Ticket", back_populates="project", foreign_keys="Ticket.project_id")
 
 
 class ProjectTask(Base):
@@ -87,6 +88,7 @@ class ProjectTask(Base):
     priority = Column(String(50), default=TaskPriority.MEDIA.value, nullable=False)
     
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True)
     due_date = Column(Date, nullable=True)
     order = Column(Integer, default=0, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
@@ -106,3 +108,4 @@ class ProjectTask(Base):
     # Relacionamentos
     project = relationship("Project", back_populates="tasks")
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+    ticket = relationship("Ticket", foreign_keys=[ticket_id])

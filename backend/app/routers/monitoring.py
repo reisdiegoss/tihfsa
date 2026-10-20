@@ -1768,9 +1768,38 @@ def get_agent_powershell_script(request: Request, download: bool = False, os: st
 
     # Detecta a base URL do servidor a partir do Host da requisição
     host = request.headers.get("Host", "127.0.0.1:8000")
-    protocol = "https" if request.url.scheme == "https" or "https" in request.headers.get("X-Forwarded-Proto", "") else "http"
+    protocol = "https"
     server_endpoint = f"{protocol}://{host}/api/v1/monitoring/agent/checkin"
     ca_endpoint = f"{protocol}://{host}/api/v1/monitoring/agent/ca.crt"
+
+    # Prioriza o script definitivo do repositório (scripts/tihfsa-agent.ps1) com substituição do endpoint
+    disk_candidates = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "scripts", "tihfsa-agent.ps1")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "tihfsa-agent.ps1")),
+        os.path.abspath(os.path.join(os.getcwd(), "scripts", "tihfsa-agent.ps1")),
+        os.path.abspath(os.path.join(os.getcwd(), "..", "scripts", "tihfsa-agent.ps1")),
+        "/app/scripts/tihfsa-agent.ps1",
+        "/var/www/tihfsa/scripts/tihfsa-agent.ps1",
+        "/opt/tihfsa/scripts/tihfsa-agent.ps1",
+    ]
+    for cand in disk_candidates:
+        if os.path.exists(cand):
+            try:
+                with open(cand, "r", encoding="utf-8") as f:
+                    ps_disk = f.read()
+                if ps_disk and "$ServerUrl" in ps_disk:
+                    import re
+                    ps_disk = re.sub(
+                        r'\[string\]\$ServerUrl\s*=\s*"[^"]*"',
+                        f'[string]$ServerUrl = "{server_endpoint}"',
+                        ps_disk
+                    )
+                    resp_headers = {}
+                    if download:
+                        resp_headers["Content-Disposition"] = 'attachment; filename="tihfsa-agent.ps1"'
+                    return Response(content=ps_disk, media_type="text/plain; charset=utf-8", headers=resp_headers)
+            except Exception:
+                pass
 
     ps_script = f"""<#
 .SYNOPSIS
@@ -1819,8 +1848,9 @@ function Ensure-TihfsaRootCertificate {{
         $candidateUrls = @(
             "$serverBase/api/v1/monitoring/agent/ca.crt",
             "$serverBase/cert/tihfsa-ca.crt",
-            "http://fassa29/cert/tihfsa-ca.crt",
-            "http://192.168.168.29/cert/tihfsa-ca.crt"
+            "https://fassa29/cert/tihfsa-ca.crt",
+            "https://fassa29.fasanobr.local/cert/tihfsa-ca.crt",
+            "https://192.168.168.29/cert/tihfsa-ca.crt"
         )
 
         $tempCa = "$env:TEMP\\tihfsa-ca.crt"
@@ -1892,136 +1922,6 @@ function Update-AgentScriptSelf {{
     }} catch {{}}
 }}
 
-function Install-SentinelTask {{
-    param(
-        [string]$TargetUrl,
-        [string]$Secret,
-        [int]$Interval
-    )
-
-    # 1. Assegura a instalação da Autoridade Certificadora Raiz TIHFSA (Trusted Root CA)
-    Ensure-TihfsaRootCertificate -TargetServerUrl $TargetUrl
-
-    $installDir = "C:\\ProgramData\\TIHFSA-Agent"
-    if (-not (Test-Path $installDir)) {{
-        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-    }}
-
-    $targetScript = "$installDir\\tihfsa-agent.ps1"
-    if ($PSCommandPath -and (Test-Path $PSCommandPath) -and ($PSCommandPath -ne $targetScript)) {{
-        try {{
-            [System.IO.File]::Copy($PSCommandPath, $targetScript, $true)
-        }} catch {{
-            Copy-Item -Path $PSCommandPath -Destination $targetScript -Force -ErrorAction SilentlyContinue
-        }}
-    }} else {{
-        $scriptUrl = $TargetUrl.Replace("/checkin", "/script")
-        try {{
-            Invoke-RestMethod -Uri $scriptUrl -OutFile $targetScript -TimeoutSec 15
-        }} catch {{
-            curl.exe -k -s $scriptUrl -o $targetScript
-        }}
-    }}
-
-    $taskName = "TIHFSA Sentinel Agent"
-    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    $actionArg = "powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$TargetUrl`" -AgentSecret `"$Secret`" -Silent"
-    $created = $false
-
-    if ($isAdmin) {{
-        try {{
-            schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
-            schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\\SYSTEM" /RL HIGHEST /SC MINUTE /MO $Interval /TR $actionArg 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) {{
-                $created = $true
-                try {{
-                    $tempXml = "$env:TEMP\\tihfsa_task.xml"
-                    schtasks.exe /Query /TN $taskName /XML > $tempXml 2>$null
-                    if (Test-Path $tempXml) {{
-                        $xmlContent = [System.IO.File]::ReadAllText($tempXml)
-                        $xmlContent = $xmlContent.Replace("<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>")
-                        $xmlContent = $xmlContent.Replace("<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>")
-                        $xmlContent = $xmlContent.Replace("<StartWhenAvailable>false</StartWhenAvailable>", "<StartWhenAvailable>true</StartWhenAvailable>")
-                        [System.IO.File]::WriteAllText($tempXml, $xmlContent)
-                        schtasks.exe /Create /TN $taskName /XML $tempXml /F 2>$null | Out-Null
-                        Remove-Item $tempXml -Force -ErrorAction SilentlyContinue
-                    }}
-                }} catch {{}}
-            }}
-        }} catch {{}}
-    }}
-
-    # Fallback transparente para contas de usuário comum ou sem elevação administrativa
-    if (-not $created) {{
-        # 1. Verifica se já existe uma tarefa agendada funcional
-        $q = schtasks.exe /Query /TN $taskName 2>$null
-        if ($LASTEXITCODE -eq 0) {{
-            $created = $true
-            Write-Host " [OK] Tarefa Agendada no nível de Sistema (SYSTEM) ativa nesta estação." -ForegroundColor Green
-        }} else {{
-            # 2. Configura worker em segundo plano invisível a nível de usuário
-            $workerVbs = "$installDir\\sentinel-worker.vbs"
-            $sleepMs = [int]($Interval * 60 * 1000)
-            $vbsCode = "Option Explicit`r`nOn Error Resume Next`r`nDim objWMI, procs, myCount`r`nSet objWMI = GetObject(`"winmgmts:{{impersonationLevel=impersonate}}!\\.\\root\\cimv2`")`r`nSet procs = objWMI.ExecQuery(`"Select * from Win32_Process Where Name = 'wscript.exe' and CommandLine Like '%sentinel-worker.vbs%'`")`r`nmyCount = 0`r`nFor Each p in procs`r`nmyCount = myCount + 1`r`nNext`r`nIf myCount > 1 Then WScript.Quit 0`r`nDim WshShell, cmd`r`nSet WshShell = CreateObject(`"WScript.Shell`")`r`ncmd = `"powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"`"$targetScript`"`" -ServerUrl `"`"$TargetUrl`"`" -AgentSecret `"`"$Secret`"`" -Silent`"`r`nDo`r`nWshShell.Run cmd, 0, True`r`nWScript.Sleep $sleepMs`r`nLoop"
-            try {{
-                [System.IO.File]::WriteAllText($workerVbs, $vbsCode, [System.Text.Encoding]::ASCII)
-                $startupVbs = "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\TIHFSA-Sentinel-Agent.vbs"
-                $launcherCode = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.Run `"wscript.exe `"`"$workerVbs`"`"`", 0, False"
-                [System.IO.File]::WriteAllText($startupVbs, $launcherCode, [System.Text.Encoding]::ASCII)
-                Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" -Name "TIHFSASentinelAgent" -Value "wscript.exe `"$workerVbs`"" -Force -ErrorAction SilentlyContinue | Out-Null
-                Start-Process wscript.exe -ArgumentList "`"$workerVbs`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
-                $created = $true
-                Write-Host " [OK] Agendamento contínuo em segundo plano ativo (100% invisível sem exigir Admin)." -ForegroundColor Green
-            }} catch {{}}
-        }}
-    }}
-
-    # Executa o primeiro envio de telemetria imediatamente
-    try {{
-        Write-Host "[+] Enviando primeira telemetria agora..." -ForegroundColor Cyan
-        & powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "$targetScript" -ServerUrl "$TargetUrl" -AgentSecret "$Secret"
-    }} catch {{}}
-
-    if ($created) {{
-        try {{ schtasks.exe /Run /TN $taskName 2>$null | Out-Null }} catch {{}}
-
-        Write-Host ""
-        Write-Host "==========================================================================" -ForegroundColor Green
-        Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e sincronizado com sucesso!" -ForegroundColor Green
-        Write-Host "==========================================================================" -ForegroundColor Green
-        Write-Host " * Sincronizacao:    Executa a cada $Interval minutos automaticamente" -ForegroundColor White
-        Write-Host " * Local do Script:  $targetScript" -ForegroundColor White
-        Write-Host " * Servidor:         $TargetUrl" -ForegroundColor White
-        Write-Host " * Comportamento:    100% invisivel em segundo plano (Notebooks & Desktops)" -ForegroundColor Cyan
-        Write-Host "==========================================================================" -ForegroundColor Green
-        Write-Host ""
-    }} else {{
-        Write-Warning "[AVISO] Nao foi possivel configurar o agendamento automatico. Execute o comando novamente."
-    }}
-}}
-
-function Uninstall-SentinelTask {{
-    $taskName = "TIHFSA Sentinel Agent"
-    try {{
-        schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
-        Write-Host "[OK] Tarefa agendada '$taskName' removida com sucesso." -ForegroundColor Yellow
-    }} catch {{}}
-    try {{
-        Get-CimInstance Win32_Process -Filter "Name = 'wscript.exe'" -ErrorAction SilentlyContinue | Where-Object {{ $_.CommandLine -like "*sentinel-worker.vbs*" }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}
-        $startupVbs = "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\TIHFSA-Sentinel-Agent.vbs"
-        if (Test-Path $startupVbs) {{ Remove-Item $startupVbs -Force -ErrorAction SilentlyContinue }}
-        Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" -Name "TIHFSASentinelAgent" -Force -ErrorAction SilentlyContinue | Out-Null
-        Write-Host "[OK] Agendamento de inicialização do usuário removido." -ForegroundColor Yellow
-    }} catch {{}}
-    try {{
-        $installDir = "C:\\ProgramData\\TIHFSA-Agent"
-        if (Test-Path $installDir) {{
-            Remove-Item -Path $installDir -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Host "[OK] Pasta '$installDir' removida com sucesso." -ForegroundColor Yellow
-        }}
-    }} catch {{}}
-}}
-
 function Ensure-SentinelTaskBatterySettings {{
     try {{
         $task = Get-ScheduledTask -TaskName "TIHFSA Sentinel Agent" -ErrorAction SilentlyContinue
@@ -2034,16 +1934,6 @@ function Ensure-SentinelTaskBatterySettings {{
             Log-AgentMessage "[OK] Configuração de execução em bateria e despertar ativada para notebooks."
         }}
     }} catch {{}}
-}}
-
-if ($Install) {{
-    Install-SentinelTask -TargetUrl $SERVER_URL -Secret $AGENT_SECRET -Interval $IntervalMinutes
-    exit 0
-}}
-
-if ($Uninstall) {{
-    Uninstall-SentinelTask
-    exit 0
 }}
 
 function Test-IsAdminOrServiceAccount {{
@@ -2783,7 +2673,7 @@ if (-not $sent) {{
         # Notebook fora da rede corporativa ou sem conexao com o servidor:
         # NUNCA exibir erro na tela do usuario. Grava apenas no log local e encerra com exit 0.
         Log-AgentMessage "[INFO] Servidor inacessivel ou maquina fora da rede. Telemetria sera reenviada no proximo ciclo."
-        exit 0
+        return
     }} else {{
         Write-Warning "[AVISO] Nao foi possivel conectar ao servidor TIHFSA ($SERVER_URL). Verifique se a maquina esta conectada na rede local ou VPN."
     }}
@@ -2806,19 +2696,19 @@ def get_agent_windows_install(request: Request, interval: int = 15):
     Uso: irm 'https://.../api/v1/monitoring/agent/install' | iex
     """
     host = request.headers.get("Host", "127.0.0.1:8000")
-    protocol = "https" if request.url.scheme == "https" or "https" in request.headers.get("X-Forwarded-Proto", "") else "http"
+    protocol = "https"
     script_endpoint = f"{protocol}://{host}/api/v1/monitoring/agent/script"
     checkin_endpoint = f"{protocol}://{host}/api/v1/monitoring/agent/checkin"
     ca_endpoint = f"{protocol}://{host}/api/v1/monitoring/agent/ca.crt"
 
     installer_script = f"""# ==============================================================================
-# TIHFSA Sentinel Agent — One-Click Windows Installer
-# Hotel Fasano Salvador | Agendamento automatico no Windows + SSL Confiável
+# TIHFSA Sentinel Agent - One-Click Windows Installer
+# Hotel Fasano Salvador | Agendamento automatico no Windows + SSL Confiavel
 # ==============================================================================
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {{$true}}
 
-# 1. Assegurar instalação da Autoridade Certificadora Raiz TIHFSA (Trusted Root CA)
+# 1. Assegurar instalacao da Autoridade Certificadora Raiz TIHFSA (Trusted Root CA)
 Write-Host "[+] Verificando Autoridade Certificadora Raiz TIHFSA..." -ForegroundColor Cyan
 try {{
     $hasCert = Get-ChildItem Cert:\\LocalMachine\\Root -ErrorAction SilentlyContinue | Where-Object {{
@@ -2855,26 +2745,42 @@ $checkinUrl = "{checkin_endpoint}"
 $agentSecret = "{AGENT_DEFAULT_TOKEN}"
 
 Write-Host "[+] Baixando TIHFSA Sentinel Agent de $scriptUrl..." -ForegroundColor Cyan
+$tempScript = "$env:TEMP\\tihfsa-agent-new.ps1"
 try {{
-    Invoke-RestMethod -Uri $scriptUrl -OutFile $targetScript -TimeoutSec 15
+    Invoke-RestMethod -Uri $scriptUrl -OutFile $tempScript -TimeoutSec 15
 }} catch {{
-    curl.exe -k -s $scriptUrl -o $targetScript
+    curl.exe -k -s $scriptUrl -o $tempScript
+}}
+
+if (Test-Path $tempScript) {{
+    try {{
+        [System.IO.File]::Copy($tempScript, $targetScript, $true)
+    }} catch {{
+        Copy-Item -Path $tempScript -Destination $targetScript -Force -ErrorAction SilentlyContinue
+    }}
+    Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
 }}
 
 if (-not (Test-Path $targetScript)) {{
-    Write-Error "[ERRO] Nao foi possivel baixar o script do agente."
-    exit 1
+    Write-Host "[ERRO] Nao foi possivel baixar o script do agente em $scriptUrl." -ForegroundColor Red
+    Write-Host "Pressione [ENTER] para fechar esta janela..." -ForegroundColor Cyan
+    try {{ [void][System.Console]::ReadLine() }} catch {{}}
+    return
 }}
 
 $taskName = "TIHFSA Sentinel Agent"
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-$actionArg = "powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$checkinUrl`" -AgentSecret `"$agentSecret`" -Silent"
+$actionArg = "-NoProfile -File `"$targetScript`" -ServerUrl `"$checkinUrl`" -AgentSecret `"$agentSecret`" -Silent"
+$legacyCmd = "powershell.exe $actionArg"
 $created = $false
 
 if ($isAdmin) {{
     try {{
         schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
-        schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\\SYSTEM" /RL HIGHEST /SC MINUTE /MO {interval} /TR $actionArg 2>$null | Out-Null
+        schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\\SYSTEM" /RL HIGHEST /SC MINUTE /MO {interval} /TR $legacyCmd 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {{
+            schtasks.exe /Create /F /TN $taskName /RL HIGHEST /SC MINUTE /MO {interval} /TR $legacyCmd 2>$null | Out-Null
+        }}
         if ($LASTEXITCODE -eq 0) {{
             $created = $true
             try {{
@@ -2892,35 +2798,16 @@ if ($isAdmin) {{
             }} catch {{}}
         }}
     }} catch {{}}
+}} else {{
+    Write-Warning "[AVISO] Privilegios de Administrador sao necessarios para criar a Tarefa Agendada no Windows."
+    Write-Warning "        Para ativar a sincronizacao periodica a cada {interval} min, reabra o PowerShell"
+    Write-Warning "        como Administrador (Botao direito > 'Executar como Administrador') e repita o comando."
 }}
 
-# Fallback transparente para contas de usuário comum ou sem elevação administrativa
-if (-not $created) {{
-    $q = schtasks.exe /Query /TN $taskName 2>$null
-    if ($LASTEXITCODE -eq 0) {{
-        $created = $true
-        Write-Host " [OK] Tarefa Agendada no nível de Sistema (SYSTEM) ativa nesta estação." -ForegroundColor Green
-    }} else {{
-        $workerVbs = "$installDir\\sentinel-worker.vbs"
-        $sleepMs = [int]({interval} * 60 * 1000)
-        $vbsCode = "Option Explicit`r`nOn Error Resume Next`r`nDim objWMI, procs, myCount`r`nSet objWMI = GetObject(`"winmgmts:{{impersonationLevel=impersonate}}!\\.\\root\\cimv2`")`r`nSet procs = objWMI.ExecQuery(`"Select * from Win32_Process Where Name = 'wscript.exe' and CommandLine Like '%sentinel-worker.vbs%'`")`r`nmyCount = 0`r`nFor Each p in procs`r`nmyCount = myCount + 1`r`nNext`r`nIf myCount > 1 Then WScript.Quit 0`r`nDim WshShell, cmd`r`nSet WshShell = CreateObject(`"WScript.Shell`")`r`ncmd = `"powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"`"$targetScript`"`" -ServerUrl `"`"$checkinUrl`"`" -AgentSecret `"`"$agentSecret`"`" -Silent`"`r`nDo`r`nWshShell.Run cmd, 0, True`r`nWScript.Sleep $sleepMs`r`nLoop"
-        try {{
-            [System.IO.File]::WriteAllText($workerVbs, $vbsCode, [System.Text.Encoding]::ASCII)
-            $startupVbs = "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\TIHFSA-Sentinel-Agent.vbs"
-            $launcherCode = "Set WshShell = CreateObject(`"WScript.Shell`")`r`nWshShell.Run `"wscript.exe `"`"$workerVbs`"`"`", 0, False"
-            [System.IO.File]::WriteAllText($startupVbs, $launcherCode, [System.Text.Encoding]::ASCII)
-            Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" -Name "TIHFSASentinelAgent" -Value "wscript.exe `"$workerVbs`"" -Force -ErrorAction SilentlyContinue | Out-Null
-            Start-Process wscript.exe -ArgumentList "`"$workerVbs`"" -WindowStyle Hidden -ErrorAction SilentlyContinue
-            $created = $true
-            Write-Host " [OK] Agendamento contínuo em segundo plano ativo (100% invisível sem exigir Admin)." -ForegroundColor Green
-        }} catch {{}}
-    }}
-}}
-
-# Executa o primeiro envio de telemetria imediatamente
+# Executa o primeiro envio de telemetria imediatamente com saida visual
 Write-Host "[+] Executando o primeiro envio de telemetria agora..." -ForegroundColor Cyan
 try {{
-    & powershell.exe -NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "$targetScript" -ServerUrl "$checkinUrl" -AgentSecret "$agentSecret"
+    & powershell.exe -NoProfile -File "$targetScript" -ServerUrl "$checkinUrl" -AgentSecret "$agentSecret" -CheckinOnly
 }} catch {{}}
 
 if ($created) {{
@@ -2939,8 +2826,16 @@ if ($created) {{
     Write-Host "==========================================================================" -ForegroundColor Green
     Write-Host ""
 }} else {{
-    Write-Warning "[AVISO] Nao foi possivel registrar o agendamento automatico. Execute o comando novamente."
+    Write-Host ""
+    Write-Host "==========================================================================" -ForegroundColor Yellow
+    Write-Host " [AVISO] Telemetria avulsa enviada com sucesso!" -ForegroundColor Yellow
+    Write-Host " Para manter a sincronizacao automatica a cada {interval} min, execute como Administrador." -ForegroundColor Yellow
+    Write-Host "==========================================================================" -ForegroundColor Yellow
+    Write-Host ""
 }}
+
+Write-Host "Pressione [ENTER] para fechar esta janela..." -ForegroundColor Cyan
+try {{ [void][System.Console]::ReadLine() }} catch {{}}
 """
     return Response(content=installer_script, media_type="text/plain; charset=utf-8")
 
@@ -2953,7 +2848,7 @@ def get_agent_linux_script(request: Request, download: bool = False):
     Uso imediato via: 'curl -k -s "..." | bash'
     """
     host = request.headers.get("Host", "127.0.0.1:8000")
-    protocol = "https" if request.url.scheme == "https" or "https" in request.headers.get("X-Forwarded-Proto", "") else "http"
+    protocol = "https"
     server_endpoint = f"{protocol}://{host}/api/v1/monitoring/agent/checkin"
 
     sh_script = f"""#!/usr/bin/env bash
@@ -3309,7 +3204,7 @@ def get_agent_linux_install(request: Request):
     Uso: 'curl -k -s "..." | sudo bash'
     """
     host = request.headers.get("Host", "127.0.0.1:8000")
-    protocol = "https" if request.url.scheme == "https" or "https" in request.headers.get("X-Forwarded-Proto", "") else "http"
+    protocol = "https"
     script_endpoint = f"{protocol}://{host}/api/v1/monitoring/agent/linux-script"
     checkin_endpoint = f"{protocol}://{host}/api/v1/monitoring/agent/checkin"
 

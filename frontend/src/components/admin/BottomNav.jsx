@@ -3,12 +3,12 @@ import { NavLink } from "react-router-dom";
 import { 
   LayoutDashboard, Ticket, FileSignature, Monitor, 
   Menu, X, PlusCircle, Briefcase, BarChart3, 
-  QrCode, Activity, Settings, LogOut 
+  QrCode, Activity, Settings, LogOut, FolderKanban, BookOpen
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function BottomNav() {
-  const { user, logout, isAdmin, isTechnician, isStaff } = useAuth();
+  const { user, logout, isAdmin, isTechnician, isStaff, can } = useAuth();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const userModules = user?.allowed_modules || [];
@@ -22,13 +22,18 @@ export default function BottomNav() {
 
   const drawerItems = [
     { name: "Novo Chamado", path: "/admin/tickets/new", icon: PlusCircle, module: "tickets" },
+    { name: "Projetos", path: "/admin/projects", icon: FolderKanban, module: "projects" },
     { name: "Contratos", path: "/admin/contracts", icon: Briefcase, module: "contracts" },
     { name: "Relatórios", path: "/admin/reports", icon: BarChart3, module: "reports" },
     { name: "QR Codes", path: "/admin/qrcodes", icon: QrCode, module: "qrcodes" },
     { name: "Monitoramento", path: "/admin/monitoring", icon: Activity, module: "monitoring" },
+    { name: "Conhecimento", path: "/admin/knowledge", icon: BookOpen, module: "all" },
     { name: "Configurações", path: "/admin/settings", icon: Settings, module: "settings" },
   ].filter(item => {
     if (isAdmin) return true;
+    if (item.module === "projects") {
+      return isAdmin || isTechnician || isStaff || userModules.includes("projects") || (can && can("projects", "view"));
+    }
     if (userModules.length > 0) return userModules.includes(item.module);
     if (isTechnician) return true;
     return item.module === "tickets";

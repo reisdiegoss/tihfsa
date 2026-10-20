@@ -25,6 +25,7 @@ export function AuthProvider({ children }) {
             ...parsed,
             canChangePassword: Boolean(res.data?.can_change_password),
             allowed_modules: res.data?.allowed_modules || parsed.allowed_modules || [],
+            module_permissions: res.data?.module_permissions || parsed.module_permissions || {},
           };
           setUser(updated);
           localStorage.setItem("tihfsa_user", JSON.stringify(updated));
@@ -49,6 +50,7 @@ export function AuthProvider({ children }) {
       role: data.role,
       roles: data.roles || [data.role],
       allowed_modules: data.allowed_modules || [],
+      module_permissions: data.module_permissions || {},
       canChangePassword: Boolean(data.can_change_password),
     };
 
@@ -71,8 +73,20 @@ export function AuthProvider({ children }) {
   const isStaff = isAdmin || isTechnician || isManager;
   const canChangePassword = Boolean(user?.canChangePassword);
 
+  const can = (module, action = "view") => {
+    if (isAdmin) return true;
+    const modules = user?.allowed_modules || [];
+    if (modules.length > 0 && !modules.includes(module)) return false;
+    const perms = user?.module_permissions?.[module];
+    if (!perms || Object.keys(perms).length === 0) {
+      if (action === "delete" || action === "manage") return isManager || isAdmin;
+      return true;
+    }
+    return Boolean(perms[action]);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin, isTechnician, isManager, isStaff, canChangePassword }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin, isTechnician, isManager, isStaff, canChangePassword, can }}>
       {children}
     </AuthContext.Provider>
   );

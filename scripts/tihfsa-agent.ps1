@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    TIHFSA Sentinel Agent — Agente Nativo de Telemetria e Monitoramento de Estações.
-    Hotel Fasano Salvador — Substituição Nativa do Zabbix Agent para Windows.
+    TIHFSA Sentinel Agent - Agente Nativo de Telemetria e Monitoramento de Estacoes.
+    Hotel Fasano Salvador - Substituicao Nativa do Zabbix Agent para Windows.
 
 .DESCRIPTION
-    Coleta dados de hardware (CPU, Memória, Disco), sistema (Uptime, OS),
-    rede (IP, Hostname) e identifica o Usuário Ativo logado na máquina,
+    Coleta dados de hardware (CPU, Memoria, Disco), sistema (Uptime, OS),
+    rede (IP, Hostname) e identifica o Usuario Ativo logado na maquina,
     enviando periodicamente para o backend do TIHFSA via HTTPS/REST.
 
 .INSTALLATION (Executar como Administrador no PowerShell):
@@ -22,6 +22,7 @@ param(
     [switch]$Install,
     [switch]$Uninstall,
     [switch]$Silent,
+    [switch]$CheckinOnly,
     [int]$IntervalMinutes = 15
 )
 
@@ -41,21 +42,36 @@ function Log-AgentMessage {
 }
 
 function Ensure-TihfsaRootCertificate {
-    param([string]$TargetServerUrl)
+    param(
+        [string]$TargetServerUrl,
+        [switch]$Silent
+    )
     try {
-        # 1. Verifica se já está instalado no repositório confiável da máquina local
+        # 1. Verifica se ja esta instalado no repositorio confiavel da maquina local
         $installed = Get-ChildItem Cert:\LocalMachine\Root -ErrorAction SilentlyContinue | Where-Object {
             $_.Subject -like "*TIHFSA Root*" -or $_.Issuer -like "*TIHFSA Root*"
         }
-        if ($installed) { return $true }
+        if ($installed) {
+            if (-not $Silent) {
+                Write-Host " [OK] Certificado Raiz TIHFSA ja configurado nesta estacao." -ForegroundColor Green
+            }
+            return $true
+        }
 
-        # 2. Se não estiver instalado, tenta baixar do servidor
+        if (-not $Silent) {
+            Write-Host "[+] Baixando e instalando Certificado Raiz TIHFSA..." -ForegroundColor Cyan
+        }
+
+        # 2. Se nao estiver instalado, tenta baixar do servidor
         $serverBase = ($TargetServerUrl -split '/api/')[0]
         $candidateUrls = @(
             "$serverBase/api/v1/monitoring/agent/ca.crt",
             "$serverBase/cert/tihfsa-ca.crt",
-            "http://fassa29/cert/tihfsa-ca.crt",
-            "http://192.168.168.29/cert/tihfsa-ca.crt"
+            "https://fassa29/cert/tihfsa-ca.crt",
+            "https://fassa29.fasanobr.local/cert/tihfsa-ca.crt",
+            "https://192.168.168.29/cert/tihfsa-ca.crt",
+            "http://192.168.168.29/cert/tihfsa-ca.crt",
+            "http://fassa29/cert/tihfsa-ca.crt"
         )
 
         $tempCa = "$env:TEMP\tihfsa-ca.crt"
@@ -85,10 +101,21 @@ function Ensure-TihfsaRootCertificate {
             }
             Remove-Item $tempCa -Force -ErrorAction SilentlyContinue
             Log-AgentMessage "[OK] Certificado Raiz TIHFSA instalado com sucesso na Loja LocalMachine\Root."
+            if (-not $Silent) {
+                Write-Host " [OK] Certificado Raiz TIHFSA instalado com sucesso na Loja do Windows!" -ForegroundColor Green
+                Write-Host "      Navegadores Edge e Chrome agora confiam na conexao HTTPS segura." -ForegroundColor Green
+            }
             return $true
+        } else {
+            if (-not $Silent) {
+                Write-Host " [AVISO] Nao foi possivel baixar o certificado raiz SSL de $serverBase." -ForegroundColor Yellow
+            }
         }
     } catch {
         Log-AgentMessage "[AVISO] Nao foi possivel verificar/instalar certificado SSL: $_"
+        if (-not $Silent) {
+            Write-Host " [AVISO] Erro ao verificar/instalar certificado SSL: $_" -ForegroundColor Yellow
+        }
     }
     return $false
 }
@@ -112,8 +139,13 @@ function Update-AgentScriptSelf {
             if ($newSize -gt 1500) {
                 $content = Get-Content $tempScript -Raw -ErrorAction SilentlyContinue
                 if ($content -like "*TIHFSA Sentinel Agent*") {
-                    Move-Item -Path $tempScript -Destination $targetScript -Force
-                    Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso."
+                    try {
+                        [System.IO.File]::Copy($tempScript, $targetScript, $true)
+                        Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso via .NET."
+                    } catch {
+                        Copy-Item -Path $tempScript -Destination $targetScript -Force -ErrorAction SilentlyContinue
+                        Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso via Copy-Item."
+                    }
                 }
             }
             Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
@@ -128,9 +160,31 @@ function Install-SentinelTask {
         [int]$Interval
     )
 
-    # Assegura que o certificado raiz TIHFSA está instalado na máquina
+    Write-Host "==========================================================================" -ForegroundColor Cyan
+    Write-Host " TIHFSA Sentinel Agent - Instalacao e Ativacao do Agente" -ForegroundColor Cyan
+    Write-Host " Servidor: $TargetUrl" -ForegroundColor White
+    Write-Host "==========================================================================" -ForegroundColor Cyan
+
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        Write-Host ""
+        Write-Host "==========================================================================" -ForegroundColor Red
+        Write-Host " [ERRO DE PRIVILEGIO] Execucao como Administrador obrigatoria!" -ForegroundColor Red
+        Write-Host "==========================================================================" -ForegroundColor Red
+        Write-Host " Para instalar o certificado SSL Raiz e a Tarefa Agendada no Windows," -ForegroundColor Yellow
+        Write-Host " clique com o botao direito no PowerShell e selecione:" -ForegroundColor Yellow
+        Write-Host "   'Executar como Administrador' (Run as Administrator)" -ForegroundColor White
+        Write-Host "==========================================================================" -ForegroundColor Red
+        Write-Host ""
+        return $false
+    }
+
+    # 1. Assegura que o certificado raiz TIHFSA esta instalado na maquina
+    Write-Host "[1/3] Verificando Autoridade Certificadora Raiz TIHFSA..." -ForegroundColor Cyan
     Ensure-TihfsaRootCertificate -TargetServerUrl $TargetUrl
 
+    # 2. Cria diretorio e copia arquivo do script
+    Write-Host "[2/3] Instalando arquivos do agente em C:\ProgramData\TIHFSA-Agent..." -ForegroundColor Cyan
     $installDir = "C:\ProgramData\TIHFSA-Agent"
     if (-not (Test-Path $installDir)) {
         New-Item -ItemType Directory -Path $installDir -Force | Out-Null
@@ -138,7 +192,11 @@ function Install-SentinelTask {
 
     $targetScript = "$installDir\tihfsa-agent.ps1"
     if ($PSCommandPath -and (Test-Path $PSCommandPath) -and ($PSCommandPath -ne $targetScript)) {
-        Copy-Item -Path $PSCommandPath -Destination $targetScript -Force
+        try {
+            [System.IO.File]::Copy($PSCommandPath, $targetScript, $true)
+        } catch {
+            Copy-Item -Path $PSCommandPath -Destination $targetScript -Force -ErrorAction SilentlyContinue
+        }
     } elseif (-not (Test-Path $targetScript)) {
         $scriptUrl = $TargetUrl.Replace("/checkin", "/script")
         try {
@@ -148,73 +206,63 @@ function Install-SentinelTask {
         }
     }
 
+    if (-not (Test-Path $targetScript)) {
+        Write-Host " [ERRO] Nao foi possivel copiar ou baixar o script do agente para $targetScript." -ForegroundColor Red
+        return $false
+    }
+
+    # 3. Registra a Tarefa Agendada no Windows
+    Write-Host "[3/3] Registrando Tarefa Agendada no Windows (a cada $Interval minutos)..." -ForegroundColor Cyan
     $taskName = "TIHFSA Sentinel Agent"
-    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
     try {
         schtasks.exe /Delete /F /TN $taskName 2>$null | Out-Null
     } catch {}
 
-    $actionArg = "-NonInteractive -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$targetScript`" -ServerUrl `"$TargetUrl`" -AgentSecret `"$Secret`" -Silent"
-
+    $actionArg = "-NoProfile -File `"$targetScript`" -ServerUrl `"$TargetUrl`" -AgentSecret `"$Secret`" -Silent"
+    $legacyCmd = "powershell.exe $actionArg"
     $created = $false
-    # 1. Registro nativo PowerShell (garante que notebooks rodem em bateria e ao despertar)
+
+    # Tentativa 1: Register-ScheduledTask nativo (PowerShell)
     try {
         $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $actionArg
         $taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $Interval) -RepetitionDuration ([TimeSpan]::MaxValue)
         $taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
 
-        if ($isAdmin) {
-            Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -User "NT AUTHORITY\SYSTEM" -RunLevel Highest -Force -ErrorAction Stop | Out-Null
-        } else {
-            Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -Force -ErrorAction Stop | Out-Null
-        }
+        Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger -Settings $taskSettings -User "NT AUTHORITY\SYSTEM" -RunLevel Highest -Force -ErrorAction Stop | Out-Null
         $created = $true
     } catch {
-        # Fallback via schtasks tradicional com correção de XML para bateria
-        $legacyCmd = "powershell.exe $actionArg"
-        if ($isAdmin) {
-            schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\SYSTEM" /RL HIGHEST /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) { $created = $true }
-        }
-        if (-not $created) {
-            schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) { $created = $true }
-        }
-        if ($created) {
-            try {
-                $tempXml = "$env:TEMP\tihfsa_task.xml"
-                schtasks.exe /Query /TN $taskName /XML > $tempXml 2>$null
-                if (Test-Path $tempXml) {
-                    $xmlContent = [System.IO.File]::ReadAllText($tempXml)
-                    $xmlContent = $xmlContent.Replace("<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>")
-                    $xmlContent = $xmlContent.Replace("<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>")
-                    $xmlContent = $xmlContent.Replace("<StartWhenAvailable>false</StartWhenAvailable>", "<StartWhenAvailable>true</StartWhenAvailable>")
-                    [System.IO.File]::WriteAllText($tempXml, $xmlContent)
-                    schtasks.exe /Create /TN $taskName /XML $tempXml /F 2>$null | Out-Null
-                    Remove-Item $tempXml -Force -ErrorAction SilentlyContinue
-                }
-            } catch {}
-        }
+        # Tentativa 2: Fallback via schtasks.exe tradicional com correcao de XML para bateria
+        schtasks.exe /Create /F /TN $taskName /RU "NT AUTHORITY\SYSTEM" /RL HIGHEST /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $created = $true }
+    }
+
+    if (-not $created) {
+        schtasks.exe /Create /F /TN $taskName /SC MINUTE /MO $Interval /TR $legacyCmd 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $created = $true }
     }
 
     if ($created) {
-        try { schtasks.exe /Run /TN $taskName 2>$null | Out-Null } catch {}
+        # Garante suporte a bateria em notebooks via XML
+        try {
+            $tempXml = "$env:TEMP\tihfsa_task.xml"
+            schtasks.exe /Query /TN $taskName /XML > $tempXml 2>$null
+            if (Test-Path $tempXml) {
+                $xmlContent = [System.IO.File]::ReadAllText($tempXml)
+                $xmlContent = $xmlContent.Replace("<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>")
+                $xmlContent = $xmlContent.Replace("<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>")
+                $xmlContent = $xmlContent.Replace("<StartWhenAvailable>false</StartWhenAvailable>", "<StartWhenAvailable>true</StartWhenAvailable>")
+                [System.IO.File]::WriteAllText($tempXml, $xmlContent)
+                schtasks.exe /Create /TN $taskName /XML $tempXml /F 2>$null | Out-Null
+                Remove-Item $tempXml -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
 
-        Write-Host ""
-        Write-Host "==========================================================================" -ForegroundColor Green
-        Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e agendado com sucesso!" -ForegroundColor Green
-        Write-Host "==========================================================================" -ForegroundColor Green
-        Write-Host " * Tarefa Agendada: '$taskName' (Executa a cada $Interval minutos)" -ForegroundColor White
-        Write-Host " * Suporte Bateria:  Ativado (executa normalmente em notebooks na bateria)" -ForegroundColor White
-        Write-Host " * Local do Script:  $targetScript" -ForegroundColor White
-        Write-Host " * Servidor:         $TargetUrl" -ForegroundColor White
-        Write-Host " * Comportamento:    100% invisivel em segundo plano." -ForegroundColor Cyan
-        Write-Host " * Fora da rede:     Silencioso sem janelas ou erros ao usuario." -ForegroundColor Cyan
-        Write-Host "==========================================================================" -ForegroundColor Green
-        Write-Host ""
+        Write-Host " [OK] Tarefa Agendada '$taskName' registrada com sucesso!" -ForegroundColor Green
+        return $true
     } else {
-        Write-Error "[ERRO] Nao foi possivel registrar a tarefa agendada no Windows. Tente executar o PowerShell como Administrador."
+        Write-Host " [ERRO] Nao foi possivel registrar a tarefa agendada no Windows. Verifique se o PowerShell esta como Administrador." -ForegroundColor Red
+        return $false
     }
 }
 
@@ -242,19 +290,9 @@ function Ensure-SentinelTaskBatterySettings {
             $task.Settings.StartWhenAvailable = $true
             $task.Settings.ExecutionTimeLimit = (New-TimeSpan -Minutes 5)
             Set-ScheduledTask -InputObject $task -ErrorAction SilentlyContinue | Out-Null
-            Log-AgentMessage "[OK] Configuração de execução em bateria e despertar ativada para notebooks."
+            Log-AgentMessage "[OK] Configuracao de execucao em bateria e despertar ativada para notebooks."
         }
     } catch {}
-}
-
-if ($Install) {
-    Install-SentinelTask -TargetUrl $ServerUrl -Secret $AgentSecret -Interval $IntervalMinutes
-    exit 0
-}
-
-if ($Uninstall) {
-    Uninstall-SentinelTask
-    exit 0
 }
 
 function Test-IsAdminOrServiceAccount {
@@ -271,8 +309,8 @@ function Test-IsAdminOrServiceAccount {
 function Get-LoggedUser {
     $detectedUser = $null
 
-    # Camada 1: Proprietário do processo explorer.exe da sessão interativa gráfica
-    # Garante que mesmo com o script rodando como Administrador ou SYSTEM, pega o usuário na tela
+    # Camada 1: Proprietario do processo explorer.exe da sessao interativa grafica
+    # Garante que mesmo com o script rodando como Administrador ou SYSTEM, pega o usuario na tela
     try {
         $explorers = Get-CimInstance Win32_Process -Filter "Name = 'explorer.exe'" -ErrorAction SilentlyContinue
         foreach ($proc in $explorers) {
@@ -287,7 +325,7 @@ function Get-LoggedUser {
         }
     } catch {}
 
-    # Camada 2: Sessão de console interativo via Win32_ComputerSystem
+    # Camada 2: Sessao de console interativo via Win32_ComputerSystem
     try {
         $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
         if ($cs.UserName) {
@@ -298,7 +336,7 @@ function Get-LoggedUser {
         }
     } catch {}
 
-    # Camada 3: Sessão de console ativa via query user
+    # Camada 3: Sessao de console ativa via query user
     try {
         $quser = query user 2>$null | Select-Object -Skip 1
         foreach ($line in $quser) {
@@ -312,7 +350,7 @@ function Get-LoggedUser {
         }
     } catch {}
 
-    # Camada 4: Registro do Windows (Último usuário real logado — ótimo se rodar no boot antes do login)
+    # Camada 4: Registro do Windows (Ultimo usuario real logado - otimo se rodar no boot antes do login)
     try {
         $lastLogon = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI" -ErrorAction SilentlyContinue).LastLoggedOnUser
         if ($lastLogon -and (-not (Test-IsAdminOrServiceAccount $lastLogon))) {
@@ -330,7 +368,7 @@ function Get-LoggedUser {
 }
 
 function Get-BackupExecTelemetry {
-    # 1. Verifica se os serviços do Veritas Backup Exec 23.0 existem na máquina
+    # 1. Verifica se os servicos do Veritas Backup Exec 23.0 existem na maquina
     $beServiceNames = @('BackupExecJobEngine', 'BackupExecServer', 'BackupExecDeviceMediaService', 'BackupExecManagementService')
     $beInstalled = $false
     $beServicesRunning = $true
@@ -347,7 +385,7 @@ function Get-BackupExecTelemetry {
         }
     }
 
-    # Se não houver serviços do Backup Exec, encerra retornando $null de forma ultra-leve
+    # Se nao houver servicos do Backup Exec, encerra retornando $null de forma ultra-leve
     if (-not $beInstalled) {
         return $null
     }
@@ -366,7 +404,7 @@ function Get-BackupExecTelemetry {
         last_event_message       = ""
     }
 
-    # 2. Tenta coletar via BEMCLI (Módulo Oficial Veritas Backup Exec PowerShell)
+    # 2. Tenta coletar via BEMCLI (Modulo Oficial Veritas Backup Exec PowerShell)
     try {
         if (-not (Get-Module -Name BEMCLI)) {
             Import-Module BEMCLI -ErrorAction SilentlyContinue | Out-Null
@@ -391,7 +429,7 @@ function Get-BackupExecTelemetry {
                 }
             }
         }
-        # Verifica se há Alertas Ativos no console do Backup Exec (ex: fita requerida, pool cheio, erro de hardware)
+        # Verifica se ha Alertas Ativos no console do Backup Exec (ex: fita requerida, pool cheio, erro de hardware)
         if (Get-Command Get-BEAlert -ErrorAction SilentlyContinue) {
             $activeAlerts = @(Get-BEAlert -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Active' -and $_.Severity -in @('Error', 'AttentionRequired', 'Warning') })
             if ($activeAlerts -and $activeAlerts.Count -gt 0) {
@@ -404,7 +442,7 @@ function Get-BackupExecTelemetry {
 
     # 3. Complemento / Fallback Seguro via Windows Application Event Log
     try {
-        # Busca os eventos mais recentes de erro/aviso/conclusão do Veritas Backup Exec
+        # Busca os eventos mais recentes de erro/aviso/conclusao do Veritas Backup Exec
         $events = Get-EventLog -LogName Application -Source "*Backup Exec*" -Newest 50 -ErrorAction SilentlyContinue | Where-Object {
             $_.EventID -in @(34113, 34114, 34115, 57751, 57752, 57753, 57754, 57755, 57756, 58068) -or $_.EntryType -in @("Error", "Warning")
         }
@@ -505,7 +543,7 @@ function Get-SystemMetrics {
         $ramPct = [math]::Round(($ramUsedMB / $ramTotalMB) * 100, 1)
     }
 
-    # Discos Lógicos (Partições locais C:, D:, etc.)
+    # Discos Logicos (Particoes locais C:, D:, etc.)
     $disks = @()
     try {
         $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue | ForEach-Object {
@@ -524,7 +562,7 @@ function Get-SystemMetrics {
         })
     } catch {}
 
-    # Discos Físicos (Hardware SSD, NVMe, HDD)
+    # Discos Fisicos (Hardware SSD, NVMe, HDD)
     $physicalDisks = @()
     try {
         $pDisks = Get-PhysicalDisk -ErrorAction SilentlyContinue
@@ -554,7 +592,7 @@ function Get-SystemMetrics {
         } catch {}
     }
 
-    # Endereço IPv4 Ativo & MAC Address
+    # Endereco IPv4 Ativo & MAC Address
     $ipAddress = "unknown"
     $macAddress = $null
     try {
@@ -576,7 +614,7 @@ function Get-SystemMetrics {
     $serialNumber = "Desconhecido"
     $deviceType = "Desktop"
 
-    # Detecção nativa de Windows Server (ProductType 2 ou 3)
+    # Deteccao nativa de Windows Server (ProductType 2 ou 3)
     if ($os -and ($os.ProductType -in 2, 3 -or $os.Caption -like "*Server*")) {
         $deviceType = "Servidor"
     } else {
@@ -618,14 +656,14 @@ function Get-SystemMetrics {
         }
     } catch {}
 
-    # Chave de Ativação do Windows (BIOS OA3 / MSDM)
+    # Chave de Ativacao do Windows (BIOS OA3 / MSDM)
     $winKey = ""
     try {
         $oa3 = (Get-CimInstance SoftwareLicensingService -ErrorAction SilentlyContinue).OA3xOriginalProductKey
         if ($oa3) { $winKey = $oa3.Trim() }
     } catch {}
 
-    # Licença, Versão e Chave de Ativação do Microsoft Office
+    # Licenca, Versao e Chave de Ativacao do Microsoft Office
     $officeVer = ""
     $officeKey = ""
     $officeStatus = ""
@@ -679,7 +717,7 @@ function Get-SystemMetrics {
         } catch {}
     }
 
-    # Inventário Completo de Softwares / Programas Instalados (Painel de Controle / Registro)
+    # Inventario Completo de Softwares / Programas Instalados (Painel de Controle / Registro)
     $installedApps = @()
     try {
         $uninstallPaths = @(
@@ -728,58 +766,114 @@ function Get-SystemMetrics {
     }
 }
 
-# 1. Assegura a instalação da Autoridade Certificadora Raiz TIHFSA na máquina local
-Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl
-
-# 2. Verifica auto-atualização silenciosa do script do agente
-Update-AgentScriptSelf -TargetServerUrl $ServerUrl
-
-# 3. Assegura configuração de bateria e despertar em notebooks
-Ensure-SentinelTaskBatterySettings
-
-# Execução do Check-in
-$payloadObj = Get-SystemMetrics
-$payloadJson = $payloadObj | ConvertTo-Json -Depth 5
-$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($payloadJson)
-$headers = @{
-    "Content-Type"  = "application/json; charset=utf-8"
-    "X-Agent-Token" = $AgentSecret
-}
-
-$sent = $false
+# ------------------------------------------------------------------------------
+# Ponto de Entrada Principal (Entrypoint)
+# ------------------------------------------------------------------------------
 try {
-    $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $bodyBytes -Headers $headers -TimeoutSec 5 -ErrorAction Stop
-    $sent = $true
-    if (-not $Silent) {
-        Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso para $ServerUrl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
+    if ($Uninstall) {
+        Uninstall-SentinelTask
+        return
+    }
+
+    # Se for apenas envio de check-in avulso:
+    if ($CheckinOnly) {
+        Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl -Silent
+    } elseif (-not $Silent) {
+        # Se NAO for execucao em segundo plano (-Silent), executa o instalador da tarefa agendada:
+        $installed = Install-SentinelTask -TargetUrl $ServerUrl -Secret $AgentSecret -Interval $IntervalMinutes
+        if (-not $installed) {
+            Write-Host ""
+            Write-Host "[!] A instalacao nao pode ser concluida. Verifique o erro exibido acima." -ForegroundColor Red
+            if (-not $Silent) {
+                Write-Host "Pressione [ENTER] para fechar esta janela..." -ForegroundColor Cyan
+                try { [void][System.Console]::ReadLine() } catch {}
+            }
+            return
+        }
+        Write-Host ""
+        Write-Host "[+] Coletando metricas e executando envio de telemetria..." -ForegroundColor Cyan
     } else {
-        Log-AgentMessage "[OK] Telemetria enviada com sucesso ($($payloadObj.hostname) - $($payloadObj.logged_user))"
+        Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl -Silent
+        Update-AgentScriptSelf -TargetServerUrl $ServerUrl
+        Ensure-SentinelTaskBatterySettings
+    }
+
+    # Execucao do Check-in de Telemetria
+    $payloadObj = Get-SystemMetrics
+    $payloadJson = $payloadObj | ConvertTo-Json -Depth 5
+    $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($payloadJson)
+    $headers = @{
+        "Content-Type"  = "application/json; charset=utf-8"
+        "X-Agent-Token" = $AgentSecret
+    }
+
+    $sent = $false
+    try {
+        $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $bodyBytes -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+        $sent = $true
+    } catch {
+        try {
+            # Fallback resiliente via curl.exe nativo do Windows com arquivo UTF-8
+            $tempJson = "$env:TEMP\tihfsa_checkin_$([System.Guid]::NewGuid().ToString('N')).json"
+            [System.IO.File]::WriteAllText($tempJson, $payloadJson, [System.Text.Encoding]::UTF8)
+            $curlOut = curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json; charset=utf-8" -H "X-Agent-Token: $AgentSecret" --data-binary "@$tempJson" $ServerUrl 2>$null
+            Remove-Item $tempJson -Force -ErrorAction SilentlyContinue
+            if ($curlOut -like '*"status":"ok"*') {
+                $sent = $true
+            }
+        } catch {}
+    }
+
+    if ($sent) {
+        if (-not $Silent) {
+            Write-Host " [OK] Telemetria enviada com sucesso para $ServerUrl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
+            if (-not $CheckinOnly) {
+                Write-Host ""
+                Write-Host "==========================================================================" -ForegroundColor Green
+                Write-Host " [SUCESSO] TIHFSA Sentinel Agent instalado e sincronizado com sucesso!" -ForegroundColor Green
+                Write-Host "==========================================================================" -ForegroundColor Green
+                Write-Host " * Sincronizacao:    Executa a cada $IntervalMinutes minutos em segundo plano" -ForegroundColor White
+                Write-Host " * Local do Script:  C:\ProgramData\TIHFSA-Agent\tihfsa-agent.ps1" -ForegroundColor White
+                Write-Host " * Servidor:         $ServerUrl" -ForegroundColor White
+                Write-Host " * Certificado SSL:  Instalado (Trusted Root CA - Navegadores confiam)" -ForegroundColor White
+                Write-Host " * Modo Bateria:     Ativado (executa normalmente em notebooks na bateria)" -ForegroundColor White
+                Write-Host "==========================================================================" -ForegroundColor Green
+                Write-Host ""
+            }
+        } else {
+            Log-AgentMessage "[OK] Telemetria enviada com sucesso ($($payloadObj.hostname) - $($payloadObj.logged_user))"
+        }
+    } else {
+        if ($Silent) {
+            # Notebook fora da rede corporativa ou sem comunicacao:
+            # NUNCA exibir erro na tela do usuario. Grava apenas no log local e encerra limpo.
+            Log-AgentMessage "[INFO] Servidor inacessivel ou maquina fora da rede. Telemetria sera reenviada no proximo ciclo."
+            return
+        } else {
+            Write-Host ""
+            Write-Host "==========================================================================" -ForegroundColor Yellow
+            Write-Host " [AVISO] Nao foi possivel conectar ao servidor de telemetria agora." -ForegroundColor Yellow
+            Write-Host "==========================================================================" -ForegroundColor Yellow
+            Write-Host " * Servidor: $ServerUrl" -ForegroundColor White
+            Write-Host " * Verifique se a maquina esta conectada na rede local ou VPN." -ForegroundColor White
+            Write-Host " * A telemetria sera reenviada automaticamente no proximo ciclo de $IntervalMinutes min." -ForegroundColor White
+            Write-Host "==========================================================================" -ForegroundColor Yellow
+            Write-Host ""
+        }
+    }
+
+    if ((-not $Silent) -and (-not $CheckinOnly)) {
+        Write-Host "Pressione [ENTER] para fechar esta janela..." -ForegroundColor Cyan
+        try { [void][System.Console]::ReadLine() } catch {}
     }
 } catch {
-    try {
-        # Fallback resiliente via curl.exe nativo do Windows com arquivo UTF-8
-        $tempJson = "$env:TEMP\tihfsa_checkin_$([System.Guid]::NewGuid().ToString('N')).json"
-        [System.IO.File]::WriteAllText($tempJson, $payloadJson, [System.Text.Encoding]::UTF8)
-        $curlOut = curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json; charset=utf-8" -H "X-Agent-Token: $AgentSecret" --data-binary "@$tempJson" $ServerUrl 2>$null
-        Remove-Item $tempJson -Force -ErrorAction SilentlyContinue
-        if ($curlOut -like '*"status":"ok"*') {
-            $sent = $true
-            if (-not $Silent) {
-                Write-Host "[OK] TIHFSA Sentinel Agent: Telemetria enviada com sucesso via curl ($($payloadObj.hostname) - $($payloadObj.logged_user))" -ForegroundColor Green
-            } else {
-                Log-AgentMessage "[OK] Telemetria enviada com sucesso via curl ($($payloadObj.hostname))"
-            }
-        }
-    } catch {}
-}
-
-if (-not $sent) {
-    if ($Silent) {
-        # Notebook fora da rede corporativa ou sem comunicacao:
-        # NUNCA exibir erro na tela do usuario. Grava apenas no log local e encerra limpo com exit 0.
-        Log-AgentMessage "[INFO] Servidor inacessivel ou maquina fora da rede. Telemetria sera reenviada no proximo ciclo."
-        exit 0
-    } else {
-        Write-Warning "[AVISO] Nao foi possivel conectar ao servidor TIHFSA ($ServerUrl). Verifique se a maquina esta conectada na rede local ou VPN."
+    Log-AgentMessage "[ERRO CRITICO] Falha inesperada no agente: $_"
+    if (-not $Silent) {
+        Write-Host ""
+        Write-Host "[ERRO CRITICO] Falha durante a execucao: $_" -ForegroundColor Red
+        Write-Host $_.ScriptStackTrace -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Pressione [ENTER] para fechar esta janela..." -ForegroundColor Cyan
+        try { [void][System.Console]::ReadLine() } catch {}
     }
 }

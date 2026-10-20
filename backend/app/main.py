@@ -17,12 +17,13 @@ from app.database import Base, engine, SessionLocal
 from app.routers import (
     auth, users, assets, tickets, categories, sync, zabbix, 
     attachments, departments, ad_import, locations, asset_types, network_maps, integrations, qrcodes,
-    sla, monitoring, public_tickets, rooms, floors, system_settings, surveys, notification_logs, contracts, reports, terms
+    sla, monitoring, public_tickets, rooms, floors, system_settings, surveys, notification_logs, contracts, reports, terms, projects, knowledge_base
 )
 import app.models.network_map  # noqa: F401
 import app.models.qrcode       # noqa: F401
 import app.models.sla          # noqa: F401
 import app.models.term         # noqa: F401
+import app.models.knowledge_base  # noqa: F401
 
 
 # Criar pasta uploads se não existir
@@ -471,6 +472,20 @@ async def lifespan(app: FastAPI):
         print(f"[DB Auto-Migration Error] {e}")
     _seed_default_asset_types()
 
+    # Criação e inicialização de tabelas e seed da Base de Conhecimento
+    try:
+        from app.models.knowledge_base import KnowledgeCategory, KnowledgeArticle
+        from app.services.knowledge_seed import seed_knowledge_base
+        Base.metadata.create_all(bind=engine, tables=[KnowledgeCategory.__table__, KnowledgeArticle.__table__])
+        db_kb = SessionLocal()
+        try:
+            seed_knowledge_base(db_kb, overwrite=False)
+        finally:
+            db_kb.close()
+        print(f"[{settings.app_name}] Base de Conhecimento (KB) sincronizada e pronta.")
+    except Exception as e:
+        print(f"[KB Auto-Seed Error] {e}")
+
     # Sincroniza e gera todos os ícones PWA canônicos (192, 512, maskable, apple-touch-icon 180 RGB)
     try:
         from app.models.system_setting import SystemSetting
@@ -549,6 +564,8 @@ app.include_router(notification_logs.router)
 app.include_router(contracts.router)
 app.include_router(reports.router)
 app.include_router(terms.router)
+app.include_router(projects.router)
+app.include_router(knowledge_base.router)
 
 # Servir arquivos estáticos (uploads)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

@@ -20,6 +20,8 @@ import CSATDashboard from "./pages/admin/CSATDashboard";
 import Contracts from "./pages/admin/Contracts";
 import Reports from "./pages/admin/Reports";
 import Terms from "./pages/admin/Terms";
+import KnowledgeBase from "./pages/admin/KnowledgeBase";
+import PublicHelpPage from "./pages/public/PublicHelpPage";
 
 // Client App Pages (Colaboradores / Vistorias)
 import ClientHome from "./pages/client/ClientHome";
@@ -120,6 +122,8 @@ export default function App() {
           <Route path="/chamado" element={<PublicTicketForm />} />
           <Route path="/abrir-chamado" element={<PublicTicketForm />} />
           <Route path="/suporte" element={<PublicTicketForm />} />
+          <Route path="/ajuda" element={<PublicHelpPage />} />
+          <Route path="/help" element={<PublicHelpPage />} />
           <Route path="/avaliacao/:token" element={<SatisfactionSurvey />} />
           <Route path="/avaliacao" element={<SatisfactionSurvey />} />
           <Route path="/csat/:token" element={<SatisfactionSurvey />} />
@@ -144,6 +148,10 @@ export default function App() {
             <Route path="termos" element={<Terms />} />
             <Route path="reports" element={<Reports />} />
             <Route path="relatorios" element={<Reports />} />
+
+            <Route path="knowledge" element={<KnowledgeBase />} />
+            <Route path="conhecimento" element={<Navigate to="/admin/knowledge" replace />} />
+            <Route path="kb" element={<Navigate to="/admin/knowledge" replace />} />
 
             <Route path="assets" element={<Assets />} />
             <Route path="qrcodes" element={<QRCodeManager />} />

@@ -450,6 +450,7 @@ def apply_migrations():
         ("equipment_terms.template_id", "ALTER TABLE equipment_terms ADD COLUMN IF NOT EXISTS template_id INTEGER REFERENCES equipment_term_templates(id) ON DELETE SET NULL;"),
         # Governança ITIL 4 & COBIT DSS02 (Níveis de Atendimento N1/N2/N3, Escalação e Transferência)
         ("users.allowed_modules", "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_modules JSON;"),
+        ("users.module_permissions", "ALTER TABLE users ADD COLUMN IF NOT EXISTS module_permissions JSON;"),
         ("users.support_level", "ALTER TABLE users ADD COLUMN IF NOT EXISTS support_level VARCHAR(10) DEFAULT 'N1';"),
         ("tickets.support_level", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS support_level VARCHAR(10) DEFAULT 'N1' NOT NULL;"),
         ("tickets.first_response_at", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS first_response_at TIMESTAMP WITH TIME ZONE;"),
@@ -462,8 +463,12 @@ def apply_migrations():
         ("tickets.transferred_by_id", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS transferred_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"),
         ("tickets.transfer_reason", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS transfer_reason TEXT;"),
         ("tickets.previous_technician_id", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS previous_technician_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"),
+        ("tickets.project_id", "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL;"),
+        ("tickets.idx_project_id", "CREATE INDEX IF NOT EXISTS idx_tickets_project_id ON tickets(project_id);"),
         ("tickets.idx_support_level", "CREATE INDEX IF NOT EXISTS idx_tickets_support_level ON tickets(support_level);"),
         ("ticket_interactions.interaction_type", "ALTER TABLE ticket_interactions ADD COLUMN IF NOT EXISTS interaction_type VARCHAR(40) DEFAULT 'comment' NOT NULL;"),
+        ("project_tasks.ticket_id", "ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL;"),
+        ("project_tasks.idx_ticket_id", "CREATE INDEX IF NOT EXISTS idx_project_tasks_ticket_id ON project_tasks(ticket_id);"),
     ]
 
 

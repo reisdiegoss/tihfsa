@@ -1565,7 +1565,30 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - Geração automática de ícones maskable (`icon-maskable-192.png` e `icon-maskable-512.png`) com safe-zone circular de 78% centralizada sobre o fundo configurado em Parâmetros Gerais (`pwa_bg_color`), garantindo aprovação pelo serviço de minting de WebAPK do Google.
     - **Proxy Reverso Nginx & Sincronização Autônoma**:
       - Atualizado `start.sh` com proxies dedicados para `^/(manifest\.webmanifest|manifest\.json|apple-touch-icon.*\.png|favicon\.ico)$` e `/icons/`, direcionando diretamente para o FastAPI.
-      - Sincronização e geração de ícones integrada ao startup da aplicação (`lifespan`), ao script de migração (`init_db.py`) e ao endpoint de upload administrativo (`POST /api/v1/settings/pwa-icon`).
+52. **Módulo de Base de Conhecimento (Knowledge Base / Central de Ajuda) com Controle de Acesso Baseado em Papéis (RBAC)**:
+    - **Objetivo Estratégico & Capacitação**:
+      - Centralização de todo o acervo técnico e operacional do TIHFSA para capacitação acelerada de novos técnicos de suporte (onboarding), padronização de procedimentos (SOP/POP) e suporte à expansão para novos hotéis da rede.
+      - Autoatendimento guiado para colaboradores e hóspedes do hotel com instruções claras e ilustradas.
+    - **Arquitetura de Dados & Modelos (`app/models/knowledge_base.py`)**:
+      - `KnowledgeCategory`: Tabela relacional de coleções (`name`, `slug`, `icon`, `description`, `min_role`, `order_index`, `is_active`).
+      - `KnowledgeArticle`: Tabela de artigos e procedimentos (`title`, `slug`, `summary`, `content`, `target_role`, `support_level`, `tags`, `views_count`, `helpful_count`, `unhelpful_count`).
+      - Auto-migração DDL e relacionamento com cascade e auditoria de autor (`created_by_id`).
+    - **Controle de Acesso Granular (RBAC)**:
+      - **Solicitante / Colaborador / Visitante Público (`requester`)**: Acesso estrito aos artigos de autoatendimento (abertura de chamados, seleção de UH vs Setor, aprovação por magic link, pesquisa CSAT). Artigos técnicos e administrativos são bloqueados com código HTTP 403 Forbidden.
+      - **Técnico de TI (`technician` / N1, N2, N3)**: Acesso a procedimentos operacionais (triagem ITIL, assumir/transferir/escalar, governança de SLA, CMDB de UHs, termos com biometria facial, NOC, topologia de rede e Sentinel Agent).
+      - **Administrador (`admin`)**: Acesso 100% irrestrito, incluindo coleções de expansão e deploy de novas unidades, configuração de AD/LDAP, Zabbix, UniFi, WhatsApp e editor de artigos em Markdown com pré-visualização.
+    - **Povoamento Inicial Massivo (Seed de 20 Artigos Especializados)**:
+      - Implementado `app/services/knowledge_seed.py` com 5 coleções e 20 procedimentos ricos contendo tabelas, diagramas e passos numerados, integrados ao startup da aplicação (`lifespan`) e ao endpoint de sincronização manual (`POST /api/v1/kb/seed`).
+    - **Interfaces de Usuário (Frontend Web & Mobile)**:
+      - **Painel Administrativo & Técnico (`/admin/knowledge`)**:
+        - Interface Dark Mode premium com barra de busca inteligente em tempo real por título, resumo ou tags.
+        - Cards de coleções temáticas com contagem dinâmica de artigos autorizados.
+        - Filtros rápidos por Nível ITIL (🟦 N1, 🟪 N2, 🟥 N3) e perfil de público.
+        - Leitor de manuais com formatação Markdown, contadores de leitura e avaliação interativa (*"Este artigo foi útil?"*).
+        - Modal de autoria e edição de artigos em Markdown com alternador de escrita e preview.
+      - **Central de Autoatendimento do Colaborador (`/ajuda` e `/help`)**:
+        - Interface Light Mode amigável e acessível para todos os colaboradores do hotel.
+        - Integração direta nos cabeçalhos e telas do formulário público (`/chamado`) e do PWA (`/app`).
 
 
 

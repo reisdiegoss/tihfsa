@@ -9,11 +9,12 @@
  * - Captura transparente de IP, hostname e user-agent para auditoria anti-fraude.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import {
   Search, User, CheckCircle2, Send, ArrowLeft, ArrowRight,
   Monitor, AlertCircle, Building2, MapPin, FileText, ChevronDown,
   ShieldCheck, UploadCloud, X, Image as ImageIcon, Paperclip, ExternalLink,
-  Hotel
+  Hotel, HelpCircle
 } from "lucide-react";
 import axios from "axios";
 
@@ -366,6 +367,14 @@ export default function PublicTicketForm() {
             <p className="text-[10px] font-medium" style={{ color: "#64748b" }}>Central de Ajuda — TI Helpdesk</p>
           </div>
         </div>
+
+        <Link
+          to="/ajuda"
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20"
+        >
+          <HelpCircle size={14} />
+          <span className="hidden sm:inline">Dúvidas /</span> Central de Ajuda
+        </Link>
       </header>
 
       {/* Barra de Progresso com Explicação */}

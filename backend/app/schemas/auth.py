@@ -15,6 +15,7 @@ class TokenResponse(BaseModel):
     role: str
     roles: list[str] = ["user"]
     allowed_modules: list[str] = []
+    module_permissions: dict | None = None
     can_change_password: bool = False
 
 

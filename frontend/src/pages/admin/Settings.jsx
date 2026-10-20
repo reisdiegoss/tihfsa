@@ -178,6 +178,7 @@ export default function Settings() {
   const [editingUser, setEditingUser] = useState(null);
   const [selectedRoles, setSelectedRoles] = useState(["user"]);
   const [selectedManagedDepts, setSelectedManagedDepts] = useState([]);
+  const [selectedModulePermissions, setSelectedModulePermissions] = useState({});
   const [savingUserPermissions, setSavingUserPermissions] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState(null);
@@ -1388,8 +1389,9 @@ export default function Settings() {
     setSelectedModules(
       u.allowed_modules && u.allowed_modules.length > 0
         ? u.allowed_modules
-        : ["tickets", "assets", "monitoring", "topology", "qrcodes", "reports"]
+        : ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "reports", "contracts", "terms"]
     );
+    setSelectedModulePermissions(u.module_permissions || {});
   };
 
   const toggleModule = (modId) => {
@@ -1398,6 +1400,17 @@ export default function Settings() {
     } else {
       setSelectedModules([...selectedModules, modId]);
     }
+  };
+
+  const toggleModuleAction = (modId, action) => {
+    const curMod = selectedModulePermissions[modId] || { view: true, create: true, edit: true, delete: false, manage: false };
+    setSelectedModulePermissions({
+      ...selectedModulePermissions,
+      [modId]: {
+        ...curMod,
+        [action]: !curMod[action],
+      },
+    });
   };
 
   const toggleRole = (roleId) => {
@@ -1436,8 +1449,11 @@ export default function Settings() {
         department_id: selectedUserDept ? Number(selectedUserDept) : null,
         managed_department_ids: selectedRoles.includes("manager") ? selectedManagedDepts : [],
         allowed_modules: selectedRoles.includes("admin")
-          ? ["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"]
+          ? ["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts", "terms"]
           : selectedModules,
+        module_permissions: selectedRoles.includes("admin")
+          ? {}
+          : selectedModulePermissions,
       };
       const { data } = await api.patch(`/users/${editingUser.id}`, payload);
       alert(`Dados e permissões de ${data.display_name} atualizados com sucesso!`);
@@ -3113,7 +3129,7 @@ export default function Settings() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setSelectedModules(["tickets", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports"])}
+                        onClick={() => setSelectedModules(["tickets", "projects", "assets", "monitoring", "topology", "qrcodes", "ad_import", "settings", "reports", "contracts", "terms"])}
                         className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
                       >
                         Marcar Todos
@@ -3133,51 +3149,100 @@ export default function Settings() {
                 {selectedRoles.includes("admin") ? (
                   <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-900 text-xs font-semibold flex items-center gap-2">
                     <span>👑</span>
-                    <span>Como Administrador Geral (Full), este colaborador possui acesso irrestrito a todos os 8 módulos do sistema automaticamente.</span>
+                    <span>Como Administrador Geral (Full), este colaborador possui acesso irrestrito a todos os módulos e todas as ações do sistema automaticamente.</span>
                   </div>
                 ) : (
                   <>
                     <p className="text-xs text-slate-500 font-medium">
-                      Defina individualmente os módulos aos quais este técnico ou analista terá acesso liberado:
+                      Defina individualmente os módulos e o que o usuário pode fazer dentro de cada um (visualizar, criar, editar, excluir ou gerenciar):
                     </p>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    <div className="space-y-2.5 mt-2">
                       {[
-                        { id: "tickets", name: "Chamados & Atendimento", icon: "🎫", desc: "Abertura, respostas, SLA e conclusão" },
+                        { id: "tickets", name: "Chamados & Service Desk", icon: "🎫", desc: "Abertura, respostas, SLA e conclusão" },
+                        { id: "projects", name: "Gestão de Projetos & Kanban", icon: "📋", desc: "Projetos, tarefas em Kanban/Gantt e metas" },
                         { id: "assets", name: "Ativos & CMDB", icon: "💻", desc: "Cadastro e inventário de equipamentos" },
                         { id: "monitoring", name: "NOC & Zabbix", icon: "🚨", desc: "Alertas de infraestrutura e Painel TV" },
                         { id: "topology", name: "Fluxogramas de Rede", icon: "🗺️", desc: "Visualização e montagem de topologias" },
                         { id: "qrcodes", name: "Gestor de QR Codes", icon: "📱", desc: "Etiquetas e links para eventos e ativos" },
+                        { id: "terms", name: "Termos de Responsabilidade", icon: "📝", desc: "Termos de entrega/devolução e assinaturas" },
+                        { id: "contracts", name: "Contratos & Fornecedores", icon: "📄", desc: "Gestão contratual e vencimentos" },
+                        { id: "reports", name: "Relatórios & Indicadores CSAT", icon: "📊", desc: "Métricas de atendimento e satisfação" },
                         { id: "ad_import", name: "Sincronização AD / LDAP", icon: "👥", desc: "Importação de colaboradores do domínio" },
                         { id: "settings", name: "Configurações do Sistema", icon: "⚙️", desc: "Parâmetros, locais, setores e regras" },
-                        { id: "reports", name: "Relatórios & Indicadores CSAT", icon: "📊", desc: "Métricas de atendimento e satisfação" },
                       ].map((mod) => {
                         const isModActive = selectedModules.includes(mod.id);
+                        const modPerms = selectedModulePermissions[mod.id] || { view: true, create: true, edit: true, delete: false, manage: false };
                         return (
-                          <button
+                          <div
                             key={mod.id}
-                            type="button"
-                            onClick={() => toggleModule(mod.id)}
-                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                            className={`p-3 rounded-2xl border transition-all ${
                               isModActive
-                                ? "bg-white border-blue-600 ring-1 ring-blue-500/30 shadow-xs"
-                                : "bg-white/60 border-slate-200 hover:border-slate-300 opacity-60"
+                                ? "bg-white border-blue-500 ring-1 ring-blue-500/20 shadow-xs"
+                                : "bg-white/60 border-slate-200 opacity-60 hover:opacity-100"
                             }`}
                           >
-                            <div className="flex items-center justify-between mb-0.5">
-                              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                                <span>{mod.icon}</span> {mod.name}
-                              </span>
-                              {isModActive ? (
-                                <CheckSquare size={15} className="text-blue-600 shrink-0" />
-                              ) : (
-                                <Square size={15} className="text-slate-300 shrink-0" />
-                              )}
+                            <div
+                              onClick={() => toggleModule(mod.id)}
+                              className="flex items-center justify-between cursor-pointer select-none"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{mod.icon}</span>
+                                <div>
+                                  <span className="text-xs font-extrabold text-slate-900 block">
+                                    {mod.name}
+                                  </span>
+                                  <p className="text-[10px] text-slate-500 font-medium">
+                                    {mod.desc}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="shrink-0 ml-3">
+                                {isModActive ? (
+                                  <CheckSquare size={18} className="text-blue-600" />
+                                ) : (
+                                  <Square size={18} className="text-slate-300" />
+                                )}
+                              </div>
                             </div>
-                            <p className="text-[10px] text-slate-500 font-medium">
-                              {mod.desc}
-                            </p>
-                          </button>
+
+                            {/* Matriz de Ações Permitidas dentro do Módulo */}
+                            {isModActive && (
+                              <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1">
+                                  Permissões de Ação:
+                                </span>
+                                {[
+                                  { key: "view", label: "Visualizar" },
+                                  { key: "create", label: "Criar" },
+                                  { key: "edit", label: "Editar" },
+                                  { key: "delete", label: "Excluir" },
+                                  { key: "manage", label: "Gerenciar" },
+                                ].map((act) => {
+                                  const isChecked = modPerms[act.key] ?? (act.key !== "delete" && act.key !== "manage");
+                                  return (
+                                    <label
+                                      key={act.key}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                                        isChecked
+                                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                                          : "bg-slate-50 text-slate-400 border-slate-200 hover:text-slate-600"
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => toggleModuleAction(mod.id, act.key)}
+                                        className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                      />
+                                      <span>{act.label}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
