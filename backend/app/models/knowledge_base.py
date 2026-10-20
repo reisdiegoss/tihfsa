@@ -55,6 +55,7 @@ class KnowledgeArticle(Base):
     target_role = Column(String(20), default="requester", nullable=False, index=True)  # requester, technician, admin
     support_level = Column(String(10), default="ALL", nullable=False, index=True)      # ALL, N1, N2, N3
     tags = Column(JSON, default=list, nullable=False)
+    attachments = Column(JSON, default=list, nullable=False)
     is_published = Column(Boolean, default=True, nullable=False, index=True)
     views_count = Column(Integer, default=0, nullable=False)
     helpful_count = Column(Integer, default=0, nullable=False)

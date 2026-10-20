@@ -52,6 +52,7 @@ class KnowledgeArticleBase(BaseModel):
     target_role: str = Field(default="requester", description="requester, technician, admin")
     support_level: str = Field(default="ALL", description="ALL, N1, N2, N3")
     tags: List[str] = Field(default_factory=list)
+    attachments: List[Any] = Field(default_factory=list)
     is_published: bool = True
     order_index: int = 0
 
@@ -69,6 +70,7 @@ class KnowledgeArticleUpdate(BaseModel):
     target_role: Optional[str] = None
     support_level: Optional[str] = None
     tags: Optional[List[str]] = None
+    attachments: Optional[List[Any]] = None
     is_published: Optional[bool] = None
     order_index: Optional[int] = None
 
@@ -84,6 +86,7 @@ class KnowledgeArticleListOut(BaseModel):
     target_role: str
     support_level: str
     tags: List[str] = []
+    attachments: List[Any] = []
     is_published: bool
     views_count: int
     helpful_count: int
@@ -107,3 +110,10 @@ class KnowledgeArticleDetailOut(KnowledgeArticleListOut):
 
 class KnowledgeFeedbackIn(BaseModel):
     is_helpful: bool
+
+
+class KnowledgeMediaUploadOut(BaseModel):
+    url: str
+    filename: str
+    size: int
+    content_type: str

@@ -1585,10 +1585,20 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Cards de coleções temáticas com contagem dinâmica de artigos autorizados.
         - Filtros rápidos por Nível ITIL (🟦 N1, 🟪 N2, 🟥 N3) e perfil de público.
         - Leitor de manuais com formatação Markdown, contadores de leitura e avaliação interativa (*"Este artigo foi útil?"*).
-        - Modal de autoria e edição de artigos em Markdown com alternador de escrita e preview.
+        - **Gestão Completa de Categorias**: Modal dedicado para criação, edição e exclusão de coleções com seletor visual interativo de ícones (Phone, Wifi, Monitor, Database, Terminal, Settings, etc.) e definição de perfil mínimo de visualização (`min_role`).
+        - **Autoria e Edição Avançada de Tutoriais**:
+          - Suporte completo a criação e atualização de tutoriais por Técnicos e Administradores.
+          - Barra de ferramentas visual de formatação rápida (H1, H2, Negrito, Listas, Alertas, Código).
+          - **Anexo Inteligente de Telas e Prints de Tela**:
+            - Botão *"Anexar Tela / Print"* com upload automático de imagens (PNG, JPG, WEBP, GIF, SVG).
+            - **Suporte Nativo a Colar Imagens (`Ctrl + V`)**: O analista pode tirar um print da tela (`Win + Shift + S` ou `PrtScn`) e colar diretamente dentro do campo de texto do tutorial; o sistema intercepta a captura da área de transferência, faz o upload assíncrono para `/uploads/knowledge/` e insere a tag `![Print](url)` exatamente na posição do cursor.
+            - Galeria de telas anexadas vinculada ao tutorial com botão para inserir no texto e remoção com 1 clique.
+          - **Leitor com Lightbox em Tela Cheia**: Imagens e capturas de tela contam com ampliação de alta resolução (lightbox modal) com zoom e botão de abertura em nova aba para visualização de detalhes minuciosos de configurações e diagramas.
+          - Blocos de comando e código monoespaçados com botão de cópia de 1 clique.
       - **Central de Autoatendimento do Colaborador (`/ajuda` e `/help`)**:
         - Interface Light Mode amigável e acessível para todos os colaboradores do hotel.
         - Integração direta nos cabeçalhos e telas do formulário público (`/chamado`) e do PWA (`/app`).
+
 
 
 

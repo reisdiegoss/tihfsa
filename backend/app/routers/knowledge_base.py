@@ -6,8 +6,11 @@ Implementa controle estrito de acesso baseado em papéis (RBAC):
 - Técnico N1/N2/N3: Acesso a 'requester' e 'technician' (com filtro por nível de suporte)
 - Administrador: Acesso 100% irrestrito incluindo 'admin' (onboarding de novos hotéis, deploys, AD)
 """
+import os
+import uuid
+import re
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 
@@ -19,11 +22,16 @@ from app.schemas.knowledge_base import (
     KnowledgeCategoryOut, KnowledgeCategoryCreate, KnowledgeCategoryUpdate,
     KnowledgeArticleListOut, KnowledgeArticleDetailOut,
     KnowledgeArticleCreate, KnowledgeArticleUpdate,
-    KnowledgeFeedbackIn,
+    KnowledgeFeedbackIn, KnowledgeMediaUploadOut,
 )
 from app.services.knowledge_seed import slugify, seed_knowledge_base
 
 router = APIRouter(prefix="/api/v1/kb", tags=["Knowledge Base"])
+
+UPLOAD_DIR = "uploads"
+ALLOWED_IMAGE_TYPES = [
+    "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"
+]
 
 
 def _resolve_user_clearance(user: Optional[User]) -> str:
@@ -122,6 +130,56 @@ def create_category(
     return cat
 
 
+@router.put("/categories/{category_id}", response_model=KnowledgeCategoryOut)
+def update_category(
+    category_id: int,
+    payload: KnowledgeCategoryUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Atualiza uma categoria existente (Apenas Admin)."""
+    cat = db.query(KnowledgeCategory).filter(KnowledgeCategory.id == category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada.")
+
+    if payload.name is not None:
+        cat.name = payload.name
+        if not payload.slug:
+            cat.slug = slugify(payload.name)
+    if payload.slug is not None:
+        cat.slug = slugify(payload.slug)
+    if payload.icon is not None:
+        cat.icon = payload.icon
+    if payload.description is not None:
+        cat.description = payload.description
+    if payload.min_role is not None:
+        cat.min_role = payload.min_role
+    if payload.order_index is not None:
+        cat.order_index = payload.order_index
+    if payload.is_active is not None:
+        cat.is_active = payload.is_active
+
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category(
+    category_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Exclui uma categoria e seus artigos vinculados em cascata (Apenas Admin)."""
+    cat = db.query(KnowledgeCategory).filter(KnowledgeCategory.id == category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada.")
+
+    db.delete(cat)
+    db.commit()
+    return None
+
+
 # ─── ARTIGOS ──────────────────────────────────────────────────
 
 @router.get("/articles", response_model=List[KnowledgeArticleListOut])
@@ -205,6 +263,7 @@ def list_articles(
                 target_role=a.target_role,
                 support_level=a.support_level,
                 tags=a.tags or [],
+                attachments=a.attachments or [],
                 is_published=a.is_published,
                 views_count=a.views_count,
                 helpful_count=a.helpful_count,
@@ -269,6 +328,7 @@ def get_article(
         target_role=art.target_role,
         support_level=art.support_level,
         tags=art.tags or [],
+        attachments=art.attachments or [],
         is_published=art.is_published,
         views_count=art.views_count,
         helpful_count=art.helpful_count,
@@ -303,6 +363,53 @@ def submit_article_feedback(
     return {"status": "success", "helpful_count": art.helpful_count, "unhelpful_count": art.unhelpful_count}
 
 
+@router.post("/upload-media", response_model=KnowledgeMediaUploadOut, status_code=status.HTTP_201_CREATED)
+async def upload_knowledge_media(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_technician),
+):
+    """
+    Faz upload de imagens, diagramas e prints de tela para tutoriais e procedimentos.
+    Acesso: Técnicos e Administradores.
+    """
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de imagem não suportado. Utilize PNG, JPG, WEBP, GIF ou SVG."
+        )
+
+    kb_upload_dir = os.path.join(UPLOAD_DIR, "knowledge")
+    os.makedirs(kb_upload_dir, exist_ok=True)
+
+    raw_filename = file.filename or "screenshot.png"
+    name_part, ext_part = os.path.splitext(raw_filename)
+    clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', name_part)[:35]
+    unique_filename = f"{uuid.uuid4().hex[:10]}_{clean_name}{ext_part.lower()}"
+    file_path = os.path.join(kb_upload_dir, unique_filename)
+
+    try:
+        content = await file.read()
+        if len(content) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="A imagem excede o tamanho máximo de 15MB.")
+
+        with open(file_path, "wb") as f:
+            f.write(content)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar arquivo no servidor: {e}")
+
+    web_path = f"/uploads/knowledge/{unique_filename}"
+
+    return KnowledgeMediaUploadOut(
+        url=web_path,
+        filename=raw_filename,
+        size=len(content),
+        content_type=file.content_type or "image/png",
+    )
+
+
 @router.post("/articles", response_model=KnowledgeArticleDetailOut, status_code=status.HTTP_201_CREATED)
 def create_article(
     payload: KnowledgeArticleCreate,
@@ -330,6 +437,7 @@ def create_article(
         target_role=payload.target_role,
         support_level=payload.support_level,
         tags=payload.tags or [],
+        attachments=payload.attachments or [],
         is_published=payload.is_published,
         order_index=payload.order_index,
         created_by_id=current_user.id,
@@ -350,6 +458,7 @@ def create_article(
         target_role=art.target_role,
         support_level=art.support_level,
         tags=art.tags or [],
+        attachments=art.attachments or [],
         is_published=art.is_published,
         views_count=0,
         helpful_count=0,
@@ -396,6 +505,8 @@ def update_article(
         art.support_level = payload.support_level
     if payload.tags is not None:
         art.tags = payload.tags
+    if payload.attachments is not None:
+        art.attachments = payload.attachments
     if payload.is_published is not None:
         art.is_published = payload.is_published
     if payload.order_index is not None:
@@ -416,6 +527,7 @@ def update_article(
         target_role=art.target_role,
         support_level=art.support_level,
         tags=art.tags or [],
+        attachments=art.attachments or [],
         is_published=art.is_published,
         views_count=art.views_count,
         helpful_count=art.helpful_count,
@@ -432,12 +544,16 @@ def update_article(
 def delete_article(
     article_id: int,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(require_technician),
 ):
-    """Exclui um artigo (Apenas Admin)."""
+    """Exclui um artigo (Admin ou Autor Técnico)."""
     art = db.query(KnowledgeArticle).filter(KnowledgeArticle.id == article_id).first()
     if not art:
         raise HTTPException(status_code=404, detail="Artigo não encontrado.")
+
+    clearance = _resolve_user_clearance(current_user)
+    if clearance != "admin" and art.created_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Apenas o autor do artigo ou um administrador pode excluí-lo.")
 
     db.delete(art)
     db.commit()

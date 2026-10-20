@@ -15,6 +15,25 @@ export const knowledgeBaseApi = {
     return res.data;
   },
 
+  updateCategory: async (categoryId, data) => {
+    const res = await api.put(`/kb/categories/${categoryId}`, data);
+    return res.data;
+  },
+
+  deleteCategory: async (categoryId) => {
+    const res = await api.delete(`/kb/categories/${categoryId}`);
+    return res.data;
+  },
+
+  uploadMedia: async (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await api.post("/kb/upload-media", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
+
   // Artigos
   getArticles: async (params = {}) => {
     const res = await api.get("/kb/articles", { params });

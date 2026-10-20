@@ -469,6 +469,7 @@ def apply_migrations():
         ("ticket_interactions.interaction_type", "ALTER TABLE ticket_interactions ADD COLUMN IF NOT EXISTS interaction_type VARCHAR(40) DEFAULT 'comment' NOT NULL;"),
         ("project_tasks.ticket_id", "ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL;"),
         ("project_tasks.idx_ticket_id", "CREATE INDEX IF NOT EXISTS idx_project_tasks_ticket_id ON project_tasks(ticket_id);"),
+        ("knowledge_articles.attachments", "ALTER TABLE knowledge_articles ADD COLUMN IF NOT EXISTS attachments JSON DEFAULT '[]';"),
     ]
 
 

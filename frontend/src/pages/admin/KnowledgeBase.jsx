@@ -1,14 +1,16 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { 
   BookOpen, Search, Plus, RefreshCw, ThumbsUp, ThumbsDown, 
   Eye, Tag, ChevronRight, ArrowLeft, Printer, Edit3, Trash2, 
   HelpCircle, Ticket, Monitor, Activity, Server, X, 
-  ShieldCheck, Clock, Sparkles, Layers, Check, AlertCircle, FileText
+  ShieldCheck, Clock, Sparkles, Layers, Check, AlertCircle, FileText,
+  Camera, Image as ImageIcon, UploadCloud, Copy, ExternalLink, CheckCircle, AlertTriangle, Info,
+  ZoomIn, Download, Settings, Wifi, Phone, Database, LifeBuoy, Terminal, FolderPlus
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import knowledgeBaseApi from "../../api/knowledgeBase";
 
-// Mapeamento dinâmico de ícones por nome
+// Mapeamento dinâmico de ícones disponíveis
 const ICON_MAP = {
   HelpCircle,
   Ticket,
@@ -19,7 +21,19 @@ const ICON_MAP = {
   ShieldCheck,
   Layers,
   FileText,
+  Phone,
+  Wifi,
+  Database,
+  Settings,
+  LifeBuoy,
+  Terminal,
 };
+
+const AVAILABLE_ICONS = [
+  "HelpCircle", "Ticket", "Monitor", "Activity", "Server", 
+  "BookOpen", "ShieldCheck", "Layers", "FileText", "Phone", 
+  "Wifi", "Database", "Settings", "LifeBuoy", "Terminal"
+];
 
 export default function KnowledgeBase() {
   const { user, isAdmin, isTechnician } = useAuth();
@@ -34,7 +48,7 @@ export default function KnowledgeBase() {
   const [activeArticle, setActiveArticle] = useState(null);
   const [feedbackGiven, setFeedbackGiven] = useState({});
 
-  // Modal de Criação / Edição de Artigo
+  // Modal de Criação / Edição de Artigo / Tutorial
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
   const [editorForm, setEditorForm] = useState({
@@ -46,10 +60,32 @@ export default function KnowledgeBase() {
     target_role: "technician",
     support_level: "ALL",
     tags: "",
+    attachments: [],
     is_published: true,
   });
   const [savingArticle, setSavingArticle] = useState(false);
   const [editorTab, setEditorTab] = useState("write"); // 'write' ou 'preview'
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  // Modal de Gestão de Categorias
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [categoryForm, setCategoryForm] = useState({
+    name: "",
+    slug: "",
+    icon: "BookOpen",
+    description: "",
+    min_role: "technician",
+    order_index: 0,
+    is_active: true,
+  });
+  const [savingCategory, setSavingCategory] = useState(false);
+
+  // Lightbox Modal para Zoom em Telas e Imagens
+  const [lightboxImage, setLightboxImage] = useState(null);
+  const [copiedCodeIndex, setCopiedCodeIndex] = useState(null);
 
   // Carregar Categorias e Artigos
   const loadData = async () => {
@@ -107,7 +143,7 @@ export default function KnowledgeBase() {
 
   // Sincronizar Seed Padrão (Admin)
   const handleSyncSeed = async () => {
-    if (!window.confirm("Deseja sincronizar e atualizar os artigos padrão do sistema?")) return;
+    if (!window.confirm("Deseja sincronizar e atualizar os artigos e categorias padrão do sistema?")) return;
     try {
       setLoading(true);
       await knowledgeBaseApi.triggerSeed(true);
@@ -121,8 +157,9 @@ export default function KnowledgeBase() {
     }
   };
 
-  // Abrir modal de criação
-  const handleOpenCreate = () => {
+  // ─── GESTÃO DE ARTIGOS ──────────────────────────────────────────
+
+  const handleOpenCreateArticle = () => {
     setEditingArticle(null);
     setEditorForm({
       title: "",
@@ -133,14 +170,14 @@ export default function KnowledgeBase() {
       target_role: "technician",
       support_level: "ALL",
       tags: "",
+      attachments: [],
       is_published: true,
     });
     setEditorTab("write");
     setIsEditorOpen(true);
   };
 
-  // Abrir modal de edição
-  const handleOpenEdit = (article) => {
+  const handleOpenEditArticle = (article) => {
     setEditingArticle(article);
     setEditorForm({
       title: article.title || "",
@@ -151,13 +188,13 @@ export default function KnowledgeBase() {
       target_role: article.target_role || "technician",
       support_level: article.support_level || "ALL",
       tags: Array.isArray(article.tags) ? article.tags.join(", ") : "",
+      attachments: Array.isArray(article.attachments) ? article.attachments : [],
       is_published: article.is_published !== false,
     });
     setEditorTab("write");
     setIsEditorOpen(true);
   };
 
-  // Salvar artigo (Criar ou Atualizar)
   const handleSaveArticle = async (e) => {
     e.preventDefault();
     if (!editorForm.title.trim() || !editorForm.content.trim()) {
@@ -180,6 +217,7 @@ export default function KnowledgeBase() {
         target_role: editorForm.target_role,
         support_level: editorForm.support_level,
         tags: tagsArray,
+        attachments: editorForm.attachments || [],
         is_published: editorForm.is_published,
       };
 
@@ -200,9 +238,8 @@ export default function KnowledgeBase() {
     }
   };
 
-  // Excluir Artigo (Admin)
   const handleDeleteArticle = async (articleId) => {
-    if (!window.confirm("Tem certeza que deseja excluir permanentemente este artigo?")) return;
+    if (!window.confirm("Tem certeza que deseja excluir permanentemente este procedimento?")) return;
     try {
       await knowledgeBaseApi.deleteArticle(articleId);
       if (activeArticle?.id === articleId) {
@@ -211,11 +248,224 @@ export default function KnowledgeBase() {
       await loadData();
     } catch (err) {
       console.error("Erro ao excluir artigo:", err);
-      alert("Erro ao excluir artigo.");
+      alert("Erro ao excluir artigo: " + (err.response?.data?.detail || err.message));
     }
   };
 
-  // Filtragem dos Artigos
+  // ─── UPLOAD DE TELAS / PRINTS ───────────────────────────────────
+
+  const handleUploadAttachment = async (file, insertAtCursor = false) => {
+    if (!file) return;
+    try {
+      setUploadingMedia(true);
+      const res = await knowledgeBaseApi.uploadMedia(file);
+      const newAttachment = {
+        url: res.url,
+        filename: res.filename,
+        size: res.size,
+        uploaded_at: new Date().toISOString(),
+      };
+
+      setEditorForm((prev) => {
+        const updatedAttachments = [...(prev.attachments || []), newAttachment];
+        let updatedContent = prev.content;
+
+        if (insertAtCursor) {
+          const textarea = textareaRef.current;
+          const cleanTitle = res.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+          const imgMarkdown = `\n\n![${cleanTitle}](${res.url})\n*Legenda: ${cleanTitle}*\n\n`;
+          if (textarea) {
+            const start = textarea.selectionStart || updatedContent.length;
+            const end = textarea.selectionEnd || updatedContent.length;
+            updatedContent =
+              updatedContent.substring(0, start) +
+              imgMarkdown +
+              updatedContent.substring(end);
+          } else {
+            updatedContent += imgMarkdown;
+          }
+        }
+
+        return {
+          ...prev,
+          attachments: updatedAttachments,
+          content: updatedContent,
+        };
+      });
+    } catch (err) {
+      console.error("Erro no upload de tela:", err);
+      alert("Falha ao enviar imagem: " + (err.response?.data?.detail || err.message));
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  // Intercepta Ctrl+V no textarea para upload instantâneo de prints da área de transferência
+  const handleEditorPaste = async (e) => {
+    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) {
+          await handleUploadAttachment(file, true);
+        }
+        break;
+      }
+    }
+  };
+
+  // Inserir tag Markdown de anexo no conteúdo
+  const handleInsertAttachmentTag = (att) => {
+    const textarea = textareaRef.current;
+    const cleanTitle = att.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+    const imgMarkdown = `\n\n![${cleanTitle}](${att.url})\n*Legenda: ${cleanTitle}*\n\n`;
+    
+    setEditorForm((prev) => {
+      let updatedContent = prev.content;
+      if (textarea) {
+        const start = textarea.selectionStart || updatedContent.length;
+        const end = textarea.selectionEnd || updatedContent.length;
+        updatedContent =
+          updatedContent.substring(0, start) +
+          imgMarkdown +
+          updatedContent.substring(end);
+      } else {
+        updatedContent += imgMarkdown;
+      }
+      return { ...prev, content: updatedContent };
+    });
+  };
+
+  // Remover anexo da lista do artigo
+  const handleRemoveAttachment = (attUrl) => {
+    setEditorForm((prev) => ({
+      ...prev,
+      attachments: (prev.attachments || []).filter((a) => a.url !== attUrl),
+    }));
+  };
+
+  // Inserções rápidas na barra de formatação Markdown
+  const handleInsertFormat = (prefix, suffix = "") => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = editorForm.content.substring(start, end) || "texto";
+    const replacement = `${prefix}${selectedText}${suffix}`;
+
+    const newContent =
+      editorForm.content.substring(0, start) +
+      replacement +
+      editorForm.content.substring(end);
+
+    setEditorForm((prev) => ({ ...prev, content: newContent }));
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
+    }, 50);
+  };
+
+  // ─── GESTÃO DE CATEGORIAS ───────────────────────────────────────
+
+  const handleOpenCategoriesModal = () => {
+    setEditingCategory(null);
+    setCategoryForm({
+      name: "",
+      slug: "",
+      icon: "BookOpen",
+      description: "",
+      min_role: "technician",
+      order_index: categories.length + 1,
+      is_active: true,
+    });
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleEditCategory = (cat) => {
+    setEditingCategory(cat);
+    setCategoryForm({
+      name: cat.name || "",
+      slug: cat.slug || "",
+      icon: cat.icon || "BookOpen",
+      description: cat.description || "",
+      min_role: cat.min_role || "technician",
+      order_index: cat.order_index || 0,
+      is_active: cat.is_active !== false,
+    });
+  };
+
+  const handleSaveCategory = async (e) => {
+    e.preventDefault();
+    if (!categoryForm.name.trim()) {
+      alert("Por favor informe o nome da categoria.");
+      return;
+    }
+
+    try {
+      setSavingCategory(true);
+      const payload = {
+        name: categoryForm.name.trim(),
+        icon: categoryForm.icon,
+        description: categoryForm.description.trim(),
+        min_role: categoryForm.min_role,
+        order_index: parseInt(categoryForm.order_index) || 0,
+        is_active: categoryForm.is_active,
+      };
+
+      if (editingCategory) {
+        await knowledgeBaseApi.updateCategory(editingCategory.id, payload);
+      } else {
+        await knowledgeBaseApi.createCategory(payload);
+      }
+
+      setEditingCategory(null);
+      setCategoryForm({
+        name: "",
+        slug: "",
+        icon: "BookOpen",
+        description: "",
+        min_role: "technician",
+        order_index: categories.length + 1,
+        is_active: true,
+      });
+
+      await loadData();
+    } catch (err) {
+      console.error("Erro ao salvar categoria:", err);
+      alert("Falha ao salvar categoria: " + (err.response?.data?.detail || err.message));
+    } finally {
+      setSavingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (catId) => {
+    if (!window.confirm("Atenção: excluir esta categoria também removerá seus artigos vinculados. Continuar?")) return;
+    try {
+      await knowledgeBaseApi.deleteCategory(catId);
+      if (editingCategory?.id === catId) {
+        setEditingCategory(null);
+      }
+      await loadData();
+    } catch (err) {
+      console.error("Erro ao excluir categoria:", err);
+      alert("Falha ao excluir categoria: " + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  // Copiar código para clipboard
+  const handleCopyCode = (codeText, index) => {
+    navigator.clipboard.writeText(codeText);
+    setCopiedCodeIndex(index);
+    setTimeout(() => setCopiedCodeIndex(null), 2000);
+  };
+
+  // ─── FILTRAGEM DOS ARTIGOS ──────────────────────────────────────
+
   const filteredArticles = useMemo(() => {
     return articles.filter((art) => {
       // Filtro de Categoria
@@ -244,73 +494,201 @@ export default function KnowledgeBase() {
     });
   }, [articles, selectedCategory, selectedLevel, selectedRole, searchQuery]);
 
-  // Renderizador simplificado de Markdown (para não depender de libs pesadas adicionais)
+  // ─── RENDERIZADOR MARKDOWN COM SUPORTE A TELAS E CÓDIGOS ────────
+
   const renderMarkdown = (text) => {
     if (!text) return null;
     const lines = text.split("\n");
-    return (
-      <div className="prose prose-slate max-w-none space-y-4 text-slate-700 leading-relaxed">
-        {lines.map((line, idx) => {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("# ")) {
-            return (
-              <h1 key={idx} className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-6 pb-2 border-b border-slate-200">
-                {trimmed.replace("# ", "")}
-              </h1>
-            );
-          }
-          if (trimmed.startsWith("## ")) {
-            return (
-              <h2 key={idx} className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight mt-6 mb-2">
-                {trimmed.replace("## ", "")}
-              </h2>
-            );
-          }
-          if (trimmed.startsWith("### ")) {
-            return (
-              <h3 key={idx} className="text-lg font-bold text-slate-900 mt-4 mb-1">
-                {trimmed.replace("### ", "")}
-              </h3>
-            );
-          }
-          if (trimmed.startsWith("> ")) {
-            return (
-              <div key={idx} className="p-4 my-3 bg-blue-50/70 border-l-4 border-blue-600 rounded-r-2xl text-blue-900 text-sm font-medium">
-                {trimmed.replace("> ", "")}
+    const elements = [];
+    let inCodeBlock = false;
+    let codeBuffer = [];
+    let codeLang = "";
+
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
+      const trimmed = line.trim();
+
+      // Bloco de Código (```)
+      if (trimmed.startsWith("```")) {
+        if (inCodeBlock) {
+          // Fechamento de bloco
+          const codeString = codeBuffer.join("\n");
+          const blockIdx = idx;
+          elements.push(
+            <div key={`code-${blockIdx}`} className="my-4 rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 shadow-lg text-slate-100 font-mono text-xs sm:text-sm">
+              <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800 text-slate-400 text-xs font-sans">
+                <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-slate-300">
+                  <Terminal size={14} className="text-blue-400" />
+                  {codeLang || "script / comando"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCode(codeString, blockIdx)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors cursor-pointer text-xs"
+                >
+                  {copiedCodeIndex === blockIdx ? (
+                    <>
+                      <Check size={13} className="text-emerald-400" />
+                      <span className="text-emerald-400 font-bold">Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={13} />
+                      <span>Copiar</span>
+                    </>
+                  )}
+                </button>
               </div>
-            );
-          }
-          if (trimmed.startsWith("```")) {
-            return null; // Trata blocos de código
-          }
-          if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
-            return (
-              <li key={idx} className="ml-5 list-disc text-sm sm:text-base">
-                {trimmed.replace(/^[\*\-]\s+/, "")}
-              </li>
-            );
-          }
-          if (/^\d+\.\s/.test(trimmed)) {
-            return (
-              <li key={idx} className="ml-5 list-decimal text-sm sm:text-base">
-                {trimmed.replace(/^\d+\.\s+/, "")}
-              </li>
-            );
-          }
-          if (trimmed === "---") {
-            return <hr key={idx} className="my-6 border-slate-200" />;
-          }
-          if (!trimmed) {
-            return <div key={idx} className="h-1" />;
-          }
-          return (
-            <p key={idx} className="text-sm sm:text-base text-slate-700">
-              {trimmed}
-            </p>
+              <pre className="p-4 overflow-x-auto leading-relaxed text-slate-200">
+                <code>{codeString}</code>
+              </pre>
+            </div>
           );
-        })}
-      </div>
-    );
+          codeBuffer = [];
+          codeLang = "";
+          inCodeBlock = false;
+        } else {
+          inCodeBlock = true;
+          codeLang = trimmed.replace("```", "").trim();
+        }
+        continue;
+      }
+
+      if (inCodeBlock) {
+        codeBuffer.push(line);
+        continue;
+      }
+
+      // Imagem / Print de Tela Markdown: ![alt](url)
+      const imgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imgMatch) {
+        const alt = imgMatch[1];
+        const url = imgMatch[2];
+        elements.push(
+          <div key={`img-${idx}`} className="my-6 rounded-2xl overflow-hidden border border-slate-200 bg-slate-900/5 shadow-md group relative">
+            <div className="relative overflow-hidden flex items-center justify-center p-2 bg-slate-950/5">
+              <img
+                src={url}
+                alt={alt}
+                onClick={() => setLightboxImage({ url, alt })}
+                className="max-h-[520px] w-auto max-w-full rounded-xl object-contain cursor-zoom-in group-hover:scale-[1.01] transition-transform duration-200"
+                loading="lazy"
+              />
+              <button
+                type="button"
+                onClick={() => setLightboxImage({ url, alt })}
+                className="absolute top-4 right-4 p-2 bg-slate-900/80 hover:bg-blue-600 text-white rounded-xl shadow-lg backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                title="Ampliar Tela em Tela Cheia"
+              >
+                <ZoomIn size={18} />
+              </button>
+            </div>
+            {alt && (
+              <div className="px-4 py-2 bg-white border-t border-slate-200 text-center text-xs font-medium text-slate-600 flex items-center justify-center gap-1.5">
+                <ImageIcon size={13} className="text-blue-500" />
+                <span>{alt}</span>
+                <span className="text-slate-400 text-[11px]">(clique para ampliar)</span>
+              </div>
+            )}
+          </div>
+        );
+        continue;
+      }
+
+      // Títulos
+      if (trimmed.startsWith("# ")) {
+        elements.push(
+          <h1 key={idx} className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-8 pb-2 border-b border-slate-200">
+            {trimmed.replace("# ", "")}
+          </h1>
+        );
+        continue;
+      }
+      if (trimmed.startsWith("## ")) {
+        elements.push(
+          <h2 key={idx} className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight mt-6 mb-2">
+            {trimmed.replace("## ", "")}
+          </h2>
+        );
+        continue;
+      }
+      if (trimmed.startsWith("### ")) {
+        elements.push(
+          <h3 key={idx} className="text-lg font-bold text-slate-900 mt-5 mb-1.5">
+            {trimmed.replace("### ", "")}
+          </h3>
+        );
+        continue;
+      }
+
+      // Alertas e Destaques
+      if (trimmed.startsWith("> ")) {
+        const textAlert = trimmed.replace("> ", "");
+        const isWarning = textAlert.includes("[AVISO]") || textAlert.includes("[ALERTA]") || textAlert.includes("Atenção");
+        const isSuccess = textAlert.includes("[DICA]") || textAlert.includes("[SUCESSO]");
+        const isDanger = textAlert.includes("[PERIGO]") || textAlert.includes("[ERRO]");
+
+        let alertClasses = "bg-blue-50/80 border-blue-600 text-blue-950";
+        let AlertIcon = Info;
+        if (isWarning) {
+          alertClasses = "bg-amber-50/80 border-amber-500 text-amber-950";
+          AlertIcon = AlertTriangle;
+        } else if (isSuccess) {
+          alertClasses = "bg-emerald-50/80 border-emerald-500 text-emerald-950";
+          AlertIcon = CheckCircle;
+        } else if (isDanger) {
+          alertClasses = "bg-rose-50/80 border-rose-600 text-rose-950";
+          AlertIcon = AlertCircle;
+        }
+
+        elements.push(
+          <div key={idx} className={`p-4 my-4 border-l-4 rounded-r-2xl text-sm font-medium flex items-start gap-3 shadow-sm ${alertClasses}`}>
+            <AlertIcon size={18} className="shrink-0 mt-0.5 text-current opacity-80" />
+            <div className="leading-relaxed">{textAlert}</div>
+          </div>
+        );
+        continue;
+      }
+
+      // Listas
+      if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
+        elements.push(
+          <li key={idx} className="ml-6 list-disc text-sm sm:text-base text-slate-700 py-0.5">
+            {trimmed.replace(/^[\*\-]\s+/, "")}
+          </li>
+        );
+        continue;
+      }
+      if (/^\d+\.\s/.test(trimmed)) {
+        elements.push(
+          <li key={idx} className="ml-6 list-decimal text-sm sm:text-base text-slate-700 py-0.5">
+            {trimmed.replace(/^\d+\.\s+/, "")}
+          </li>
+        );
+        continue;
+      }
+
+      // Separador
+      if (trimmed === "---") {
+        elements.push(<hr key={idx} className="my-6 border-slate-200" />);
+        continue;
+      }
+
+      // Linha em branco
+      if (!trimmed) {
+        elements.push(<div key={idx} className="h-1.5" />);
+        continue;
+      }
+
+      // Parágrafo com suporte a código inline e links
+      elements.push(
+        <p key={idx} className="text-sm sm:text-base text-slate-700 leading-relaxed">
+          {trimmed}
+        </p>
+      );
+    }
+
+    return <div className="space-y-2">{elements}</div>;
   };
 
   return (
@@ -330,7 +708,7 @@ export default function KnowledgeBase() {
               Central de Conhecimento & Onboarding
             </h1>
             <p className="text-slate-300 text-sm sm:text-base max-w-2xl leading-relaxed">
-              Manuais operacionais, procedimentos ITIL (N1, N2, N3), arquitetura de UHs, topologias e guias de implantação com controle por perfil de acesso.
+              Tutoriais ilustrados com telas, procedimentos ITIL (N1, N2, N3), topologias e onboarding com permissões dinâmicas por perfil.
             </p>
           </div>
 
@@ -346,15 +724,28 @@ export default function KnowledgeBase() {
                   <RefreshCw size={16} />
                   <span>Sincronizar Padrões</span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={handleOpenCreate}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-lg shadow-blue-600/30 hover:scale-105 transition-all cursor-pointer"
+                  onClick={handleOpenCategoriesModal}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800/90 hover:bg-slate-700 text-slate-100 hover:text-white rounded-2xl text-xs sm:text-sm font-bold border border-slate-600 transition-all cursor-pointer shadow-sm"
+                  title="Gerenciar Categorias da Base"
                 >
-                  <Plus size={18} />
-                  <span>Novo Artigo</span>
+                  <FolderPlus size={16} className="text-blue-400" />
+                  <span>Categorias ({categories.length})</span>
                 </button>
               </>
+            )}
+
+            {(isAdmin || isTechnician) && (
+              <button
+                type="button"
+                onClick={handleOpenCreateArticle}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-lg shadow-blue-600/30 hover:scale-105 transition-all cursor-pointer"
+              >
+                <Plus size={18} />
+                <span>Novo Tutorial</span>
+              </button>
             )}
           </div>
         </div>
@@ -364,7 +755,7 @@ export default function KnowledgeBase() {
           <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Pesquise por procedimentos, termos, erros, sintomas ou tags (ex: TV UH, loop STP, biometria)..."
+            placeholder="Pesquise por procedimentos, termos, erros, sintomas ou tags (ex: TV UH, loop STP, biometria, senha)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-12 pr-10 py-3.5 bg-slate-950/60 border border-slate-700 rounded-2xl text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-md transition-all shadow-inner"
@@ -382,14 +773,14 @@ export default function KnowledgeBase() {
 
       {/* Seção Principal: Lista de Artigos OU Leitor do Artigo Ativo */}
       {activeArticle ? (
-        /* Visualização Detalhada do Artigo */
+        /* Visualização Detalhada do Artigo (Leitor) */
         <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-sm border border-slate-200 space-y-8 animate-fadeIn">
           {/* Navegação Superior */}
           <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-100">
             <button
               type="button"
               onClick={() => setActiveArticle(null)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-bold transition-colors cursor-pointer"
             >
               <ArrowLeft size={16} />
               <span>Voltar para Lista de Procedimentos</span>
@@ -400,18 +791,18 @@ export default function KnowledgeBase() {
                 type="button"
                 onClick={() => window.print()}
                 className="p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Imprimir Artigo"
+                title="Imprimir Tutorial"
               >
                 <Printer size={18} />
               </button>
               {(isAdmin || isTechnician) && (
                 <button
                   type="button"
-                  onClick={() => handleOpenEdit(activeArticle)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 text-xs font-bold transition-colors cursor-pointer"
+                  onClick={() => handleOpenEditArticle(activeArticle)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 text-xs font-bold transition-colors cursor-pointer"
                 >
                   <Edit3 size={15} />
-                  <span>Editar</span>
+                  <span>Editar Tutorial</span>
                 </button>
               )}
               {isAdmin && (
@@ -419,7 +810,7 @@ export default function KnowledgeBase() {
                   type="button"
                   onClick={() => handleDeleteArticle(activeArticle.id)}
                   className="p-2 text-slate-400 hover:text-red-600 rounded-xl hover:bg-red-50 transition-colors cursor-pointer"
-                  title="Excluir Artigo"
+                  title="Excluir Tutorial"
                 >
                   <Trash2 size={18} />
                 </button>
@@ -449,23 +840,9 @@ export default function KnowledgeBase() {
                 </span>
               )}
 
-              <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-bold uppercase">
-                {activeArticle.target_role === "requester"
-                  ? "Autoatendimento"
-                  : activeArticle.target_role === "technician"
-                  ? "Técnico"
-                  : "Administrador"}
+              <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold border border-slate-200">
+                Público: {activeArticle.target_role === "requester" ? "Colaborador" : activeArticle.target_role === "technician" ? "Técnico TI" : "Admin"}
               </span>
-
-              <div className="ml-auto text-xs text-slate-400 flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <Eye size={14} /> {activeArticle.views_count} visualizações
-                </span>
-                <span className="flex items-center gap-1">
-                  <Clock size={14} /> Atualizado em{" "}
-                  {new Date(activeArticle.updated_at).toLocaleDateString("pt-BR")}
-                </span>
-              </div>
             </div>
 
             <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
@@ -473,31 +850,68 @@ export default function KnowledgeBase() {
             </h1>
 
             {activeArticle.summary && (
-              <p className="text-slate-600 text-base sm:text-lg italic border-l-4 border-slate-300 pl-4 py-1">
+              <p className="text-slate-600 text-base sm:text-lg leading-relaxed bg-slate-50 p-4 rounded-2xl border-l-4 border-blue-500 font-medium">
                 {activeArticle.summary}
               </p>
             )}
 
-            {/* Tags */}
-            {activeArticle.tags && activeArticle.tags.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-2">
-                {activeArticle.tags.map((t, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-medium"
-                  >
-                    <Tag size={11} className="text-slate-400" />
-                    {t}
-                  </span>
-                ))}
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-2 text-xs text-slate-500 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-4">
+                <span>Autor: <strong className="text-slate-700">{activeArticle.author_name}</strong></span>
+                <span>Atualizado em: {new Date(activeArticle.updated_at).toLocaleDateString("pt-BR")}</span>
               </div>
-            )}
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1"><Eye size={14} /> {activeArticle.views_count} visualizações</span>
+                <span className="flex items-center gap-1 text-emerald-600 font-bold"><ThumbsUp size={14} /> {activeArticle.helpful_count}</span>
+              </div>
+            </div>
           </div>
 
-          {/* Conteúdo Renderizado */}
-          <div className="pt-6 border-t border-slate-100">
+          {/* Conteúdo Renderizado do Tutorial */}
+          <div className="pt-2">
             {renderMarkdown(activeArticle.content)}
           </div>
+
+          {/* Galeria de Telas & Evidências Anexadas (se houver anexos) */}
+          {activeArticle.attachments && activeArticle.attachments.length > 0 && (
+            <div className="mt-10 pt-8 border-t border-slate-200">
+              <div className="flex items-center gap-2 mb-4">
+                <Camera size={18} className="text-blue-600" />
+                <h3 className="text-lg font-black text-slate-900">
+                  Telas e Evidências deste Procedimento ({activeArticle.attachments.length})
+                </h3>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {activeArticle.attachments.map((att, attIdx) => (
+                  <div
+                    key={attIdx}
+                    onClick={() => setLightboxImage({ url: att.url, alt: att.filename })}
+                    className="group relative bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-blue-400 transition-all cursor-zoom-in"
+                  >
+                    <div className="h-32 bg-slate-900/5 flex items-center justify-center p-2">
+                      <img src={att.url} alt={att.filename} className="h-full w-full object-contain rounded-lg" loading="lazy" />
+                    </div>
+                    <div className="p-2.5 bg-white border-t border-slate-100">
+                      <p className="text-xs font-bold text-slate-800 truncate">{att.filename}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Clique para ampliar tela</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          {activeArticle.tags && activeArticle.tags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-4">
+              <Tag size={14} className="text-slate-400" />
+              {activeArticle.tags.map((tag, tIdx) => (
+                <span key={tIdx} className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Rodapé de Utilidade / Feedback */}
           <div className="mt-12 pt-8 border-t border-slate-200 bg-slate-50/70 -mx-6 sm:-mx-10 -mb-6 sm:-mb-10 p-6 sm:p-8 rounded-b-3xl flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -648,47 +1062,46 @@ export default function KnowledgeBase() {
           {/* Grid de Artigos */}
           {loading ? (
             <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
-              <RefreshCw className="animate-spin text-blue-600 mx-auto mb-3" size={32} />
-              <p className="text-slate-600 font-bold text-sm">Carregando Base de Conhecimento...</p>
+              <RefreshCw className="animate-spin text-blue-500 mx-auto mb-3" size={32} />
+              <p className="text-slate-500 text-sm font-medium">Carregando base de conhecimento...</p>
             </div>
           ) : filteredArticles.length === 0 ? (
-            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
-              <AlertCircle className="text-slate-300 mx-auto mb-3" size={48} />
-              <h3 className="text-lg font-extrabold text-slate-800">Nenhum procedimento encontrado</h3>
-              <p className="text-slate-500 text-sm mt-1 max-w-md mx-auto">
-                Não encontramos artigos correspondentes aos filtros ou termo de busca informado. Tente
-                limpar a pesquisa.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedCategory("all");
-                  setSelectedLevel("ALL");
-                  setSelectedRole("ALL");
-                  setSearchQuery("");
-                }}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-500 cursor-pointer"
-              >
-                Limpar Todos os Filtros
-              </button>
+            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 space-y-4">
+              <BookOpen className="text-slate-300 mx-auto" size={48} />
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-base">Nenhum procedimento encontrado</h3>
+                <p className="text-slate-500 text-sm mt-1 max-w-md mx-auto">
+                  Tente ajustar os filtros de categoria, nível ou termo de pesquisa.
+                </p>
+              </div>
+              {(isAdmin || isTechnician) && (
+                <button
+                  type="button"
+                  onClick={handleOpenCreateArticle}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-md cursor-pointer hover:bg-blue-500"
+                >
+                  <Plus size={16} />
+                  <span>Criar Novo Tutorial</span>
+                </button>
+              )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredArticles.map((art) => (
                 <div
                   key={art.id}
                   onClick={() => handleOpenArticle(art)}
-                  className="group bg-white rounded-3xl p-6 border border-slate-200 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-500/10 transition-all flex flex-col justify-between cursor-pointer relative overflow-hidden"
+                  className="bg-white rounded-3xl p-6 border border-slate-200 hover:border-blue-400 hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
                 >
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold text-[11px] border border-blue-200">
-                        {art.category_name || "Geral"}
+                      <span className="text-xs font-bold text-blue-600 uppercase tracking-wider truncate flex items-center gap-1">
+                        <FileText size={12} />
+                        {art.category_name}
                       </span>
-
                       {art.support_level !== "ALL" && (
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                             art.support_level === "N1"
                               ? "bg-sky-100 text-sky-800"
                               : art.support_level === "N2"
@@ -709,6 +1122,13 @@ export default function KnowledgeBase() {
                       <p className="text-slate-500 text-xs sm:text-sm line-clamp-2 leading-relaxed">
                         {art.summary}
                       </p>
+                    )}
+
+                    {art.attachments && art.attachments.length > 0 && (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold">
+                        <Camera size={12} className="text-blue-600" />
+                        <span>{art.attachments.length} tela(s) anexada(s)</span>
+                      </div>
                     )}
                   </div>
 
@@ -735,22 +1155,23 @@ export default function KnowledgeBase() {
         </div>
       )}
 
-      {/* Modal Editor de Artigo (Criação / Edição) */}
+      {/* ─── MODAL EDITOR DE ARTIGO / TUTORIAL ───────────────────────── */}
       {isEditorOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             {/* Header Modal */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-black text-slate-900">
-                  {editingArticle ? "Editar Procedimento" : "Novo Artigo na Base de Conhecimento"}
+                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <Edit3 size={18} className="text-blue-600" />
+                  {editingArticle ? "Editar Procedimento / Tutorial" : "Novo Artigo / Tutorial"}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Documente soluções, guias operacionais e procedimentos técnicos.
+                  Crie guias passo a passo, anexe telas e configure permissões de acesso.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <div className="bg-slate-100 p-1 rounded-xl flex items-center">
                   <button
                     type="button"
@@ -789,14 +1210,14 @@ export default function KnowledgeBase() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Título do Procedimento *
+                        Título do Tutorial *
                       </label>
                       <input
                         type="text"
                         required
                         value={editorForm.title}
                         onChange={(e) => setEditorForm({ ...editorForm, title: e.target.value })}
-                        placeholder="Ex: Como Configurar Ponto de Rede no Gero"
+                        placeholder="Ex: Como Configurar Ramal SIP no Gero"
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -813,7 +1234,7 @@ export default function KnowledgeBase() {
                       >
                         {categories.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name}
+                            {c.name} ({c.min_role})
                           </option>
                         ))}
                       </select>
@@ -848,7 +1269,7 @@ export default function KnowledgeBase() {
                         <option value="ALL">Todos os Níveis</option>
                         <option value="N1">N1 (Service Desk / Básico)</option>
                         <option value="N2">N2 (Field Services / Avançado)</option>
-                        <option value="N3">N3 (Infraestrutura / Redes / Servidores)</option>
+                        <option value="N3">N3 (Infra / Redes / Servidores)</option>
                       </select>
                     </div>
 
@@ -860,7 +1281,7 @@ export default function KnowledgeBase() {
                         type="text"
                         value={editorForm.tags}
                         onChange={(e) => setEditorForm({ ...editorForm, tags: e.target.value })}
-                        placeholder="Ex: tv, sky, gero, rede"
+                        placeholder="Ex: tv, sky, voip, unifi"
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -874,29 +1295,171 @@ export default function KnowledgeBase() {
                       type="text"
                       value={editorForm.summary}
                       onChange={(e) => setEditorForm({ ...editorForm, summary: e.target.value })}
-                      placeholder="Descrição em uma frase do objetivo deste procedimento..."
+                      placeholder="Descrição em uma frase do objetivo deste tutorial..."
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Conteúdo Completo (Suporta formatação Markdown) *
-                    </label>
-                    <textarea
-                      required
-                      rows={14}
-                      value={editorForm.content}
-                      onChange={(e) => setEditorForm({ ...editorForm, content: e.target.value })}
-                      placeholder="# Título Principal&#10;&#10;Descreva o passo a passo com clareza...&#10;&#10;## 1. Passo Inicial&#10;* Item 1&#10;* Item 2&#10;&#10;> Dica importante"
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                  {/* Barra de Formatação & Upload de Telas */}
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-100 rounded-2xl border border-slate-200">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleInsertFormat("# ", "")}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-extrabold cursor-pointer"
+                          title="Título Principal"
+                        >
+                          H1
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertFormat("## ", "")}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-extrabold cursor-pointer"
+                          title="Subtítulo"
+                        >
+                          H2
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertFormat("**", "**")}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                          title="Negrito"
+                        >
+                          B
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertFormat("* ", "")}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                          title="Lista"
+                        >
+                          • Lista
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertFormat("1. ", "")}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                          title="Lista Numerada"
+                        >
+                          1. Num
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertFormat("> [DICA] ", "")}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                          title="Alerta / Dica"
+                        >
+                          &gt; Dica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertFormat("```bash\n", "\n```")}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                          title="Bloco de Código"
+                        >
+                          &lt;/&gt; Código
+                        </button>
+                      </div>
+
+                      {/* Botão de Anexo de Tela / Imagem */}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              handleUploadAttachment(e.target.files[0], true);
+                              e.target.value = "";
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          disabled={uploadingMedia}
+                          onClick={() => fileInputRef.current?.click()}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+                        >
+                          <Camera size={14} />
+                          <span>{uploadingMedia ? "Enviando..." : "Anexar Tela / Print"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <textarea
+                        ref={textareaRef}
+                        required
+                        rows={13}
+                        value={editorForm.content}
+                        onPaste={handleEditorPaste}
+                        onChange={(e) => setEditorForm({ ...editorForm, content: e.target.value })}
+                        placeholder="# Título Principal&#10;&#10;Dica: você pode tirar um Print da Tela (PrtScn) e colar (Ctrl+V) diretamente aqui dentro para anexar a imagem automaticamente!&#10;&#10;## 1. Passo Inicial&#10;* Conecte o cabo...&#10;&#10;> [DICA] Salve a configuração antes de reiniciar."
+                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      {uploadingMedia && (
+                        <div className="absolute inset-0 bg-white/70 backdrop-blur-xs flex items-center justify-center rounded-2xl">
+                          <div className="flex items-center gap-2 text-blue-600 font-bold text-sm bg-white px-4 py-2 rounded-xl shadow-lg border border-slate-100">
+                            <RefreshCw size={18} className="animate-spin" />
+                            <span>Enviando captura de tela e inserindo Markdown...</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Galeria de Telas Anexadas ao Tutorial */}
+                  {editorForm.attachments && editorForm.attachments.length > 0 && (
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <ImageIcon size={14} className="text-blue-500" />
+                          Telas Anexadas a este Tutorial ({editorForm.attachments.length})
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Clique em &quot;Inserir&quot; para colocar no texto
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {editorForm.attachments.map((att, aIdx) => (
+                          <div key={aIdx} className="bg-white border border-slate-200 rounded-xl p-2 relative group shadow-2xs">
+                            <div className="h-24 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center mb-2">
+                              <img src={att.url} alt={att.filename} className="h-full w-full object-contain" />
+                            </div>
+                            <p className="text-[11px] font-bold text-slate-800 truncate" title={att.filename}>
+                              {att.filename}
+                            </p>
+                            <div className="flex items-center justify-between gap-1 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => handleInsertAttachmentTag(att)}
+                                className="flex-1 py-1 px-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold rounded-md transition-colors cursor-pointer"
+                              >
+                                Inserir no Texto
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAttachment(att.url)}
+                                className="p-1 text-slate-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+                                title="Remover tela"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 min-h-[300px]">
-                  <h2 className="text-xl font-bold text-slate-900 mb-2">{editorForm.title || "Sem Título"}</h2>
-                  <p className="text-xs text-slate-500 italic mb-4">{editorForm.summary}</p>
+                /* Aba de Pré-visualização */
+                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 min-h-[350px]">
+                  <h2 className="text-2xl font-black text-slate-900 mb-2">{editorForm.title || "Sem Título"}</h2>
+                  {editorForm.summary && <p className="text-sm text-slate-600 italic mb-6">{editorForm.summary}</p>}
                   {renderMarkdown(editorForm.content || "_Nenhum conteúdo digitado ainda._")}
                 </div>
               )}
@@ -915,10 +1478,229 @@ export default function KnowledgeBase() {
                   disabled={savingArticle}
                   className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50"
                 >
-                  {savingArticle ? "Salvando..." : "Salvar Artigo"}
+                  {savingArticle ? "Salvando..." : "Salvar Tutorial"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL DE GESTÃO DE CATEGORIAS (ADMIN) ─────────────────── */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <FolderPlus size={20} className="text-blue-600" />
+                  Gerenciador de Categorias da Base
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Crie, edite e organize os agrupamentos de manuais e procedimentos.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {/* Formulário de Adicionar / Editar */}
+              <form onSubmit={handleSaveCategory} className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  {editingCategory ? <Edit3 size={15} /> : <Plus size={15} />}
+                  {editingCategory ? `Editando: ${editingCategory.name}` : "Adicionar Nova Categoria"}
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nome da Categoria *</label>
+                    <input
+                      type="text"
+                      required
+                      value={categoryForm.name}
+                      onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                      placeholder="Ex: Telefonia IP & Ramais"
+                      className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Público Mínimo (Role)</label>
+                    <select
+                      value={categoryForm.min_role}
+                      onChange={(e) => setCategoryForm({ ...categoryForm, min_role: e.target.value })}
+                      className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="requester">Solicitante (Público Geral)</option>
+                      <option value="technician">Técnico de TI (N1/N2/N3)</option>
+                      <option value="admin">Administrador (Exclusivo)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Descrição Explicativa</label>
+                  <input
+                    type="text"
+                    value={categoryForm.description}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                    placeholder="Breve resumo sobre quais assuntos entram nesta categoria..."
+                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Seletor Visual de Ícones */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Ícone Ilustrativo</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {AVAILABLE_ICONS.map((iconKey) => {
+                      const IconComp = ICON_MAP[iconKey] || BookOpen;
+                      const isSelected = categoryForm.icon === iconKey;
+                      return (
+                        <button
+                          key={iconKey}
+                          type="button"
+                          onClick={() => setCategoryForm({ ...categoryForm, icon: iconKey })}
+                          className={`p-2 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-500/30 scale-105"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                          }`}
+                          title={iconKey}
+                        >
+                          <IconComp size={16} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  {editingCategory && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCategory(null);
+                        setCategoryForm({
+                          name: "",
+                          slug: "",
+                          icon: "BookOpen",
+                          description: "",
+                          min_role: "technician",
+                          order_index: categories.length + 1,
+                          is_active: true,
+                        });
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-white text-xs font-bold cursor-pointer"
+                    >
+                      Cancelar Edição
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={savingCategory}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    {savingCategory ? "Salvando..." : editingCategory ? "Atualizar Categoria" : "Cadastrar Categoria"}
+                  </button>
+                </div>
+              </form>
+
+              {/* Tabela de Categorias Existentes */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-black text-slate-800">Categorias Cadastradas ({categories.length})</h4>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white">
+                  {categories.map((cat) => {
+                    const IconComp = ICON_MAP[cat.icon] || BookOpen;
+                    return (
+                      <div key={cat.id} className="p-4 flex items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold shrink-0">
+                            <IconComp size={18} />
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-sm text-slate-900 leading-tight">{cat.name}</h5>
+                            <p className="text-xs text-slate-500 mt-0.5 truncate max-w-md">{cat.description || "Sem descrição"}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-bold">
+                            {cat.min_role === "requester" ? "Colaborador" : cat.min_role === "technician" ? "Técnico" : "Admin"}
+                          </span>
+                          <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-bold">
+                            {cat.articles_count || 0} artigos
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleEditCategory(cat)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                            title="Editar Categoria"
+                          >
+                            <Edit3 size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                            title="Excluir Categoria"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── LIGHTBOX MODAL PARA ZOOM DE TELAS ─────────────────────── */}
+      {lightboxImage && (
+        <div
+          onClick={() => setLightboxImage(null)}
+          className="fixed inset-0 z-60 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fadeIn cursor-zoom-out"
+        >
+          <div className="absolute top-4 right-4 flex items-center gap-3 z-10" onClick={(e) => e.stopPropagation()}>
+            <a
+              href={lightboxImage.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2.5 bg-slate-800 hover:bg-blue-600 text-white rounded-xl shadow-lg transition-colors"
+              title="Abrir em Nova Aba"
+            >
+              <ExternalLink size={20} />
+            </a>
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="p-2.5 bg-slate-800 hover:bg-red-600 text-white rounded-xl shadow-lg transition-colors cursor-pointer"
+              title="Fechar (Esc)"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="max-w-5xl max-h-[85vh] p-2 flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lightboxImage.url}
+              alt={lightboxImage.alt || "Captura de Tela"}
+              className="max-h-[80vh] w-auto max-w-full rounded-2xl shadow-2xl object-contain border border-slate-700"
+            />
+            {lightboxImage.alt && (
+              <p className="mt-3 text-slate-300 text-sm font-semibold text-center bg-slate-900/80 px-4 py-1.5 rounded-full border border-slate-700">
+                {lightboxImage.alt}
+              </p>
+            )}
           </div>
         </div>
       )}
