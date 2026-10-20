@@ -1801,7 +1801,7 @@ def get_agent_powershell_script(request: Request, download: bool = False, os: st
             except Exception:
                 pass
 
-    ps_script = f"""<#
+    ps_script = fr"""<#
 .SYNOPSIS
     TIHFSA Sentinel Agent — Telemetria de Estação para o Servidor TIHFSA.
     Substituto nativo do Zabbix Agent para Windows.

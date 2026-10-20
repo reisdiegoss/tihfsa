@@ -1077,6 +1077,22 @@ def seed_default_term_templates(db: Session):
         print(f"[INIT_DB] Aviso ao sincronizar modelos de termos: {e}")
 
 
+def seed_default_knowledge_base(db: Session):
+    """
+    Popula e sincroniza a Base de Conhecimento operacional (KB) com artigos
+    técnicos, guias de autoatendimento e manuais de expansão de hotéis.
+    """
+    try:
+        from app.services.knowledge_seed import seed_knowledge_base
+        res = seed_knowledge_base(db, overwrite=False)
+        if res.get("created", 0) > 0:
+            print(f"[INIT_DB] Base de Conhecimento: {res['created']} artigo(s) inserido(s) com sucesso.")
+        else:
+            print("[INIT_DB] Base de Conhecimento: Categorias e artigos operacionais já verificados/preservados.")
+    except Exception as e:
+        print(f"[INIT_DB] Aviso ao sincronizar Base de Conhecimento: {e}")
+
+
 def main():
     print("=" * 60)
     print("  TIHFSA — Inicialização e Migração do Banco de Dados")
@@ -1117,6 +1133,7 @@ def main():
         seed_floors_and_locations(db)
         seed_root_admin(db)
         seed_default_term_templates(db)
+        seed_default_knowledge_base(db)
         cleanup_corrupted_logon_history()
     finally:
         db.close()
