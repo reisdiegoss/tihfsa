@@ -41,8 +41,11 @@ def _check_project_permission(user: User, action: str = "view"):
     if "admin" in roles:
         return True
 
+    # Técnicos de TI e membros da equipe técnica têm acesso operacional por padrão
+    is_tech = (user.role == UserRole.TECHNICIAN) or ("technician" in roles) or getattr(user, "is_staff", False)
     allowed_modules = user.allowed_modules or []
-    if "projects" not in allowed_modules:
+
+    if not (is_tech or ("projects" in allowed_modules)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acesso negado ao módulo de Projetos.",

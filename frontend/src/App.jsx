@@ -21,6 +21,7 @@ import Contracts from "./pages/admin/Contracts";
 import Reports from "./pages/admin/Reports";
 import Terms from "./pages/admin/Terms";
 import KnowledgeBase from "./pages/admin/KnowledgeBase";
+import Projects from "./pages/admin/Projects";
 import PublicHelpPage from "./pages/public/PublicHelpPage";
 
 // Client App Pages (Colaboradores / Vistorias)
@@ -144,6 +145,8 @@ export default function App() {
 
             <Route path="contracts" element={<Contracts />} />
             <Route path="contratos" element={<Contracts />} />
+            <Route path="projects" element={<Projects />} />
+            <Route path="projetos" element={<Navigate to="/admin/projects" replace />} />
             <Route path="terms" element={<Terms />} />
             <Route path="termos" element={<Terms />} />
             <Route path="reports" element={<Reports />} />

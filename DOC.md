@@ -1599,6 +1599,29 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
         - Interface Light Mode amigável e acessível para todos os colaboradores do hotel.
         - Integração direta nos cabeçalhos e telas do formulário público (`/chamado`) e do PWA (`/app`).
 
+53. **Módulo de Gestão de Projetos & Kanban ITIL (`/admin/projects`)**:
+    - **Diagnóstico da Indisponibilidade**:
+      - A rota `/admin/projects` existia nos menus de navegação (`Sidebar.jsx` e `BottomNav.jsx`), porém a página correspondente (`Projects.jsx`), o cliente de API (`projects.js`) e a rota em `App.jsx` não haviam sido registrados.
+      - Além disso, o backend bloqueava técnicos de TI com HTTP 403 caso a lista `allowed_modules` não contivesse explicitamente `"projects"`.
+    - **Arquitetura de Dados & Backend (`app/models/project.py` e `app/routers/projects.py`)**:
+      - `Project`: Entidade de projeto com código sequencial automático (`PRJ-001`, `PRJ-002`), título, descrição, status (`Planejamento`, `Em Andamento`, `Pausado`, `Concluído`, `Cancelado`), prioridade, categoria (Infraestrutura, Redes, Sistemas, etc.), datas de início e entrega, cálculo automático de progresso (0-100%) baseado nas tarefas concluídas, e orçamento financeiro previsto/real.
+      - `ProjectTask`: Tarefas individuais organizadas em fluxo Kanban com status (`A Fazer`, `Em Andamento`, `Em Revisão`, `Concluído`), prioridade, técnico responsável e vínculo opcional com chamados de suporte.
+      - Ajustada a função `_check_project_permission` para conceder acesso operacional nativo a administradores e técnicos de TI por padrão.
+    - **Interface de Usuário & Quadro Kanban (`Projects.jsx`)**:
+      - **Dashboard de Portfólio**: KPIs no topo exibindo Total de Projetos, Projetos Ativos, Progresso Médio do Portfólio e Orçamento Total Alocado.
+      - **Aba de Projetos (Grid de Cards)**: Visualização em cards ricos com barra de progresso visual, identificação de gestor, prazo e contadores de tarefas e chamados.
+      - **Quadro Kanban Interativo (4 Colunas)**:
+        - Colunas estruturadas: *A Fazer*, *Em Andamento*, *Em Revisão* e *Concluído*.
+        - Cartões com indicação de prioridade, técnico responsável e identificação de chamado de suporte vinculado (`Ticket #...`).
+        - Controles rápidos para movimentação de cartões entre colunas adjacentes e atalho para criar tarefas em cada coluna.
+      - **Integração Bidirecional com Helpdesk**:
+        - Criação automática de chamados de suporte diretamente a partir de tarefas de projeto.
+        - Aba dedicada de chamados vinculados ao projeto com botão de vinculação rápida por ID e desvinculação com 1 clique.
+      - **Modais de Ação**: Modais integrados para Criação/Edição de Projetos e Tarefas com validações completas e seleção de responsáveis.
+    - **Registro de Rotas**:
+      - Adicionadas rotas `/admin/projects` e alias `/admin/projetos` em `App.jsx`.
+
+
 
 
 
