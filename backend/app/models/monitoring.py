@@ -49,6 +49,19 @@ class AgentCheckin(Base):
     anydesk_id = Column(String(50), nullable=True)
     rustdesk_id = Column(String(50), nullable=True)
 
+    # Telemetria Térmica
+    cpu_temp_c = Column(Float, nullable=True)
+    disk_temp_c = Column(Float, nullable=True)
+    gpu_temp_c = Column(Float, nullable=True)
+    thermal_status = Column(String(20), default="normal", nullable=True)  # 'normal', 'warning', 'critical'
+    temperatures_detail = Column(JSON, nullable=True)  # Lista com leituras térmicas individuais de cada zona/disco
+
+    # Rastreamento de Alertas Persistentes e AIOps (> 12h)
+    first_alert_at = Column(DateTime(timezone=True), nullable=True)  # Início do alerta contínuo
+    alert_reasons = Column(JSON, nullable=True)  # Motivos do alerta atual
+    alert_ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True)
+    alert_ticket = relationship("Ticket", foreign_keys=[alert_ticket_id])
+
     @property
     def is_online(self) -> bool:
         """Considera online se enviou sinal nos últimos 1200 segundos (20 minutos), cobrindo o ciclo de 15 minutos da tarefa agendada."""

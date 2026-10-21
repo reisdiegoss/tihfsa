@@ -49,7 +49,8 @@ import {
   ArrowDown,
   MessageSquare,
   Smartphone,
-  UploadCloud
+  UploadCloud,
+  Thermometer
 } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -250,6 +251,12 @@ export default function Settings() {
     pwa_theme_color: "#0f172a",
     pwa_bg_color: "#0f172a",
     pwa_icon_url: "/icons/icon-512.png",
+    auto_ticket_on_alert_enabled: true,
+    auto_ticket_alert_hours: 12,
+    auto_ticket_ram_threshold_pct: 80,
+    auto_ticket_disk_threshold_pct: 90,
+    auto_ticket_temp_threshold_c: 85,
+    auto_ticket_category_id: null,
   });
   const [loadingGeneralSettings, setLoadingGeneralSettings] = useState(false);
   const [savingGeneralSettings, setSavingGeneralSettings] = useState(false);
@@ -989,6 +996,7 @@ export default function Settings() {
       fetchNotificationLogs();
     } else if (activeTab === "general") {
       fetchGeneralSettings();
+      fetchCategoriesWithProblems();
     }
   }, [activeTab]);
 
@@ -2425,6 +2433,191 @@ export default function Settings() {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingGeneralSettings}
+                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {savingGeneralSettings ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                    <span>Salvar Alterações</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 4: AIOps — Abertura Automática de Chamados por Alertas Persistentes da Telemetria */}
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
+                      <Activity size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                        AIOps • Abertura Automática de Chamados (Telemetria)
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Criação preventiva de chamados técnicos quando uma estação ou servidor mantiver alerta contínuo.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                    TIHFSA Sentinel AIOps
+                  </span>
+                </div>
+
+                {/* Toggle Geral de Abertura Automática */}
+                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-slate-800 block">
+                      Habilitar Abertura Automática de Chamados Preventivos
+                    </span>
+                    <p className="text-[11px] text-slate-500">
+                      Quando desativado, o sistema monitora e exibe alertas no painel NOC sem registrar chamados no Helpdesk.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={generalSettings.auto_ticket_on_alert_enabled ?? true}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, auto_ticket_on_alert_enabled: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {/* Grid de Parâmetros e Limiares */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Tempo Mínimo de Alerta Contínuo (Horas) */}
+                  <div>
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                      <Clock size={12} className="text-blue-500" />
+                      Tempo de Alerta Contínuo para Abertura <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={168}
+                        required
+                        value={generalSettings.auto_ticket_alert_hours ?? 12}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, auto_ticket_alert_hours: parseInt(e.target.value || "1", 10) })}
+                        className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 text-center"
+                      />
+                      <span className="text-xs font-bold text-slate-600">horas consecutivas</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Evita falsos positivos por picos temporários. O chamado só é gerado se o alerta persistir ininterruptamente (padrão: 12h).
+                    </p>
+                  </div>
+
+                  {/* Categoria do Chamado Gerado */}
+                  <div>
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                      <Tag size={12} className="text-blue-500" />
+                      Categoria do Chamado no Helpdesk
+                    </label>
+                    <select
+                      value={generalSettings.auto_ticket_category_id || ""}
+                      onChange={(e) => setGeneralSettings({ ...generalSettings, auto_ticket_category_id: e.target.value ? parseInt(e.target.value, 10) : null })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                    >
+                      <option value="">Automático (Hardware / Estações / NOC)</option>
+                      {categoriesWithProblems.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Categoria atribuída ao chamado automático para direcionamento à equipe de suporte.
+                    </p>
+                  </div>
+
+                  {/* Limiar de Memória RAM */}
+                  <div>
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                      <Cpu size={12} className="text-amber-500" />
+                      Limiar de Uso de RAM Crítico <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={50}
+                        max={99}
+                        required
+                        value={generalSettings.auto_ticket_ram_threshold_pct ?? 80}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, auto_ticket_ram_threshold_pct: parseInt(e.target.value || "80", 10) })}
+                        className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 text-center"
+                      />
+                      <span className="text-xs font-bold text-slate-600">% de uso de RAM</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Gera alerta persistente quando o consumo de memória RAM for igual ou superior a esta porcentagem (padrão: 80%).
+                    </p>
+                  </div>
+
+                  {/* Limiar de Armazenamento / Disco */}
+                  <div>
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                      <HardDrive size={12} className="text-amber-500" />
+                      Limiar de Ocupação de Disco <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={50}
+                        max={99}
+                        required
+                        value={generalSettings.auto_ticket_disk_threshold_pct ?? 90}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, auto_ticket_disk_threshold_pct: parseInt(e.target.value || "90", 10) })}
+                        className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 text-center"
+                      />
+                      <span className="text-xs font-bold text-slate-600">% de uso de disco</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Alerta quando qualquer partição do sistema operacional ou dados atingir este limite (padrão: 90%).
+                    </p>
+                  </div>
+
+                  {/* Limiar de Temperatura de Hardware */}
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                      <Thermometer size={12} className="text-rose-500" />
+                      Limiar de Temperatura Crítica (°C) <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={50}
+                        max={110}
+                        required
+                        value={generalSettings.auto_ticket_temp_threshold_c ?? 85}
+                        onChange={(e) => setGeneralSettings({ ...generalSettings, auto_ticket_temp_threshold_c: parseInt(e.target.value || "85", 10) })}
+                        className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 text-center"
+                      />
+                      <span className="text-xs font-bold text-slate-600">°C (CPU / SSD / GPU)</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Alerta térmico quando processadores, discos SSD NVMe ou placas dedicadas atingirem esta temperatura (padrão: 85°C).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Aviso de Deduplicação e Inteligência Anti-Spam */}
+                <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-[11px] text-amber-900 leading-relaxed space-y-1">
+                  <p className="font-extrabold flex items-center gap-1.5">
+                    🛡️ Proteção Anti-Spam & Deduplicação de Chamados:
+                  </p>
+                  <p className="text-amber-800">
+                    • O sistema <strong>nunca duplicará chamados</strong> para a mesma estação enquanto houver um ticket aberto não resolvido.
+                  </p>
+                  <p className="text-amber-800">
+                    • Caso as métricas da estação se normalizem, o sistema <strong>adiciona automaticamente uma nota informativa</strong> no chamado indicando a recuperação térmica ou de recursos.
+                  </p>
                 </div>
 
                 <div className="pt-2 flex justify-end">

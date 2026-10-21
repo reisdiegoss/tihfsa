@@ -271,6 +271,21 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_ti_on_create BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_ti_on_close BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_ti_on_update BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_on_alert_enabled BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_alert_hours INTEGER DEFAULT 12;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_ram_threshold_pct INTEGER DEFAULT 80;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_disk_threshold_pct INTEGER DEFAULT 90;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_temp_threshold_c INTEGER DEFAULT 85;"))
+            conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;"))
+            conn.execute(text("ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS cpu_temp_c FLOAT;"))
+            conn.execute(text("ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS disk_temp_c FLOAT;"))
+            conn.execute(text("ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS gpu_temp_c FLOAT;"))
+            conn.execute(text("ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS thermal_status VARCHAR(20) DEFAULT 'normal';"))
+            conn.execute(text("ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS temperatures_detail JSON;"))
+            conn.execute(text("ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS first_alert_at TIMESTAMP WITH TIME ZONE;"))
+            conn.execute(text("ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS alert_reasons JSON;"))
+            conn.execute(text("ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS alert_ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL;"))
+
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS location_departments (
                     location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,

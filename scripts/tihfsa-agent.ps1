@@ -137,20 +137,25 @@ function Update-AgentScriptSelf {
         if (Test-Path $tempScript) {
             $newSize = (Get-Item $tempScript).Length
             if ($newSize -gt 1500) {
-                $content = Get-Content $tempScript -Raw -ErrorAction SilentlyContinue
-                if ($content -like "*TIHFSA Sentinel Agent*") {
-                    try {
-                        [System.IO.File]::Copy($tempScript, $targetScript, $true)
-                        Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso via .NET."
-                    } catch {
-                        Copy-Item -Path $tempScript -Destination $targetScript -Force -ErrorAction SilentlyContinue
-                        Log-AgentMessage "[OK] Script do agente auto-atualizado com sucesso via Copy-Item."
+                $newContent = Get-Content $tempScript -Raw -ErrorAction SilentlyContinue
+                if ($newContent -like "*TIHFSA Sentinel Agent*" -and -not ($newContent -like "*Internal Server Error*")) {
+                    $currentContent = if (Test-Path $targetScript) { Get-Content $targetScript -Raw -ErrorAction SilentlyContinue } else { "" }
+                    if ($newContent.Trim() -ne $currentContent.Trim()) {
+                        try {
+                            [System.IO.File]::Copy($tempScript, $targetScript, $true)
+                            Log-AgentMessage "[OK] Nova versao do script do agente baixada e aplicada automaticamente (tamanho: $newSize bytes)."
+                        } catch {
+                            Copy-Item -Path $tempScript -Destination $targetScript -Force -ErrorAction SilentlyContinue
+                            Log-AgentMessage "[OK] Nova versao do script aplicada via Copy-Item."
+                        }
                     }
                 }
             }
             Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
         }
-    } catch {}
+    } catch {
+        Log-AgentMessage "[INFO] Auto-atualizacao ignorada neste ciclo: $_"
+    }
 }
 
 function Install-SentinelTask {
@@ -476,6 +481,71 @@ function Get-BackupExecTelemetry {
     return $telemetry
 }
 
+function Get-HardwareTemperatures {
+    $tempData = @{
+        cpu_celsius      = $null
+        disk_max_celsius = $null
+        gpu_celsius      = $null
+        disks_temp       = @()
+        thermal_zones    = @()
+        status           = "normal"
+    }
+
+    # 1. Temperatura de SSDs e HDs (Storage Reliability Counter nativo do Windows 10/11 e Windows Server)
+    try {
+        $pDisks = Get-PhysicalDisk -ErrorAction SilentlyContinue
+        foreach ($pd in $pDisks) {
+            $rel = $pd | Get-StorageReliabilityCounter -ErrorAction SilentlyContinue
+            if ($rel -and $null -ne $rel.Temperature -and $rel.Temperature -gt 0) {
+                $tempData.disks_temp += @{
+                    model   = $pd.FriendlyName.Trim()
+                    temp_c  = [int]$rel.Temperature
+                }
+                if ($null -eq $tempData.disk_max_celsius -or $rel.Temperature -gt $tempData.disk_max_celsius) {
+                    $tempData.disk_max_celsius = [int]$rel.Temperature
+                }
+            }
+        }
+    } catch {}
+
+    # 2. Temperatura de CPU e Chassi via Zonas Térmicas ACPI (WMI nativo)
+    try {
+        $zones = Get-CimInstance -Namespace "root/wmi" -ClassName "MSAcpi_ThermalZoneTemperature" -ErrorAction SilentlyContinue
+        foreach ($z in $zones) {
+            if ($z.CurrentTemperature -gt 2732) {
+                $celsius = [math]::Round(($z.CurrentTemperature - 2732) / 10, 1)
+                $tempData.thermal_zones += @{
+                    name   = if ($z.InstanceName) { $z.InstanceName } else { "ThermalZone" }
+                    temp_c = $celsius
+                }
+                if ($null -eq $tempData.cpu_celsius -or $celsius -gt $tempData.cpu_celsius) {
+                    $tempData.cpu_celsius = $celsius
+                }
+            }
+        }
+    } catch {}
+
+    # 3. Temperatura de GPU Dedicada (NVIDIA via nvidia-smi)
+    try {
+        if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+            $gOut = (& nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>$null)
+            if ($gOut -and $gOut.Trim() -match '^\d+$') {
+                $tempData.gpu_celsius = [int]$gOut.Trim()
+            }
+        }
+    } catch {}
+
+    # 4. Status Térmico Geral
+    $highest = @($tempData.cpu_celsius, $tempData.disk_max_celsius, $tempData.gpu_celsius) | Where-Object { $null -ne $_ } | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+    if ($highest -ge 85) {
+        $tempData.status = "critical"
+    } elseif ($highest -ge 75) {
+        $tempData.status = "warning"
+    }
+
+    return $tempData
+}
+
 function Get-SystemMetrics {
     # CPU
     $cpu = 0
@@ -738,6 +808,8 @@ function Get-SystemMetrics {
         }
     } catch {}
 
+    $temps = Get-HardwareTemperatures
+
     return @{
         hostname            = $env:COMPUTERNAME
         logged_user         = Get-LoggedUser
@@ -763,6 +835,11 @@ function Get-SystemMetrics {
         office_status       = $officeStatus
         installed_apps      = [object[]]@($installedApps)
         backup_exec         = Get-BackupExecTelemetry
+        temperatures        = $temps
+        cpu_temp_c          = $temps.cpu_celsius
+        disk_temp_c         = $temps.disk_max_celsius
+        gpu_temp_c          = $temps.gpu_celsius
+        thermal_status      = $temps.status
     }
 }
 

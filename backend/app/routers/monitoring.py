@@ -15,8 +15,11 @@ from app.auth.dependencies import get_current_user, require_technician
 from app.config import settings
 from app.database import get_db
 from app.models.asset import Asset
+from app.models.category import Category
 from app.models.monitoring import AgentCheckin, AgentMetricsHistory, AgentLogonHistory
+from app.models.system_setting import SystemSetting
 from app.models.ticket import Ticket, TicketStatus, TicketPriority
+from app.models.ticket_interaction import TicketInteraction
 from app.models.user import User
 from app.services.sla_service import get_helpdesk_monitoring_summary
 
@@ -57,6 +60,11 @@ class AgentCheckinPayload(BaseModel):
     anydesk_id: Optional[str] = None
     rustdesk_id: Optional[str] = None
     backup_exec: Optional[dict] = None
+    cpu_temp_c: Optional[float] = None
+    disk_temp_c: Optional[float] = None
+    gpu_temp_c: Optional[float] = None
+    thermal_status: Optional[str] = None
+    temperatures: Optional[dict] = None
 
 
 class AgentMachineResponse(BaseModel):
@@ -91,6 +99,15 @@ class AgentMachineResponse(BaseModel):
     department_name: Optional[str] = None
     anydesk_id: Optional[str] = None
     rustdesk_id: Optional[str] = None
+    cpu_temp_c: Optional[float] = None
+    disk_temp_c: Optional[float] = None
+    gpu_temp_c: Optional[float] = None
+    thermal_status: Optional[str] = None
+    first_alert_at: Optional[datetime] = None
+    alert_reasons: Optional[list[str]] = None
+    alert_ticket_id: Optional[int] = None
+    alert_duration_hours: Optional[float] = None
+
 
 
 class AgentAssignPayload(BaseModel):
@@ -505,6 +522,23 @@ def agent_checkin(
     if user:
         display_user = f"{user.display_name} ({user.ad_username})"
 
+    # Extração de Métricas Térmicas (suporta campos diretos ou objeto temperatures)
+    cpu_temp = getattr(data, "cpu_temp_c", None)
+    disk_temp = getattr(data, "disk_temp_c", None)
+    gpu_temp = getattr(data, "gpu_temp_c", None)
+    thermal_status = getattr(data, "thermal_status", "normal") or "normal"
+    temperatures_dict = getattr(data, "temperatures", None)
+
+    if isinstance(temperatures_dict, dict):
+        if cpu_temp is None and temperatures_dict.get("cpu_celsius") is not None:
+            cpu_temp = float(temperatures_dict.get("cpu_celsius"))
+        if disk_temp is None and temperatures_dict.get("disk_max_celsius") is not None:
+            disk_temp = float(temperatures_dict.get("disk_max_celsius"))
+        if gpu_temp is None and temperatures_dict.get("gpu_celsius") is not None:
+            gpu_temp = float(temperatures_dict.get("gpu_celsius"))
+        if thermal_status == "normal" and temperatures_dict.get("status"):
+            thermal_status = str(temperatures_dict.get("status")).lower()
+
     # 4. Busca registro existente do hostname para telemetria
     checkin = (
         db.query(AgentCheckin)
@@ -530,6 +564,11 @@ def agent_checkin(
             status=calculated_status,
             last_seen_at=now,
             asset_id=asset.id,
+            cpu_temp_c=cpu_temp,
+            disk_temp_c=disk_temp,
+            gpu_temp_c=gpu_temp,
+            thermal_status=thermal_status,
+            temperatures_detail=temperatures_dict,
         )
         if data.anydesk_id and data.anydesk_id.strip():
             checkin.anydesk_id = data.anydesk_id.strip()
@@ -553,11 +592,137 @@ def agent_checkin(
         checkin.status = calculated_status
         checkin.last_seen_at = now
         checkin.asset_id = asset.id
+        checkin.cpu_temp_c = cpu_temp
+        checkin.disk_temp_c = disk_temp
+        checkin.gpu_temp_c = gpu_temp
+        checkin.thermal_status = thermal_status
+        checkin.temperatures_detail = temperatures_dict
 
         if data.anydesk_id and data.anydesk_id.strip():
             checkin.anydesk_id = data.anydesk_id.strip()
         if data.rustdesk_id and data.rustdesk_id.strip():
             checkin.rustdesk_id = data.rustdesk_id.strip()
+
+    # 4.1. Motor AIOps — Avaliação de Alertas Persistentes e Abertura Automática de Chamados
+    setting = db.query(SystemSetting).first()
+    auto_ticket_enabled = getattr(setting, "auto_ticket_on_alert_enabled", True) if setting else True
+    alert_hours_threshold = getattr(setting, "auto_ticket_alert_hours", 12) if setting else 12
+    ram_threshold = getattr(setting, "auto_ticket_ram_threshold_pct", 80) if setting else 80
+    disk_threshold = getattr(setting, "auto_ticket_disk_threshold_pct", 90) if setting else 90
+    temp_threshold = getattr(setting, "auto_ticket_temp_threshold_c", 85) if setting else 85
+    auto_ticket_cat_id = getattr(setting, "auto_ticket_category_id", None) if setting else None
+
+    current_alert_reasons = []
+    if data.ram_usage_pct and data.ram_usage_pct >= ram_threshold:
+        current_alert_reasons.append(f"Uso de Memória RAM em {data.ram_usage_pct:.1f}% (limiar: {ram_threshold}%)")
+    for d in disks_normalized:
+        if isinstance(d, dict) and d.get("used_pct", 0) >= disk_threshold:
+            current_alert_reasons.append(f"Espaço no Disco {d.get('drive', 'Principal')} em {d.get('used_pct')}% (limiar: {disk_threshold}%, livre: {d.get('free_gb', 0)} GB)")
+    if cpu_temp and cpu_temp >= temp_threshold:
+        current_alert_reasons.append(f"Temperatura do Processador em {cpu_temp:.1f}°C (limiar crítico: {temp_threshold}°C)")
+    if disk_temp and (disk_temp >= temp_threshold or disk_temp >= 75):
+        current_alert_reasons.append(f"Temperatura de Armazenamento SSD/HD em {disk_temp:.1f}°C (risco de degradação térmica)")
+
+    if current_alert_reasons:
+        checkin.status = "warning"
+        checkin.alert_reasons = current_alert_reasons
+        if not checkin.first_alert_at:
+            checkin.first_alert_at = now
+        else:
+            first_alert = checkin.first_alert_at
+            if first_alert.tzinfo is None:
+                first_alert = first_alert.replace(tzinfo=timezone.utc)
+            duration_hours = max(0.0, (now - first_alert).total_seconds() / 3600.0)
+
+            # Se atingiu o tempo mínimo configurado (ex: 12h) e AIOps está ativo:
+            if auto_ticket_enabled and duration_hours >= alert_hours_threshold:
+                existing_open_ticket = None
+                if checkin.alert_ticket_id:
+                    existing_open_ticket = db.query(Ticket).filter(
+                        Ticket.id == checkin.alert_ticket_id,
+                        Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED, TicketStatus.CANCELLED])
+                    ).first()
+
+                if not existing_open_ticket:
+                    dedup_prefix = f"[Alerta AIOps] {hostname_clean}"
+                    existing_open_ticket = db.query(Ticket).filter(
+                        Ticket.title.like(f"{dedup_prefix}%"),
+                        Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED, TicketStatus.CANCELLED])
+                    ).first()
+
+                if not existing_open_ticket:
+                    cat_id = auto_ticket_cat_id
+                    if not cat_id:
+                        cat_infra = db.query(Category).filter(
+                            or_(Category.name.ilike("%Hardware%"), Category.name.ilike("%Infraestrutura%"))
+                        ).first()
+                        if cat_infra:
+                            cat_id = cat_infra.id
+
+                    ticket_priority = TicketPriority.HIGH
+                    if (cpu_temp and cpu_temp >= 90) or any(isinstance(d, dict) and d.get("used_pct", 0) >= 95 for d in disks_normalized):
+                        ticket_priority = TicketPriority.CRITICAL
+
+                    ticket_title = f"[Alerta AIOps] {hostname_clean} em alerta contínuo há {int(duration_hours)}h"
+                    reasons_md = "\n".join([f"- ⚠️ {r}" for r in current_alert_reasons])
+                    disks_summary = "\n".join([f"  - `{d.get('drive', 'N/A')}`: {d.get('used_pct', 0)}% usado ({d.get('free_gb', 0)} GB livres de {d.get('total_gb', 0)} GB)" for d in disks_normalized if isinstance(d, dict)])
+
+                    ticket_desc = (
+                        f"## 🤖 Abertura Automática por Alerta Contínuo (AIOps)\n\n"
+                        f"O equipamento **`{hostname_clean}`** ({ip_clean}) permanece em estado crítico ininterrupto há **{duration_hours:.1f} horas** (limiar configurado: {alert_hours_threshold}h).\n\n"
+                        f"### 📋 Métricas em Alerta:\n"
+                        f"{reasons_md}\n\n"
+                        f"### 💻 Diagnóstico Atual do Equipamento:\n"
+                        f"- **Usuário Ativo:** {display_user or 'Nenhum'}\n"
+                        f"- **Sistema Operacional:** {data.os_name or 'Windows'}\n"
+                        f"- **Uso de Memória RAM:** {data.ram_usage_pct or 0:.1f}% ({data.ram_used_mb or 0} MB / {data.ram_total_mb or 0} MB)\n"
+                        f"- **Uso de CPU:** {data.cpu_usage_pct or 0}%\n"
+                        f"- **Temperatura da CPU:** {f'{cpu_temp:.1f}°C' if cpu_temp else 'Não disponível'}\n"
+                        f"- **Temperatura de Armazenamento:** {f'{disk_temp:.1f}°C' if disk_temp else 'Não disponível'}\n"
+                        f"- **Armazenamento:**\n{disks_summary or '  - Nenhum disco detectado'}\n"
+                        f"- **Acesso Remoto:** AnyDesk: `{checkin.anydesk_id or 'N/A'}` | RustDesk: `{checkin.rustdesk_id or 'N/A'}`\n\n"
+                        f"---\n"
+                        f"### 🛠️ Ação Recomendada pela Equipe de TI:\n"
+                        f"1. Realizar conexão remota ao equipamento para liberar espaço em disco, encerrar processos que estejam consumindo RAM ou verificar ventilação física.\n"
+                        f"2. Se for problema térmico, verificar ventilação física e agendar limpeza/troca de pasta térmica preventiva."
+                    )
+
+                    new_ticket = Ticket(
+                        title=ticket_title,
+                        description=ticket_desc,
+                        status=TicketStatus.NEW,
+                        priority=ticket_priority,
+                        category_id=cat_id,
+                        asset_id=asset.id if asset else None,
+                        requester_id=user.id if user else 1,
+                    )
+                    db.add(new_ticket)
+                    db.commit()
+                    db.refresh(new_ticket)
+                    checkin.alert_ticket_id = new_ticket.id
+    else:
+        # Sem alertas ativos no momento — equipamento normalizado
+        if checkin.alert_ticket_id:
+            try:
+                ticket_to_update = db.query(Ticket).filter(
+                    Ticket.id == checkin.alert_ticket_id,
+                    Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED, TicketStatus.CANCELLED])
+                ).first()
+                if ticket_to_update:
+                    interact = TicketInteraction(
+                        ticket_id=ticket_to_update.id,
+                        user_id=1,
+                        interaction_type="comment",
+                        content=f"🟢 **Telemetria Normalizada**: No check-in de {now.strftime('%d/%m/%Y %H:%M:%S')}, todas as métricas do host `{hostname_clean}` retornaram aos parâmetros normais e seguros de operação.",
+                    )
+                    db.add(interact)
+                    db.commit()
+            except Exception as notif_err:
+                print(f"[Monitoring] Erro ao registrar normalização no chamado: {notif_err}")
+
+        checkin.first_alert_at = None
+        checkin.alert_reasons = None
+        checkin.alert_ticket_id = None
 
     db.commit()
     db.refresh(checkin)
@@ -957,6 +1122,13 @@ def list_agent_machines(
             if r.asset.assigned_user.department:
                 dept_name = r.asset.assigned_user.department.name
 
+        alert_dur = None
+        if r.first_alert_at:
+            fa = r.first_alert_at
+            if fa.tzinfo is None:
+                fa = fa.replace(tzinfo=timezone.utc)
+            alert_dur = round(max(0.0, (now - fa).total_seconds() / 3600.0), 1)
+
         machine_list.append(
             AgentMachineResponse(
                 id=r.id,
@@ -990,6 +1162,14 @@ def list_agent_machines(
                 department_name=dept_name,
                 anydesk_id=r.anydesk_id,
                 rustdesk_id=r.rustdesk_id,
+                cpu_temp_c=r.cpu_temp_c,
+                disk_temp_c=r.disk_temp_c,
+                gpu_temp_c=r.gpu_temp_c,
+                thermal_status=r.thermal_status,
+                first_alert_at=r.first_alert_at,
+                alert_reasons=r.alert_reasons,
+                alert_ticket_id=r.alert_ticket_id,
+                alert_duration_hours=alert_dur,
             )
         )
 
@@ -1779,6 +1959,7 @@ def get_agent_powershell_script(request: Request, download: bool = False, os_typ
         os.path.abspath(os.path.join(os.getcwd(), "scripts", "tihfsa-agent.ps1")),
         os.path.abspath(os.path.join(os.getcwd(), "..", "scripts", "tihfsa-agent.ps1")),
         "/app/scripts/tihfsa-agent.ps1",
+        "/root/tihfsa/scripts/tihfsa-agent.ps1",
         "/var/www/tihfsa/scripts/tihfsa-agent.ps1",
         "/opt/tihfsa/scripts/tihfsa-agent.ps1",
     ]
@@ -2761,7 +2942,7 @@ if (Test-Path $tempScript) {{
             Copy-Item -Path $tempScript -Destination $targetScript -Force -ErrorAction SilentlyContinue
         }}
     }} else {{
-        Write-Host "[ERRO] Resposta invalida ao baixar agente de $scriptUrl:" -ForegroundColor Red
+        Write-Host "[ERRO] Resposta invalida ao baixar agente ($scriptUrl):" -ForegroundColor Red
         if ($contentTest) {{ Write-Host "       $contentTest" -ForegroundColor Yellow }}
     }}
     Remove-Item $tempScript -Force -ErrorAction SilentlyContinue

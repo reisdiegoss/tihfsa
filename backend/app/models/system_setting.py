@@ -48,3 +48,12 @@ class SystemSetting(Base):
     pwa_bg_color = Column(String(30), default="#0f172a", nullable=True)
     pwa_icon_url = Column(String(500), default="/icons/icon-512.png", nullable=True)
 
+    # Parâmetros AIOps — Abertura Automática de Chamados por Alertas Persistentes
+    auto_ticket_on_alert_enabled = Column(Boolean, default=True, nullable=False)
+    auto_ticket_alert_hours = Column(Integer, default=12, nullable=False)
+    auto_ticket_ram_threshold_pct = Column(Integer, default=80, nullable=False)
+    auto_ticket_disk_threshold_pct = Column(Integer, default=90, nullable=False)
+    auto_ticket_temp_threshold_c = Column(Integer, default=85, nullable=False)
+    auto_ticket_category_id = Column(Integer, nullable=True)
+
+

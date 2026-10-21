@@ -3,7 +3,7 @@ import {
   Monitor, RefreshCw, Search, CheckCircle2, AlertTriangle,
   Clock, HardDrive, Cpu, Terminal, Copy, Check, Trash2,
   ExternalLink, User, Shield, Info, X, Zap, Download, Laptop, Tag,
-  RotateCcw, FileText, Building, UserCheck, Server, Activity
+  RotateCcw, FileText, Building, UserCheck, Server, Activity, Thermometer
 } from "lucide-react";
 import api from "../../api/client";
 import AssignMachineModal from "./AssignMachineModal";
@@ -453,11 +453,18 @@ export default function StationMonitoringTab() {
             const primaryDisk = (m.disk_metrics && m.disk_metrics.length > 0) ? m.disk_metrics[0] : null;
             const diskActive = m.disk_active_pct ?? primaryDisk?.active_pct ?? 0;
 
+            const temps = [m.cpu_temp_c, m.disk_temp_c, m.gpu_temp_c].filter(t => t != null && t > 0);
+            const maxTemp = temps.length > 0 ? Math.max(...temps) : null;
+            const isTempCritical = maxTemp != null && maxTemp >= 85;
+            const isTempWarning = maxTemp != null && maxTemp >= 75 && maxTemp < 85;
+
             return (
               <div
                 key={m.id}
                 className={`bg-white rounded-2xl border transition-all p-5 space-y-4 relative overflow-hidden shadow-2xs hover:shadow-md ${
-                  m.status === "warning" || diskActive >= 90
+                  m.alert_ticket_id || isTempCritical
+                    ? "border-rose-300 ring-2 ring-rose-200/80"
+                    : m.status === "warning" || diskActive >= 90 || isTempWarning
                     ? "border-amber-300 ring-1 ring-amber-200"
                     : m.is_online
                     ? "border-slate-200 hover:border-blue-300"
@@ -468,7 +475,9 @@ export default function StationMonitoringTab() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      m.status === "warning" || diskActive >= 90
+                      m.alert_ticket_id || isTempCritical
+                        ? "bg-rose-100 text-rose-700"
+                        : m.status === "warning" || diskActive >= 90 || isTempWarning
                         ? "bg-amber-100 text-amber-700"
                         : m.is_online
                         ? "bg-blue-100 text-blue-700"
@@ -494,6 +503,47 @@ export default function StationMonitoringTab() {
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                    {/* Alerta de Chamado Aberto Automático pelo AIOps */}
+                    {m.alert_ticket_id && (
+                      <a
+                        href={`/tickets/${m.alert_ticket_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white animate-pulse flex items-center gap-1 shadow-xs transition-colors"
+                        title={`Chamado automático #${m.alert_ticket_id} aberto devido a alerta contínuo`}
+                      >
+                        🚨 Chamado #{m.alert_ticket_id}
+                        <ExternalLink size={9} />
+                      </a>
+                    )}
+
+                    {/* Alerta de persistência acumulada (antes de abrir chamado) */}
+                    {!m.alert_ticket_id && m.alert_duration_hours != null && m.alert_duration_hours >= 1 && (
+                      <span
+                        className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-500 text-white flex items-center gap-1 shadow-xs"
+                        title={`Máquina em alerta contínuo há ${m.alert_duration_hours}h`}
+                      >
+                        ⏳ Alerta {m.alert_duration_hours}h
+                      </span>
+                    )}
+
+                    {/* Badge de Temperatura */}
+                    {maxTemp != null && (
+                      <span
+                        className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-0.5 shadow-2xs ${
+                          isTempCritical
+                            ? "bg-rose-100 text-rose-800 border border-rose-300 animate-pulse font-black"
+                            : isTempWarning
+                            ? "bg-amber-100 text-amber-800 border border-amber-300"
+                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        }`}
+                        title={`Temperatura Máxima: ${maxTemp}°C${m.cpu_temp_c ? ` | CPU: ${m.cpu_temp_c}°C` : ""}${m.disk_temp_c ? ` | SSD: ${m.disk_temp_c}°C` : ""}${m.gpu_temp_c ? ` | GPU: ${m.gpu_temp_c}°C` : ""}`}
+                      >
+                        <Thermometer size={10} className={isTempCritical ? "text-rose-600" : isTempWarning ? "text-amber-600" : "text-emerald-600"} />
+                        <span>{maxTemp}°C</span>
+                      </span>
+                    )}
+
                     {diskActive >= 90 && (
                       <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-red-100 text-red-700 border border-red-300 animate-pulse flex items-center gap-1 shadow-xs" title="Disco em 100% de atividade (gargalo severo de E/S)">
                         🔥 Disco 100%
@@ -501,16 +551,16 @@ export default function StationMonitoringTab() {
                     )}
 
                     <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 ${
-                      m.status === "warning" || diskActive >= 90
+                      m.status === "warning" || diskActive >= 90 || isTempCritical
                         ? "bg-amber-100 text-amber-800"
                         : m.is_online
                         ? "bg-emerald-100 text-emerald-800"
                         : "bg-slate-200 text-slate-600"
                     }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${
-                        m.status === "warning" || diskActive >= 90 ? "bg-amber-500" : m.is_online ? "bg-emerald-500" : "bg-slate-400"
+                        m.status === "warning" || diskActive >= 90 || isTempCritical ? "bg-amber-500" : m.is_online ? "bg-emerald-500" : "bg-slate-400"
                       }`} />
-                      {m.status === "warning" || diskActive >= 90 ? "Atenção" : m.is_online ? "Online" : "Offline"}
+                      {m.status === "warning" || diskActive >= 90 || isTempCritical ? "Atenção" : m.is_online ? "Online" : "Offline"}
                     </span>
 
                     <button
@@ -662,8 +712,8 @@ export default function StationMonitoringTab() {
                   </div>
                 </div>
 
-                {/* Telemetria de Hardware em Tempo Real: CPU, RAM & Atividade de Disco */}
-                <div className="grid grid-cols-3 gap-2.5 text-xs">
+                {/* Telemetria de Hardware em Tempo Real: CPU, RAM, Disco e Temperatura */}
+                <div className={`grid ${maxTemp != null ? "grid-cols-4" : "grid-cols-3"} gap-2 text-xs`}>
                   {/* CPU */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
@@ -715,7 +765,45 @@ export default function StationMonitoringTab() {
                       />
                     </div>
                   </div>
+
+                  {/* Temperatura (°C) */}
+                  {maxTemp != null && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                        <span className="flex items-center gap-0.5" title="Temperatura de hardware (CPU / SSD / GPU)">
+                          <Thermometer size={11} className={isTempCritical ? "text-rose-500" : isTempWarning ? "text-amber-500" : "text-emerald-500"} /> Temp
+                        </span>
+                        <span className={isTempCritical ? "text-rose-600 font-black animate-pulse" : isTempWarning ? "text-amber-600 font-black" : "text-emerald-600 font-bold"}>
+                          {maxTemp}°C
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isTempCritical ? "bg-rose-500" : isTempWarning ? "bg-amber-500" : "bg-emerald-500"
+                          }`}
+                          style={{ width: `${Math.min(100, (maxTemp / 100) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {/* Motivos do Alerta (se houver alerta ativo) */}
+                {m.alert_reasons && m.alert_reasons.length > 0 && (
+                  <div className="p-2 rounded-xl bg-amber-50/80 border border-amber-200 text-[10px] font-semibold text-amber-900 flex items-center justify-between gap-1.5 flex-wrap">
+                    <span className="flex items-center gap-1 min-w-0">
+                      <AlertTriangle size={12} className="text-amber-600 shrink-0" />
+                      <strong className="shrink-0">Alerta:</strong>
+                      <span className="truncate">{m.alert_reasons.join(" • ")}</span>
+                    </span>
+                    {m.alert_duration_hours != null && (
+                      <span className="text-[9px] font-bold text-amber-800 bg-amber-100/90 px-1.5 py-0.5 rounded shrink-0">
+                        há {m.alert_duration_hours}h
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Disco Primário (C:): Espaço e Taxa de Atividade */}
                 {primaryDisk && (

@@ -1650,7 +1650,31 @@ A infraestrutura foi totalmente profissionalizada para permitir instalação e o
       - `frontend/src/pages/admin/Settings.jsx`: Ao editar usuários não-técnicos, o padrão do modal passa a ser unicamente `["tickets"]`.
       - `frontend/src/App.jsx`: Criado o wrapper `ProtectedTermsRoute` que redireciona automaticamente para `/admin/tickets` qualquer tentativa de acesso direto à URL `/admin/terms` por usuários sem perfil técnico.
 
-
-
-
-
+56. **Telemetria Térmica de Hardware & Motor AIOps para Abertura Automática de Chamados**:
+    - **Coleta Nativa de Temperatura (Servidores, Desktops e Notebooks)**:
+      - Implementada no `scripts/tihfsa-agent.ps1` a função `Get-HardwareTemperatures` com três camadas nativas do Windows sem necessidade de drivers ou DLLs avulsas:
+        1. **Armazenamento (SSDs NVMe e HDs)**: Coleta via `Get-PhysicalDisk | Get-StorageReliabilityCounter` nativo do Windows 10/11 e Windows Server 2016-2025, obtendo a temperatura real dos chips de silício.
+        2. **Processador e Chassi (CPU)**: Coleta via WMI nativo `root/wmi:MSAcpi_ThermalZoneTemperature`, convertendo a leitura de décimos de Kelvin para graus Celsius.
+        3. **Placas de Vídeo Dedicadas (GPU)**: Consulta via utilitário corporativo `nvidia-smi` em estações gráficas e servidores.
+      - Classificação automática do status térmico (`normal` < 75°C, `warning` 75-84°C, `critical` >= 85°C).
+    - **Auto-Atualização Silenciosa e Automática das Estações Existentes**:
+      - Computadores e servidores com o agente já instalado executam periodicamente a rotina `Update-AgentScriptSelf` a cada 15 minutos em segundo plano invisível.
+      - O agente valida se o hash/conteúdo do script local difere do script entregue pelo servidor (`/api/v1/monitoring/agent/script`), atualizando silenciosamente `C:\ProgramData\TIHFSA-Agent\tihfsa-agent.ps1` sem intervenção do usuário.
+    - **Correção da Sintaxe do Instalador PowerShell de 1-Clique**:
+      - Corrigido o erro de parser `Referência de variável inválida. ':' não era seguido de um caractere de nome de variável válido` ocorrido em `(curl.exe ... | Out-String) | iex`, ajustando a interpolação `$scriptUrl:` para `($scriptUrl):` no endpoint `/agent/install`.
+    - **Motor AIOps de Prevenção & Chamados Automáticos (`monitoring.py`)**:
+      - **Gatilho de Persistência**: Chamados preventivos são abertos quando uma máquina permanece em alerta ininterrupto por um tempo superior ao configurado (padrão: 12 horas consecutivas). Evita falsos positivos por picos temporários de CPU/RAM.
+      - **Deduplicação Anti-Spam Rigorosa**: O sistema nunca abre múltiplos chamados para o mesmo equipamento enquanto houver um ticket aberto não concluído.
+      - **Nota Automática de Normalização**: Caso os recursos da estação voltem à normalidade, o sistema registra uma nota no histórico do chamado informando a recuperação.
+    - **Configuração Completa na Interface do Sistema (`/admin/settings` - Parâmetros Gerais)**:
+      - Card visual dedicado no formulário de configurações gerais com:
+        - Toggle de ativação da abertura automática de chamados.
+        - Seletor de tempo mínimo de alerta contínuo em horas (padrão: 12h).
+        - Limiar de memória RAM (padrão: 80%).
+        - Limiar de ocupação de disco (padrão: 90%).
+        - Limiar de temperatura crítica de hardware (padrão: 85°C).
+        - Dropdown para selecionar a categoria de chamado do Helpdesk.
+    - **Visibilidade Operacional no Hub de Monitoramento (`StationMonitoringTab.jsx`)**:
+      - Badge de temperatura em tempo real no topo do card da máquina com cores dinâmicas e tooltip com detalhamento térmico por componente.
+      - Quarta coluna de métrica no card exibindo a barra de temperatura em tempo real.
+      - Badge animado com link direto para o chamado gerado (`🚨 Chamado #...`) e contador de horas em alerta contínuo.

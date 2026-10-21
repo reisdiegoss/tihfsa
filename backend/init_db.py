@@ -470,6 +470,21 @@ def apply_migrations():
         ("project_tasks.ticket_id", "ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL;"),
         ("project_tasks.idx_ticket_id", "CREATE INDEX IF NOT EXISTS idx_project_tasks_ticket_id ON project_tasks(ticket_id);"),
         ("knowledge_articles.attachments", "ALTER TABLE knowledge_articles ADD COLUMN IF NOT EXISTS attachments JSON DEFAULT '[]';"),
+        # Parâmetros AIOps e Telemetria Térmica
+        ("system_settings.auto_ticket_on_alert_enabled", "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_on_alert_enabled BOOLEAN DEFAULT TRUE;"),
+        ("system_settings.auto_ticket_alert_hours", "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_alert_hours INTEGER DEFAULT 12;"),
+        ("system_settings.auto_ticket_ram_threshold_pct", "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_ram_threshold_pct INTEGER DEFAULT 80;"),
+        ("system_settings.auto_ticket_disk_threshold_pct", "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_disk_threshold_pct INTEGER DEFAULT 90;"),
+        ("system_settings.auto_ticket_temp_threshold_c", "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_temp_threshold_c INTEGER DEFAULT 85;"),
+        ("system_settings.auto_ticket_category_id", "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS auto_ticket_category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;"),
+        ("agent_checkins.cpu_temp_c", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS cpu_temp_c FLOAT;"),
+        ("agent_checkins.disk_temp_c", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS disk_temp_c FLOAT;"),
+        ("agent_checkins.gpu_temp_c", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS gpu_temp_c FLOAT;"),
+        ("agent_checkins.thermal_status", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS thermal_status VARCHAR(20) DEFAULT 'normal';"),
+        ("agent_checkins.temperatures_detail", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS temperatures_detail JSON;"),
+        ("agent_checkins.first_alert_at", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS first_alert_at TIMESTAMP WITH TIME ZONE;"),
+        ("agent_checkins.alert_reasons", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS alert_reasons JSON;"),
+        ("agent_checkins.alert_ticket_id", "ALTER TABLE agent_checkins ADD COLUMN IF NOT EXISTS alert_ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL;"),
     ]
 
 

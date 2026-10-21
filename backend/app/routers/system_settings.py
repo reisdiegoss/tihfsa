@@ -37,6 +37,15 @@ class SystemSettingsSchema(BaseModel):
     pwa_bg_color: str = "#0f172a"
     pwa_icon_url: str = "/icons/icon-512.png"
 
+    # Parâmetros AIOps — Abertura Automática de Chamados por Alertas Persistentes
+    auto_ticket_on_alert_enabled: bool = True
+    auto_ticket_alert_hours: int = 12
+    auto_ticket_ram_threshold_pct: int = 80
+    auto_ticket_disk_threshold_pct: int = 90
+    auto_ticket_temp_threshold_c: int = 85
+    auto_ticket_category_id: Optional[int] = None
+
+
 
 @router.get("", response_model=SystemSettingsSchema, summary="Obter parâmetros gerais do sistema")
 def get_general_settings(
@@ -70,6 +79,12 @@ def get_general_settings(
         pwa_theme_color=getattr(setting, 'pwa_theme_color', None) or "#0f172a",
         pwa_bg_color=getattr(setting, 'pwa_bg_color', None) or "#0f172a",
         pwa_icon_url=getattr(setting, 'pwa_icon_url', None) or "/icons/icon-512.png",
+        auto_ticket_on_alert_enabled=setting.auto_ticket_on_alert_enabled if getattr(setting, 'auto_ticket_on_alert_enabled', None) is not None else True,
+        auto_ticket_alert_hours=getattr(setting, 'auto_ticket_alert_hours', 12) or 12,
+        auto_ticket_ram_threshold_pct=getattr(setting, 'auto_ticket_ram_threshold_pct', 80) or 80,
+        auto_ticket_disk_threshold_pct=getattr(setting, 'auto_ticket_disk_threshold_pct', 90) or 90,
+        auto_ticket_temp_threshold_c=getattr(setting, 'auto_ticket_temp_threshold_c', 85) or 85,
+        auto_ticket_category_id=getattr(setting, 'auto_ticket_category_id', None),
     )
 
 
@@ -118,6 +133,14 @@ def update_general_settings(
     if payload.pwa_icon_url:
         setting.pwa_icon_url = payload.pwa_icon_url.strip()
 
+    # Salvar parâmetros AIOps
+    setting.auto_ticket_on_alert_enabled = payload.auto_ticket_on_alert_enabled
+    setting.auto_ticket_alert_hours = max(1, min(168, payload.auto_ticket_alert_hours))
+    setting.auto_ticket_ram_threshold_pct = max(50, min(99, payload.auto_ticket_ram_threshold_pct))
+    setting.auto_ticket_disk_threshold_pct = max(50, min(99, payload.auto_ticket_disk_threshold_pct))
+    setting.auto_ticket_temp_threshold_c = max(50, min(110, payload.auto_ticket_temp_threshold_c))
+    setting.auto_ticket_category_id = payload.auto_ticket_category_id
+
     db.commit()
     db.refresh(setting)
 
@@ -147,6 +170,12 @@ def update_general_settings(
         pwa_theme_color=setting.pwa_theme_color or "#0f172a",
         pwa_bg_color=setting.pwa_bg_color or "#0f172a",
         pwa_icon_url=setting.pwa_icon_url or "/icons/icon-512.png",
+        auto_ticket_on_alert_enabled=setting.auto_ticket_on_alert_enabled,
+        auto_ticket_alert_hours=setting.auto_ticket_alert_hours,
+        auto_ticket_ram_threshold_pct=setting.auto_ticket_ram_threshold_pct,
+        auto_ticket_disk_threshold_pct=setting.auto_ticket_disk_threshold_pct,
+        auto_ticket_temp_threshold_c=setting.auto_ticket_temp_threshold_c,
+        auto_ticket_category_id=setting.auto_ticket_category_id,
     )
 
 
