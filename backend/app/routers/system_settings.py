@@ -2,6 +2,7 @@
 Router SystemSettings — Gerenciamento de Parâmetros Gerais e Notificações do TIHFSA.
 Hotel Fasano Salvador — TI Corporativa
 """
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
