@@ -138,7 +138,7 @@ function Update-AgentScriptSelf {
             $newSize = (Get-Item $tempScript).Length
             if ($newSize -gt 1500) {
                 $newContent = Get-Content $tempScript -Raw -ErrorAction SilentlyContinue
-                if ($newContent -like "*TIHFSA Sentinel Agent*" -and -not ($newContent -like "*Internal Server Error*")) {
+                if ($newContent -and $newContent.Length -gt 2000 -and ($newContent -like "*TIHFSA Sentinel Agent*") -and -not $newContent.Trim().StartsWith("Internal Server Error")) {
                     $currentContent = if (Test-Path $targetScript) { Get-Content $targetScript -Raw -ErrorAction SilentlyContinue } else { "" }
                     if ($newContent.Trim() -ne $currentContent.Trim()) {
                         try {
@@ -186,7 +186,7 @@ function Install-SentinelTask {
 
     # 1. Assegura que o certificado raiz TIHFSA esta instalado na maquina
     Write-Host "[1/3] Verificando Autoridade Certificadora Raiz TIHFSA..." -ForegroundColor Cyan
-    Ensure-TihfsaRootCertificate -TargetServerUrl $TargetUrl
+    $null = Ensure-TihfsaRootCertificate -TargetServerUrl $TargetUrl
 
     # 2. Cria diretorio e copia arquivo do script
     Write-Host "[2/3] Instalando arquivos do agente em C:\ProgramData\TIHFSA-Agent..." -ForegroundColor Cyan
@@ -854,7 +854,7 @@ try {
 
     # Se for apenas envio de check-in avulso:
     if ($CheckinOnly) {
-        Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl -Silent
+        $null = Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl -Silent
     } elseif (-not $Silent) {
         # Se NAO for execucao em segundo plano (-Silent), executa o instalador da tarefa agendada:
         $installed = Install-SentinelTask -TargetUrl $ServerUrl -Secret $AgentSecret -Interval $IntervalMinutes
@@ -870,7 +870,7 @@ try {
         Write-Host ""
         Write-Host "[+] Coletando metricas e executando envio de telemetria..." -ForegroundColor Cyan
     } else {
-        Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl -Silent
+        $null = Ensure-TihfsaRootCertificate -TargetServerUrl $ServerUrl -Silent
         Update-AgentScriptSelf -TargetServerUrl $ServerUrl
         Ensure-SentinelTaskBatterySettings
     }
@@ -885,15 +885,17 @@ try {
     }
 
     $sent = $false
+    $lastErr = $null
     try {
-        $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $bodyBytes -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+        $response = Invoke-RestMethod -Uri $ServerUrl -Method POST -Body $bodyBytes -Headers $headers -TimeoutSec 15 -ErrorAction Stop
         $sent = $true
     } catch {
+        $lastErr = $_
         try {
             # Fallback resiliente via curl.exe nativo do Windows com arquivo UTF-8
             $tempJson = "$env:TEMP\tihfsa_checkin_$([System.Guid]::NewGuid().ToString('N')).json"
             [System.IO.File]::WriteAllText($tempJson, $payloadJson, [System.Text.Encoding]::UTF8)
-            $curlOut = curl.exe -k -s -m 5 -X POST -H "Content-Type: application/json; charset=utf-8" -H "X-Agent-Token: $AgentSecret" --data-binary "@$tempJson" $ServerUrl 2>$null
+            $curlOut = curl.exe -k -s -m 15 -X POST -H "Content-Type: application/json; charset=utf-8" -H "X-Agent-Token: $AgentSecret" --data-binary "@$tempJson" $ServerUrl 2>$null
             Remove-Item $tempJson -Force -ErrorAction SilentlyContinue
             if ($curlOut -like '*"status":"ok"*') {
                 $sent = $true
@@ -932,6 +934,9 @@ try {
             Write-Host " [AVISO] Nao foi possivel conectar ao servidor de telemetria agora." -ForegroundColor Yellow
             Write-Host "==========================================================================" -ForegroundColor Yellow
             Write-Host " * Servidor: $ServerUrl" -ForegroundColor White
+            if ($lastErr) {
+                Write-Host " * Detalhe tecnico: $($lastErr.Exception.Message)" -ForegroundColor Gray
+            }
             Write-Host " * Verifique se a maquina esta conectada na rede local ou VPN." -ForegroundColor White
             Write-Host " * A telemetria sera reenviada automaticamente no proximo ciclo de $IntervalMinutes min." -ForegroundColor White
             Write-Host "==========================================================================" -ForegroundColor Yellow

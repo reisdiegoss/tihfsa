@@ -959,7 +959,6 @@ def agent_checkin(
                     # Identifica ou associa categoria Backup se existir no sistema
                     cat_id = None
                     try:
-                        from app.models.category import Category
                         backup_cat = db.query(Category).filter(Category.name.ilike("%backup%")).first()
                         if backup_cat:
                             cat_id = backup_cat.id
@@ -1031,7 +1030,6 @@ def agent_checkin(
                     try:
                         from app.services.evolution_service import EvolutionService
                         from app.services.email_service import send_ticket_created_staff_notification
-                        from app.models.system_setting import SystemSetting
                         from app.config import get_app_base_url
 
                         base_url = get_app_base_url()
@@ -2935,7 +2933,7 @@ try {{
 
 if (Test-Path $tempScript) {{
     $contentTest = Get-Content $tempScript -Raw -ErrorAction SilentlyContinue
-    if ($contentTest -and ($contentTest -like "*TIHFSA Sentinel Agent*" -or $contentTest.Length -gt 1000) -and -not ($contentTest -like "*Internal Server Error*")) {{
+    if ($contentTest -and $contentTest.Length -gt 2000 -and ($contentTest -like "*TIHFSA Sentinel Agent*") -and -not $contentTest.Trim().StartsWith("Internal Server Error")) {{
         try {{
             [System.IO.File]::Copy($tempScript, $targetScript, $true)
         }} catch {{
@@ -2943,7 +2941,11 @@ if (Test-Path $tempScript) {{
         }}
     }} else {{
         Write-Host "[ERRO] Resposta invalida ao baixar agente ($scriptUrl):" -ForegroundColor Red
-        if ($contentTest) {{ Write-Host "       $contentTest" -ForegroundColor Yellow }}
+        if ($contentTest) {{
+            $snippet = $contentTest.Trim()
+            if ($snippet.Length -gt 500) {{ $snippet = $snippet.Substring(0, 500) + "..." }}
+            Write-Host "       $snippet" -ForegroundColor Yellow
+        }}
     }}
     Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
 }}
@@ -2994,7 +2996,7 @@ if ($isAdmin) {{
 # Executa o primeiro envio de telemetria imediatamente com saida visual
 Write-Host "[+] Executando o primeiro envio de telemetria agora..." -ForegroundColor Cyan
 try {{
-    & powershell.exe -NoProfile -File "$targetScript" -ServerUrl "$checkinUrl" -AgentSecret "$agentSecret" -CheckinOnly
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$targetScript" -ServerUrl "$checkinUrl" -AgentSecret "$agentSecret" -CheckinOnly
 }} catch {{}}
 
 if ($created) {{
