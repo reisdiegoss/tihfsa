@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   FolderKanban,
+  LayoutGrid,
   Plus,
   Search,
   RefreshCw,
@@ -26,1259 +27,1795 @@ import {
   CheckSquare,
   Square,
   Tag,
-  MoveRight,
   ExternalLink,
   DollarSign,
   UserCheck,
+  Zap,
+  Check,
+  Layers,
+  Cpu,
+  Wifi,
+  ShieldCheck,
+  ArrowLeft,
+  Copy,
+  Sliders,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import api from "../../api/client";
-import projectsApi from "../../api/projects";
+import { projectsApi } from "../../api/projects";
 
-// Colunas Principais do Quadro Trello (Etapas do Projeto)
-const BOARD_COLUMNS = [
-  { id: "Planejamento", title: "Planejamento", color: "bg-slate-100 border-slate-300 text-slate-800", headerBg: "bg-slate-200/70", dot: "bg-slate-500" },
-  { id: "Em Andamento", title: "Em Andamento", color: "bg-blue-50/60 border-blue-200 text-blue-900", headerBg: "bg-blue-100/70", dot: "bg-blue-600" },
-  { id: "Pausado", title: "Pausado / Bloqueado", color: "bg-amber-50/60 border-amber-200 text-amber-900", headerBg: "bg-amber-100/70", dot: "bg-amber-600" },
-  { id: "Concluído", title: "Concluído", color: "bg-emerald-50/60 border-emerald-200 text-emerald-900", headerBg: "bg-emerald-100/70", dot: "bg-emerald-600" },
+// Colunas padrão de fluxo de trabalho do Quadro Trello
+const WORKFLOW_COLUMNS = [
+  { id: "A Fazer", title: "A Fazer", color: "border-slate-300 bg-slate-50 text-slate-800", badgeBg: "bg-slate-200 text-slate-700" },
+  { id: "Em Andamento", title: "Em Andamento", color: "border-blue-300 bg-blue-50/40 text-blue-900", badgeBg: "bg-blue-100 text-blue-700" },
+  { id: "Em Revisão", title: "Em Revisão / Bloqueado", color: "border-amber-300 bg-amber-50/40 text-amber-900", badgeBg: "bg-amber-100 text-amber-800" },
+  { id: "Concluído", title: "Concluído", color: "border-emerald-300 bg-emerald-50/40 text-emerald-900", badgeBg: "bg-emerald-100 text-emerald-800" },
 ];
 
-const CATEGORY_COLORS = {
-  "Infraestrutura": "bg-emerald-500 text-white",
-  "Redes & Wi-Fi": "bg-blue-500 text-white",
-  "Sistemas & ERP": "bg-purple-500 text-white",
-  "Hotelaria & UHs": "bg-amber-500 text-white",
-  "Segurança & CFTV": "bg-rose-500 text-white",
-  "Telecom & VoIP": "bg-indigo-500 text-white",
-  "Hardware & Servidores": "bg-cyan-600 text-white",
-  "Outros": "bg-slate-500 text-white",
+const CATEGORY_STYLES = {
+  "Infraestrutura": { bg: "from-emerald-600 to-teal-700", text: "text-emerald-700", chip: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+  "Redes & Wi-Fi": { bg: "from-blue-600 to-cyan-700", text: "text-blue-700", chip: "bg-blue-100 text-blue-800 border-blue-200" },
+  "Sistemas & ERP": { bg: "from-purple-600 to-indigo-700", text: "text-purple-700", chip: "bg-purple-100 text-purple-800 border-purple-200" },
+  "Hotelaria & UHs": { bg: "from-amber-600 to-orange-700", text: "text-amber-700", chip: "bg-amber-100 text-amber-800 border-amber-200" },
+  "Segurança & CFTV": { bg: "from-rose-600 to-red-700", text: "text-rose-700", chip: "bg-rose-100 text-rose-800 border-rose-200" },
+  "Telecom & VoIP": { bg: "from-indigo-600 to-blue-800", text: "text-indigo-700", chip: "bg-indigo-100 text-indigo-800 border-indigo-200" },
+  "Hardware & Servidores": { bg: "from-cyan-700 to-slate-800", text: "text-cyan-700", chip: "bg-cyan-100 text-cyan-800 border-cyan-200" },
+  "Outros": { bg: "from-slate-600 to-slate-800", text: "text-slate-700", chip: "bg-slate-100 text-slate-800 border-slate-200" },
 };
+
+const PRIORITY_BADGES = {
+  "Urgente": "bg-red-500 text-white",
+  "Alta": "bg-orange-500 text-white",
+  "Média": "bg-blue-500 text-white",
+  "Baixa": "bg-emerald-600 text-white",
+};
+
+// Modelos de Projetos de TI (Trello Templates)
+const IT_TEMPLATES = [
+  {
+    id: "wifi-upgrade",
+    title: "Upgrade Wi-Fi Ruckus & Cisco",
+    category: "Redes & Wi-Fi",
+    description: "Mapeamento de RF, calibração de APs nos blocos de apartamentos e testes de roaming de hóspedes.",
+    icon: Wifi,
+    color: "from-blue-600 to-cyan-600",
+    tasks: [
+      {
+        title: "Site Survey e Mapeamento de Cobertura RF",
+        status: "A Fazer",
+        priority: "Alta",
+        checklist: [
+          { id: 1, text: "Medir atenuação nas portas acústicas das UHs", done: false },
+          { id: 2, text: "Mapear canais livres de 2.4GHz e 5GHz", done: false },
+          { id: 3, text: "Definir posições ótimas dos novos APs nos corredores", done: false },
+        ],
+      },
+      {
+        title: "Passagem de Cabeamento Cat6 Blindado",
+        status: "A Fazer",
+        priority: "Média",
+        checklist: [
+          { id: 1, text: "Lançar cabos do rack até pontos dos tetos", done: false },
+          { id: 2, text: "Conectorizar patch panels Keystone RJ-45", done: false },
+          { id: 3, text: "Certificação com Fluke e etiquetagem dos pontos", done: false },
+        ],
+      },
+      {
+        title: "Instalação e Patching dos Switches PoE+",
+        status: "Em Andamento",
+        priority: "Alta",
+        checklist: [
+          { id: 1, text: "Montagem física no rack 19 polegadas", done: true },
+          { id: 2, text: "Configuração das VLANs 10 (Gerência) e 20 (Hóspedes)", done: false },
+          { id: 3, text: "Habilitação do protocolo LACP / Link Aggregation", done: false },
+        ],
+      },
+      {
+        title: "Fixação Física e Ativação dos APs",
+        status: "A Fazer",
+        priority: "Média",
+        checklist: [
+          { id: 1, text: "Encaixe no suporte do teto rebaixado", done: false },
+          { id: 2, text: "Provisionamento no Ruckus SmartZone / Cloud", done: false },
+        ],
+      },
+      {
+        title: "Homologação de Roaming e Portal Captivo",
+        status: "A Fazer",
+        priority: "Urgente",
+        checklist: [
+          { id: 1, text: "Caminhada de teste com handover entre APs", done: false },
+          { id: 2, text: "Validação do login integrado com PMS Opera", done: false },
+        ],
+      },
+    ],
+  },
+  {
+    id: "cftv-seguranca",
+    title: "Expansão de CFTV & NVRs IP",
+    category: "Segurança & CFTV",
+    description: "Instalação de novas câmeras IP em pontos cegos, migração de storage e políticas de retenção.",
+    icon: ShieldCheck,
+    color: "from-rose-600 to-red-600",
+    tasks: [
+      {
+        title: "Mapeamento dos Pontos Cegos com Segurança Patrimonial",
+        status: "A Fazer",
+        priority: "Alta",
+        checklist: [
+          { id: 1, text: "Reunião de alinhamento com a chefia de segurança", done: false },
+          { id: 2, text: "Definição de câmeras dome vs varifocal bullet", done: false },
+        ],
+      },
+      {
+        title: "Infraestrutura de Tubulação e Fibra para Guarita",
+        status: "A Fazer",
+        priority: "Média",
+        checklist: [
+          { id: 1, text: "Lançamento de eletroduto galvanizado", done: false },
+          { id: 2, text: "Fusão de fibra óptica monomodo", done: false },
+        ],
+      },
+      {
+        title: "Configuração do Storage RAID e Retenção de 30 Dias",
+        status: "Em Andamento",
+        priority: "Urgente",
+        checklist: [
+          { id: 1, text: "Inicialização do arranjo RAID-5 de discos WD Purple", done: true },
+          { id: 2, text: "Definição de taxa de bits H.265+ e 25 FPS", done: false },
+        ],
+      },
+      {
+        title: "Comissionamento das Câmeras no NVR e Video Wall",
+        status: "A Fazer",
+        priority: "Alta",
+        checklist: [
+          { id: 1, text: "Ajuste de foco e sensor infravermelho noturno", done: false },
+          { id: 2, text: "Configuração das permissões de operadores no client", done: false },
+        ],
+      },
+    ],
+  },
+  {
+    id: "servers-ha",
+    title: "Servidores & Virtualização (Datacenter)",
+    category: "Hardware & Servidores",
+    description: "Configuração de hosts físicos, arranjo SAN/iSCSI, políticas Veeam e testes de failover.",
+    icon: Cpu,
+    color: "from-cyan-700 to-slate-800",
+    tasks: [
+      {
+        title: "Inventário de Consumo das VMs Legadas",
+        status: "Concluído",
+        priority: "Média",
+        checklist: [
+          { id: 1, text: "Levantamento de IOPS, vCPU e memória RAM", done: true },
+          { id: 2, text: "Mapeamento de dependências e portas de rede", done: true },
+        ],
+      },
+      {
+        title: "Instalação do SO Hypervisor e Configuração da iDRAC",
+        status: "Em Andamento",
+        priority: "Alta",
+        checklist: [
+          { id: 1, text: "Update de firmware de BIOS, controladora e placas", done: true },
+          { id: 2, text: "Configuração de IP fixo na gerência fora-de-banda", done: false },
+        ],
+      },
+      {
+        title: "Migração a Quente da VM do Banco de Dados",
+        status: "A Fazer",
+        priority: "Urgente",
+        checklist: [
+          { id: 1, text: "Snapshot de segurança pré-migração", done: false },
+          { id: 2, text: "Live migration para o novo host", done: false },
+          { id: 3, text: "Validação de latência e integridade do banco", done: false },
+        ],
+      },
+      {
+        title: "Configuração dos Jobs de Backup Veeam Noturnos",
+        status: "A Fazer",
+        priority: "Alta",
+        checklist: [
+          { id: 1, text: "Criação do repositório imutável contra ransomware", done: false },
+          { id: 2, text: "Simulação de restore em sandbox isolada", done: false },
+        ],
+      },
+    ],
+  },
+  {
+    id: "hotelaria-uhs",
+    title: "Manutenção Preventiva de UHs (Hotelaria)",
+    category: "Hotelaria & UHs",
+    description: "Auditoria preventiva nos quartos: IPTV, telefonia IP, fechadura RFID e sinal Wi-Fi.",
+    icon: Layers,
+    color: "from-amber-600 to-orange-700",
+    tasks: [
+      {
+        title: "Auditoria do Ponto de Wi-Fi e IPTV nos Quartos 101 a 115",
+        status: "A Fazer",
+        priority: "Média",
+        checklist: [
+          { id: 1, text: "Medir velocidade de download na Smart TV (mín 30Mbps)", done: false },
+          { id: 2, text: "Testar canal de boas-vindas do hóspede", done: false },
+        ],
+      },
+      {
+        title: "Teste de Ramal Telefônico e Campainha",
+        status: "Em Andamento",
+        priority: "Baixa",
+        checklist: [
+          { id: 1, text: "Discagem para Recepção e Governança", done: true },
+          { id: 2, text: "Limpeza do teclado e substituição do espiral se danificado", done: false },
+        ],
+      },
+      {
+        title: "Checagem de Tensão da Bateria da Fechadura RFID",
+        status: "A Fazer",
+        priority: "Alta",
+        checklist: [
+          { id: 1, text: "Leitura de volts com multímetro (mínimo 5.6V)", done: false },
+          { id: 2, text: "Lubrificação da lingueta e teste do cartão mestre", done: false },
+        ],
+      },
+    ],
+  },
+];
 
 export default function Projects() {
   const { user, isAdmin, isTechnician } = useAuth();
 
+  // Estado Geral
   const [projects, setProjects] = useState([]);
   const [usersList, setUsersList] = useState([]);
-  const [categoriesList, setCategoriesList] = useState([]);
   const [allAssetsList, setAllAssetsList] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Cartão Ativo Aberto (Modal Estilo Trello)
-  const [openCardId, setOpenCardId] = useState(null);
-  const [cardDetail, setCardDetail] = useState(null);
-  const [loadingCardDetail, setLoadingCardDetail] = useState(false);
+  // Navegação: Se null -> Tela de Workspaces/Hub de Quadros; Se ID -> Quadro Trello Aberto
+  const [activeBoardId, setActiveBoardId] = useState(null);
+  const [activeBoard, setActiveBoard] = useState(null);
+  const [loadingBoard, setLoadingBoard] = useState(false);
 
-  // Filtros Globais do Quadro
+  // Aba no Hub de Workspaces: 'boards' | 'templates'
+  const [workspaceTab, setWorkspaceTab] = useState("boards");
+
+  // Filtros no Hub de Quadros
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("ALL");
-  const [selectedMemberFilter, setSelectedMemberFilter] = useState("ALL");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("ALL");
 
-  // Criação Rápida de Cartão na Coluna (Inline Trello Composer)
+  // Cartão Aberto no Modal Trello
+  const [activeCard, setActiveCard] = useState(null);
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [newChecklistText, setNewChecklistText] = useState("");
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [tempDescription, setTempDescription] = useState("");
+  const [cardCommentText, setCardCommentText] = useState("");
+  const [sendingCardComment, setSendingCardComment] = useState(false);
+
+  // Inline Composer de Cartão na Coluna do Trello
   const [inlineComposerColumn, setInlineComposerColumn] = useState(null);
-  const [inlineTitle, setInlineTitle] = useState("");
+  const [inlineCardTitle, setInlineCardTitle] = useState("");
   const [savingInlineCard, setSavingInlineCard] = useState(false);
 
-  // Adição Rápida de Item no Checklist (Dentro do Modal)
-  const [newChecklistTitle, setNewChecklistTitle] = useState("");
-  const [newChecklistAssignedId, setNewChecklistAssignedId] = useState("");
-  const [isAddingChecklistItem, setIsAddingChecklistItem] = useState(false);
-
-  // Comentário da Linha do Tempo
-  const [newComment, setNewComment] = useState("");
-  const [postingComment, setPostingComment] = useState(false);
-
-  // Modais de Vínculo
-  const [isLinkAssetOpen, setIsLinkAssetOpen] = useState(false);
-  const [assetSearch, setAssetSearch] = useState("");
-  const [isLinkTicketOpen, setIsLinkTicketOpen] = useState(false);
-  const [ticketIdInput, setTicketIdInput] = useState("");
-  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
-  const [selectedMemberToAdd, setSelectedMemberToAdd] = useState("");
-
-  // Modal para Bloquear Tarefa do Checklist
-  const [blockingTask, setBlockingTask] = useState(null);
-  const [blockReason, setBlockReason] = useState("");
-  const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
-
-  // Modal de Criação Completa / Edição de Projeto
-  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState(null);
-  const [projectForm, setProjectForm] = useState({
+  // Modais de Criação e Power-Ups
+  const [isNewBoardModalOpen, setIsNewBoardModalOpen] = useState(false);
+  const [newBoardForm, setNewBoardForm] = useState({
     title: "",
     category: "Infraestrutura",
-    status: "Planejamento",
     priority: "Média",
-    start_date: "",
     due_date: "",
     budget: "",
-    manager_id: "",
     description: "",
   });
+  const [creatingBoard, setCreatingBoard] = useState(false);
 
-  // Carregar Dados Gerais
-  const loadData = async () => {
+  // Modais de Vínculos do Quadro (Power-Ups)
+  const [isAssetsModalOpen, setIsAssetsModalOpen] = useState(false);
+  const [assetSearchQuery, setAssetSearchQuery] = useState("");
+  const [isTicketsModalOpen, setIsTicketsModalOpen] = useState(false);
+  const [ticketSearchId, setTicketSearchId] = useState("");
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [selectedMemberToAdd, setSelectedMemberToAdd] = useState("");
+  const [isButlerModalOpen, setIsButlerModalOpen] = useState(false);
+  const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+
+  // Carregar lista de Projetos (Quadros), Usuários e Ativos
+  const loadWorkspaceData = async () => {
     try {
       setLoading(true);
-      const [projectsData, usersData, catsData] = await Promise.all([
+      const [prjRes, usrRes, astRes] = await Promise.all([
         projectsApi.getProjects(),
-        api.get("/users/?is_active=true").then((r) => r.data).catch(() => []),
-        api.get("/categories").then((r) => r.data).catch(() => []),
+        api.get("/users?limit=100").catch(() => ({ data: [] })),
+        api.get("/assets?limit=250").catch(() => ({ data: [] })),
       ]);
-      setProjects(projectsData || []);
-      setUsersList(usersData || []);
-      setCategoriesList(catsData || []);
-
-      if (openCardId) {
-        loadCardDetail(openCardId);
-      }
+      setProjects(prjRes || []);
+      setUsersList(usrRes.data?.items || usrRes.data || []);
+      setAllAssetsList(astRes.data?.items || astRes.data || []);
     } catch (err) {
-      console.error("Erro ao carregar projetos:", err);
+      console.error("Erro ao carregar dados do workspace:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadCardDetail = async (id) => {
+  useEffect(() => {
+    loadWorkspaceData();
+  }, []);
+
+  // Carregar dados completos do Quadro Ativo
+  const loadBoardDetail = async (boardId) => {
+    if (!boardId) return;
     try {
-      setLoadingCardDetail(true);
-      const detail = await projectsApi.getProject(id);
-      setCardDetail(detail);
+      setLoadingBoard(true);
+      const data = await projectsApi.getProject(boardId);
+      setActiveBoard(data);
+      // Se tiver um cartão aberto, atualiza ele também
+      if (activeCard) {
+        const freshTask = (data.tasks || []).find((t) => t.id === activeCard.id);
+        if (freshTask) setActiveCard(freshTask);
+      }
     } catch (err) {
-      console.error("Erro ao abrir detalhes do cartão:", err);
+      console.error("Erro ao carregar quadro:", err);
     } finally {
-      setLoadingCardDetail(false);
+      setLoadingBoard(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
-
-  const handleOpenCard = (project) => {
-    setOpenCardId(project.id);
-    loadCardDetail(project.id);
-  };
-
-  const handleCloseCard = () => {
-    setOpenCardId(null);
-    setCardDetail(null);
-    setNewChecklistTitle("");
-    setIsAddingChecklistItem(false);
-    loadData();
-  };
-
-  // Mover Projeto entre Colunas (Drag & Drop ou Clique)
-  const handleMoveProjectStatus = async (projectId, newStatus) => {
-    try {
-      // Atualização otimista no estado local
-      setProjects((prev) =>
-        prev.map((p) => (p.id === projectId ? { ...p, status: newStatus } : p))
-      );
-      if (cardDetail && cardDetail.id === projectId) {
-        setCardDetail((prev) => ({ ...prev, status: newStatus }));
-      }
-      await projectsApi.updateProject(projectId, { status: newStatus });
-      await loadData();
-      if (openCardId === projectId) {
-        await loadCardDetail(projectId);
-      }
-    } catch (err) {
-      console.error("Erro ao mover projeto:", err);
-      alert("Falha ao mover projeto.");
-      loadData();
+    if (activeBoardId) {
+      loadBoardDetail(activeBoardId);
+    } else {
+      setActiveBoard(null);
+      setActiveCard(null);
+      setIsCardModalOpen(false);
     }
-  };
+  }, [activeBoardId]);
 
-  // Drag and Drop HTML5
-  const handleDragStart = (e, projectId) => {
-    e.dataTransfer.setData("projectId", String(projectId));
-  };
+  // Filtro de Projetos no Hub
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p) => {
+      const matchSearch =
+        !searchQuery ||
+        p.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchCat = selectedCategoryFilter === "ALL" || p.category === selectedCategoryFilter;
+      return matchSearch && matchCat;
+    });
+  }, [projects, searchQuery, selectedCategoryFilter]);
 
-  const handleDropOnColumn = (e, targetStatus) => {
+  // Manipulação de Criação de Novo Quadro
+  const handleCreateBoard = async (e) => {
     e.preventDefault();
-    const pId = e.dataTransfer.getData("projectId");
-    if (pId) {
-      handleMoveProjectStatus(parseInt(pId), targetStatus);
-    }
-  };
-
-  // Criador Rápido de Cartão Trello (Inline no final da coluna)
-  const handleQuickCreateCard = async (statusCol) => {
-    if (!inlineTitle.trim()) return;
+    if (!newBoardForm.title.trim()) return;
     try {
-      setSavingInlineCard(true);
-      const newProj = await projectsApi.createProject({
-        title: inlineTitle.trim(),
-        status: statusCol,
+      setCreatingBoard(true);
+      const created = await projectsApi.createProject({
+        title: newBoardForm.title.trim(),
+        category: newBoardForm.category,
+        priority: newBoardForm.priority,
+        due_date: newBoardForm.due_date || null,
+        budget: newBoardForm.budget ? parseFloat(newBoardForm.budget) : 0,
+        description: newBoardForm.description || null,
+        manager_id: user?.id,
+      });
+
+      // Cria tarefas padrão essenciais
+      await projectsApi.createTask(created.id, {
+        title: "Levantamento inicial de requisitos",
+        status: "A Fazer",
+        priority: "Média",
+        checklist: [{ id: 1, text: "Alinhamento com stakeholders", done: false }],
+      });
+
+      setIsNewBoardModalOpen(false);
+      setNewBoardForm({
+        title: "",
         category: "Infraestrutura",
         priority: "Média",
-        manager_id: user?.id || null,
+        due_date: "",
+        budget: "",
+        description: "",
       });
-      setInlineTitle("");
-      setInlineComposerColumn(null);
-      await loadData();
-      // Opcional: abre o cartão recém-criado imediatamente
-      handleOpenCard(newProj);
+      await loadWorkspaceData();
+      // Abre o quadro recém-criado
+      setActiveBoardId(created.id);
     } catch (err) {
-      console.error("Erro ao criar cartão rápido:", err);
-      alert("Falha ao criar cartão: " + (err.response?.data?.detail || err.message));
+      console.error("Erro ao criar quadro:", err);
+      alert("Erro ao criar quadro de projeto. Verifique os dados.");
+    } finally {
+      setCreatingBoard(false);
+    }
+  };
+
+  // Instanciar a partir de um Modelo de Projeto (Template)
+  const handleUseTemplate = async (tpl) => {
+    try {
+      setLoading(true);
+      const created = await projectsApi.createProject({
+        title: `${tpl.title} — ${new Date().toLocaleDateString("pt-BR")}`,
+        category: tpl.category,
+        priority: "Alta",
+        description: tpl.description,
+        manager_id: user?.id,
+      });
+
+      // Cria todas as tarefas do modelo
+      for (const t of tpl.tasks) {
+        await projectsApi.createTask(created.id, {
+          title: t.title,
+          status: t.status,
+          priority: t.priority,
+          checklist: t.checklist || [],
+        });
+      }
+
+      await loadWorkspaceData();
+      setActiveBoardId(created.id);
+    } catch (err) {
+      console.error("Erro ao instanciar modelo:", err);
+      alert("Não foi possível criar o projeto a partir do modelo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Drag and Drop Nativo do Trello
+  const handleDragStart = (e, task) => {
+    e.dataTransfer.setData("application/json", JSON.stringify(task));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDropOnColumn = async (e, targetStatus) => {
+    e.preventDefault();
+    const rawData = e.dataTransfer.getData("application/json");
+    if (!rawData || !activeBoard) return;
+    const task = JSON.parse(rawData);
+    if (task.status === targetStatus) return;
+
+    // Atualização otimista imediata na interface
+    setActiveBoard((prev) => {
+      if (!prev) return prev;
+      const updatedTasks = prev.tasks.map((t) =>
+        t.id === task.id ? { ...t, status: targetStatus, completed_at: targetStatus === "Concluído" ? new Date().toISOString() : null } : t
+      );
+      return { ...prev, tasks: updatedTasks };
+    });
+
+    try {
+      await projectsApi.updateTask(activeBoard.id, task.id, {
+        status: targetStatus,
+      });
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao mover cartão:", err);
+      loadBoardDetail(activeBoard.id);
+    }
+  };
+
+  // Inline Card Composer (Adicionar cartão na coluna do Trello)
+  const handleCreateInlineCard = async (status) => {
+    if (!inlineCardTitle.trim() || !activeBoard) return;
+    try {
+      setSavingInlineCard(true);
+      await projectsApi.createTask(activeBoard.id, {
+        title: inlineCardTitle.trim(),
+        status: status,
+        priority: "Média",
+        checklist: [],
+      });
+      setInlineCardTitle("");
+      setInlineComposerColumn(null);
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao criar cartão inline:", err);
+      alert("Erro ao adicionar cartão.");
     } finally {
       setSavingInlineCard(false);
     }
   };
 
-  // Checklist Actions (Tarefas internas estilo Trello)
-  const handleAddChecklistItem = async (e) => {
-    e.preventDefault();
-    if (!newChecklistTitle.trim() || !cardDetail) return;
+  // Abrir Detalhe do Cartão Trello
+  const handleOpenCard = (task) => {
+    setActiveCard(task);
+    setTempDescription(task.description || "");
+    setIsEditingDescription(false);
+    setIsCardModalOpen(true);
+  };
+
+  // Salvar Descrição do Cartão
+  const handleSaveDescription = async () => {
+    if (!activeCard || !activeBoard) return;
     try {
-      await projectsApi.createTask(cardDetail.id, {
-        title: newChecklistTitle.trim(),
-        assigned_to_id: newChecklistAssignedId ? parseInt(newChecklistAssignedId) : user?.id,
-        status: "A Fazer",
-        priority: "Média",
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        description: tempDescription,
       });
-      setNewChecklistTitle("");
-      setNewChecklistAssignedId("");
-      setIsAddingChecklistItem(false);
-      await loadCardDetail(cardDetail.id);
-      await loadData();
+      setActiveCard((prev) => ({ ...prev, description: tempDescription }));
+      setIsEditingDescription(false);
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
-      console.error("Erro ao adicionar item no checklist:", err);
-      alert("Falha ao adicionar tarefa.");
+      console.error("Erro ao salvar descrição:", err);
     }
   };
 
-  const handleToggleTaskCompleted = async (task) => {
-    if (!cardDetail) return;
-    const isCompleted = task.status === "Concluído";
-    const nextStatus = isCompleted ? "A Fazer" : "Concluído";
+  // Checklist: Adicionar Subtarefa
+  const handleAddChecklistItem = async () => {
+    if (!newChecklistText.trim() || !activeCard || !activeBoard) return;
+    const currentList = Array.isArray(activeCard.checklist) ? activeCard.checklist : [];
+    const newItem = {
+      id: Date.now(),
+      text: newChecklistText.trim(),
+      done: false,
+    };
+    const updated = [...currentList, newItem];
+    setActiveCard((prev) => ({ ...prev, checklist: updated }));
+    setNewChecklistText("");
+
     try {
-      await projectsApi.updateTask(cardDetail.id, task.id, {
-        status: nextStatus,
-        is_blocked: isCompleted ? task.is_blocked : false, // se concluiu, desbloqueia
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        checklist: updated,
       });
-      await loadCardDetail(cardDetail.id);
-      await loadData();
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
-      console.error("Erro ao alterar tarefa:", err);
+      console.error("Erro ao adicionar checklist:", err);
     }
   };
 
-  const handleDeleteTask = async (taskId) => {
-    if (!window.confirm("Deseja remover este item do checklist?")) return;
-    try {
-      await projectsApi.deleteTask(cardDetail.id, taskId);
-      await loadCardDetail(cardDetail.id);
-      await loadData();
-    } catch (err) {
-      console.error("Erro ao excluir tarefa:", err);
-    }
-  };
+  // Checklist: Marcar/Desmarcar
+  const handleToggleChecklistItem = async (itemId) => {
+    if (!activeCard || !activeBoard) return;
+    const currentList = Array.isArray(activeCard.checklist) ? activeCard.checklist : [];
+    const updated = currentList.map((item) =>
+      item.id === itemId ? { ...item, done: !item.done } : item
+    );
+    setActiveCard((prev) => ({ ...prev, checklist: updated }));
 
-  // Bloqueio no Checklist
-  const handleOpenBlockModal = (task) => {
-    setBlockingTask(task);
-    setBlockReason(task.blocked_reason || "");
-    setIsBlockModalOpen(true);
-  };
-
-  const handleConfirmBlockTask = async (e) => {
-    e.preventDefault();
-    if (!blockingTask || !cardDetail) return;
     try {
-      await projectsApi.updateTask(cardDetail.id, blockingTask.id, {
-        is_blocked: true,
-        blocked_reason: blockReason.trim() || "Impedimento técnico reportado.",
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        checklist: updated,
       });
-      setIsBlockModalOpen(false);
-      setBlockingTask(null);
-      setBlockReason("");
-      await loadCardDetail(cardDetail.id);
-      await loadData();
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
-      console.error("Erro ao bloquear tarefa:", err);
+      console.error("Erro ao alternar checklist:", err);
     }
   };
 
-  const handleUnblockTask = async (task) => {
-    if (!cardDetail) return;
+  // Checklist: Excluir item
+  const handleDeleteChecklistItem = async (itemId) => {
+    if (!activeCard || !activeBoard) return;
+    const currentList = Array.isArray(activeCard.checklist) ? activeCard.checklist : [];
+    const updated = currentList.filter((item) => item.id !== itemId);
+    setActiveCard((prev) => ({ ...prev, checklist: updated }));
+
     try {
-      await projectsApi.updateTask(cardDetail.id, task.id, {
-        is_blocked: false,
-        blocked_reason: null,
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        checklist: updated,
       });
-      await loadCardDetail(cardDetail.id);
-      await loadData();
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
-      console.error("Erro ao desbloquear tarefa:", err);
+      console.error("Erro ao excluir item:", err);
     }
   };
 
-  // Vínculo de Membros da Equipe
-  const handleAddMember = async (userId) => {
-    if (!cardDetail || !userId) return;
+  // Alterar Status do Cartão pelo Modal
+  const handleChangeCardStatus = async (newStatus) => {
+    if (!activeCard || !activeBoard || activeCard.status === newStatus) return;
     try {
-      await projectsApi.addMember(cardDetail.id, parseInt(userId));
-      await loadCardDetail(cardDetail.id);
-      await loadData();
-      setIsAddMemberOpen(false);
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        status: newStatus,
+      });
+      setActiveCard((prev) => ({ ...prev, status: newStatus }));
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao atualizar status:", err);
+    }
+  };
+
+  // Alterar Prioridade do Cartão
+  const handleChangeCardPriority = async (newPriority) => {
+    if (!activeCard || !activeBoard) return;
+    try {
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        priority: newPriority,
+      });
+      setActiveCard((prev) => ({ ...prev, priority: newPriority }));
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao alterar prioridade:", err);
+    }
+  };
+
+  // Atribuir Responsável ao Cartão
+  const handleAssignCardMember = async (userId) => {
+    if (!activeCard || !activeBoard) return;
+    const uid = userId ? parseInt(userId) : null;
+    try {
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        assigned_to_id: uid,
+      });
+      const assignedObj = usersList.find((u) => u.id === uid) || null;
+      setActiveCard((prev) => ({ ...prev, assigned_to_id: uid, assigned_to: assignedObj }));
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao atribuir membro:", err);
+    }
+  };
+
+  // Vincular Ativo do CMDB diretamente ao Cartão
+  const handleLinkAssetToCard = async (assetId) => {
+    if (!activeCard || !activeBoard) return;
+    const aid = assetId ? parseInt(assetId) : null;
+    try {
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        asset_id: aid,
+      });
+      const assetObj = allAssetsList.find((a) => a.id === aid) || null;
+      setActiveCard((prev) => ({ ...prev, asset_id: aid, asset: assetObj }));
+      // Se não estiver vinculado ao quadro geral, vincula também
+      if (aid && !activeBoard.assets?.some((a) => a.id === aid)) {
+        await projectsApi.linkAsset(activeBoard.id, aid);
+      }
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao vincular ativo ao cartão:", err);
+    }
+  };
+
+  // Alternar Bloqueio do Cartão
+  const handleToggleCardBlocked = async () => {
+    if (!activeCard || !activeBoard) return;
+    const newBlocked = !activeCard.is_blocked;
+    let reason = null;
+    if (newBlocked) {
+      reason = prompt("Motivo do bloqueio / impedimento:", activeCard.blocked_reason || "") || "Aguardando terceiros ou suprimentos";
+    }
+    try {
+      await projectsApi.updateTask(activeBoard.id, activeCard.id, {
+        is_blocked: newBlocked,
+        blocked_reason: reason,
+      });
+      setActiveCard((prev) => ({ ...prev, is_blocked: newBlocked, blocked_reason: reason }));
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao alternar bloqueio:", err);
+    }
+  };
+
+  // Excluir Cartão
+  const handleDeleteCard = async () => {
+    if (!activeCard || !activeBoard) return;
+    if (!confirm(`Deseja realmente excluir o cartão "${activeCard.title}"?`)) return;
+    try {
+      await projectsApi.deleteTask(activeBoard.id, activeCard.id);
+      setIsCardModalOpen(false);
+      setActiveCard(null);
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao excluir cartão:", err);
+    }
+  };
+
+  // Postar Comentário no Cartão / Linha do Tempo
+  const handlePostComment = async () => {
+    if (!cardCommentText.trim() || !activeBoard || !activeCard) return;
+    try {
+      setSendingCardComment(true);
+      await projectsApi.addTimelineComment(
+        activeBoard.id,
+        `[Cartão: ${activeCard.title}] ${cardCommentText.trim()}`,
+        "comment"
+      );
+      setCardCommentText("");
+      loadBoardDetail(activeBoard.id);
+    } catch (err) {
+      console.error("Erro ao postar comentário:", err);
+    } finally {
+      setSendingCardComment(false);
+    }
+  };
+
+  // Power-Ups do Quadro: Adicionar/Remover Membro da Equipe
+  const handleAddBoardMember = async () => {
+    if (!selectedMemberToAdd || !activeBoard) return;
+    try {
+      await projectsApi.addMember(activeBoard.id, parseInt(selectedMemberToAdd));
       setSelectedMemberToAdd("");
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
       console.error("Erro ao adicionar membro:", err);
-      alert("Falha ao adicionar membro.");
+      alert("Erro ao adicionar membro ao quadro.");
     }
   };
 
-  const handleRemoveMember = async (userId) => {
-    if (!cardDetail || !window.confirm("Deseja remover este técnico do projeto?")) return;
+  const handleRemoveBoardMember = async (userId) => {
+    if (!activeBoard) return;
     try {
-      await projectsApi.removeMember(cardDetail.id, userId);
-      await loadCardDetail(cardDetail.id);
-      await loadData();
+      await projectsApi.removeMember(activeBoard.id, userId);
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
       console.error("Erro ao remover membro:", err);
     }
   };
 
-  // Vínculo de Ativos CMDB
-  const handleOpenLinkAsset = async () => {
-    setIsLinkAssetOpen(true);
-    if (allAssetsList.length === 0) {
-      try {
-        const res = await api.get("/assets/?is_active=true");
-        setAllAssetsList(res.data || []);
-      } catch (err) {
-        console.error("Erro ao carregar ativos:", err);
-      }
-    }
-  };
-
-  const handleLinkAsset = async (assetId) => {
-    if (!cardDetail || !assetId) return;
+  // Power-Ups do Quadro: Vincular/Desvincular Ativo CMDB
+  const handleLinkBoardAsset = async (assetId) => {
+    if (!activeBoard) return;
     try {
-      await projectsApi.linkAsset(cardDetail.id, assetId);
-      await loadCardDetail(cardDetail.id);
-      await loadData();
-      setIsLinkAssetOpen(false);
+      await projectsApi.linkAsset(activeBoard.id, assetId);
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
       console.error("Erro ao vincular ativo:", err);
-      alert("Falha ao vincular ativo.");
     }
   };
 
-  const handleUnlinkAsset = async (assetId) => {
-    if (!cardDetail || !window.confirm("Desvincular este equipamento do projeto?")) return;
+  const handleUnlinkBoardAsset = async (assetId) => {
+    if (!activeBoard) return;
     try {
-      await projectsApi.unlinkAsset(cardDetail.id, assetId);
-      await loadCardDetail(cardDetail.id);
-      await loadData();
+      await projectsApi.unlinkAsset(activeBoard.id, assetId);
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
       console.error("Erro ao desvincular ativo:", err);
     }
   };
 
-  // Vínculo de Chamados
-  const handleLinkTicket = async (e) => {
-    e.preventDefault();
-    const tId = parseInt(ticketIdInput);
-    if (!tId || !cardDetail) return;
+  // Power-Ups do Quadro: Vincular Chamado Existente
+  const handleLinkBoardTicket = async () => {
+    if (!ticketSearchId.trim() || !activeBoard) return;
     try {
-      await projectsApi.linkTicket(cardDetail.id, tId);
-      await loadCardDetail(cardDetail.id);
-      await loadData();
-      setIsLinkTicketOpen(false);
-      setTicketIdInput("");
+      await projectsApi.linkTicket(activeBoard.id, parseInt(ticketSearchId.trim()));
+      setTicketSearchId("");
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
       console.error("Erro ao vincular chamado:", err);
-      alert("Falha ao vincular chamado: " + (err.response?.data?.detail || err.message));
+      alert("Chamado não encontrado ou já vinculado.");
     }
   };
 
-  const handleUnlinkTicket = async (ticketId) => {
-    if (!cardDetail || !window.confirm("Desvincular este chamado do projeto?")) return;
+  const handleUnlinkBoardTicket = async (ticketId) => {
+    if (!activeBoard) return;
     try {
-      await projectsApi.unlinkTicket(cardDetail.id, ticketId);
-      await loadCardDetail(cardDetail.id);
-      await loadData();
+      await projectsApi.unlinkTicket(activeBoard.id, ticketId);
+      loadBoardDetail(activeBoard.id);
     } catch (err) {
       console.error("Erro ao desvincular chamado:", err);
     }
   };
 
-  // Comentários da Linha do Tempo
-  const handlePostComment = async (e) => {
-    e.preventDefault();
-    if (!newComment.trim() || !cardDetail) return;
+  // Excluir Quadro Completo
+  const handleDeleteBoard = async () => {
+    if (!activeBoard) return;
+    if (!confirm(`Atenção: Deseja realmente excluir permanentemente o quadro "${activeBoard.title}" e todos os seus cartões?`)) return;
     try {
-      setPostingComment(true);
-      await projectsApi.addTimelineComment(cardDetail.id, newComment.trim());
-      setNewComment("");
-      await loadCardDetail(cardDetail.id);
+      await projectsApi.deleteProject(activeBoard.id);
+      setActiveBoardId(null);
+      await loadWorkspaceData();
     } catch (err) {
-      console.error("Erro ao postar comentário:", err);
-    } finally {
-      setPostingComment(false);
+      console.error("Erro ao excluir quadro:", err);
     }
   };
 
-  // Filtros Globais dos Cartões
-  const filteredProjects = useMemo(() => {
-    return projects.filter((p) => {
-      if (selectedCategory !== "ALL" && p.category !== selectedCategory) return false;
-      if (selectedMemberFilter !== "ALL") {
-        const memId = parseInt(selectedMemberFilter);
-        const isManager = p.manager_id === memId;
-        const isMember = (p.members || []).some((m) => m.id === memId);
-        if (!isManager && !isMember) return false;
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const inTitle = (p.title || "").toLowerCase().includes(q);
-        const inCode = (p.code || "").toLowerCase().includes(q);
-        const inDesc = (p.description || "").toLowerCase().includes(q);
-        if (!inTitle && !inCode && !inDesc) return false;
-      }
-      return true;
-    });
-  }, [projects, selectedCategory, selectedMemberFilter, searchQuery]);
+  // Cálculo de progresso do checklist do cartão ativo
+  const cardChecklistStats = useMemo(() => {
+    if (!activeCard || !Array.isArray(activeCard.checklist) || activeCard.checklist.length === 0) {
+      return { total: 0, done: 0, percent: 0 };
+    }
+    const total = activeCard.checklist.length;
+    const done = activeCard.checklist.filter((i) => i.done).length;
+    const percent = Math.round((done / total) * 100);
+    return { total, done, percent };
+  }, [activeCard]);
 
-  // Ativos disponíveis para vínculo no modal
+  // Ativos CMDB elegíveis para vincular
   const availableAssetsToLink = useMemo(() => {
-    const linkedIds = new Set((cardDetail?.assets || []).map((a) => a.id));
+    const linkedIds = new Set((activeBoard?.assets || []).map((a) => a.id));
     return allAssetsList.filter((a) => {
       if (linkedIds.has(a.id)) return false;
-      if (!assetSearch.trim()) return true;
-      const q = assetSearch.toLowerCase().trim();
+      if (!assetSearchQuery) return true;
+      const q = assetSearchQuery.toLowerCase();
       return (
-        (a.name || "").toLowerCase().includes(q) ||
-        (a.asset_tag || "").toLowerCase().includes(q) ||
-        (a.ip_address || "").toLowerCase().includes(q) ||
-        (a.model || "").toLowerCase().includes(q)
+        a.name?.toLowerCase().includes(q) ||
+        a.asset_tag?.toLowerCase().includes(q) ||
+        a.model?.toLowerCase().includes(q) ||
+        a.brand?.toLowerCase().includes(q)
       );
     });
-  }, [allAssetsList, cardDetail?.assets, assetSearch]);
-
-  // Usuários disponíveis para equipe
-  const availableUsersForTeam = useMemo(() => {
-    const existingIds = new Set([
-      cardDetail?.manager_id,
-      ...(cardDetail?.members || []).map((m) => m.id),
-    ]);
-    return usersList.filter((u) => !existingIds.has(u.id));
-  }, [usersList, cardDetail]);
-
-  // Contagem de Checklist no Cartão Aberto
-  const checklistStats = useMemo(() => {
-    const tasks = cardDetail?.tasks || [];
-    const total = tasks.length;
-    const completed = tasks.filter((t) => t.status === "Concluído").length;
-    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { total, completed, pct };
-  }, [cardDetail]);
+  }, [allAssetsList, activeBoard, assetSearchQuery]);
 
   return (
-    <div className="space-y-4 pb-8 min-h-[calc(100vh-100px)] flex flex-col">
-      {/* ─── BARRA DE TOPO DO QUADRO (ESTILO TRELLO BOARD BAR) ─── */}
-      <div className="bg-white/90 backdrop-blur-md px-5 py-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100 font-sans">
+      {/* ========================================================================= */}
+      {/* BARRA SUPERIOR DO WORKSPACE (Estilo Trello Workspace Header)             */}
+      {/* ========================================================================= */}
+      <header className="bg-slate-950/80 backdrop-blur border-b border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
-            <FolderKanban size={22} />
+          <div className="p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-lg shadow-md shadow-blue-500/20 text-white">
+            <FolderKanban className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                Quadro de Projetos de TI
-              </h1>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-blue-100 text-blue-800">
-                {projects.length} projetos
-              </span>
+              <span className="text-xs font-semibold tracking-wider uppercase text-blue-400">Área de Trabalho</span>
+              <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full border border-slate-700">TIHFSA</span>
             </div>
-            <p className="text-xs text-slate-500">
-              Gerencie metas, prazos, entregas e ativos no formato de quadro Kanban contínuo.
-            </p>
+            <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+              Hotel Fasano Salvador — Projetos & Entregas de TI
+            </h1>
           </div>
         </div>
 
-        {/* Ferramentas e Filtros no Topo */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative w-48 sm:w-60">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Filtrar projetos..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-100/80 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-blue-400 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all"
-            />
-          </div>
-
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-3 py-1.5 bg-slate-100/80 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none"
-          >
-            <option value="ALL">Categoria: Todas</option>
-            {Object.keys(CATEGORY_COLORS).map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-
-          <select
-            value={selectedMemberFilter}
-            onChange={(e) => setSelectedMemberFilter(e.target.value)}
-            className="px-3 py-1.5 bg-slate-100/80 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none"
-          >
-            <option value="ALL">Membro: Todos</option>
-            {usersList.map((u) => (
-              <option key={u.id} value={u.id}>{u.display_name}</option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            onClick={loadData}
-            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
-            title="Atualizar quadro"
-          >
-            <RefreshCw size={16} />
-          </button>
-
-          {(isAdmin || isTechnician) && (
+        {/* Botões do Topo */}
+        <div className="flex items-center gap-2">
+          {activeBoard ? (
             <button
-              type="button"
-              onClick={() => {
-                setEditingProject(null);
-                setProjectForm({
-                  title: "",
-                  category: "Infraestrutura",
-                  status: "Planejamento",
-                  priority: "Média",
-                  start_date: new Date().toISOString().split("T")[0],
-                  due_date: "",
-                  budget: "",
-                  manager_id: user?.id || "",
-                  description: "",
-                });
-                setIsProjectModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
+              onClick={() => setActiveBoardId(null)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition"
             >
-              <Plus size={16} />
-              <span>Novo Projeto</span>
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Ver Todos os Quadros
+            </button>
+          ) : (
+            <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+              <button
+                onClick={() => setWorkspaceTab("boards")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                  workspaceTab === "boards" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                Quadros ({projects.length})
+              </button>
+              <button
+                onClick={() => setWorkspaceTab("templates")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                  workspaceTab === "templates" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                Modelos de Projetos
+              </button>
+            </div>
+          )}
+
+          {!activeBoard && (
+            <button
+              onClick={() => setIsNewBoardModalOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-blue-600/30 transition transform active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              Criar Novo Quadro
             </button>
           )}
+
+          <button
+            onClick={() => (activeBoardId ? loadBoardDetail(activeBoardId) : loadWorkspaceData())}
+            title="Recarregar"
+            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading || loadingBoard ? "animate-spin text-blue-400" : ""}`} />
+          </button>
         </div>
-      </div>
+      </header>
 
-      {/* ─── O QUADRO TRELLO: COLUNAS HORIZONTAIS ─── */}
-      <div className="flex-1 flex gap-4 overflow-x-auto pb-4 items-start select-none">
-        {BOARD_COLUMNS.map((col) => {
-          const cardsInCol = filteredProjects.filter((p) => p.status === col.id);
-          const isComposerActive = inlineComposerColumn === col.id;
-
-          return (
-            <div
-              key={col.id}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleDropOnColumn(e, col.id)}
-              className={`w-80 sm:w-88 shrink-0 rounded-2xl border flex flex-col max-h-[calc(100vh-190px)] shadow-xs transition-colors ${col.color}`}
-            >
-              {/* Cabeçalho da Lista */}
-              <div className={`p-3.5 rounded-t-2xl flex items-center justify-between font-bold border-b border-black/5 ${col.headerBg}`}>
-                <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
-                  <h3 className="text-sm font-black text-slate-800">{col.title}</h3>
+      {/* ========================================================================= */}
+      {/* VISÃO 1: HUB DE QUADROS & MODELOS (Trello Workspace Home)                */}
+      {/* ========================================================================= */}
+      {!activeBoardId && (
+        <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+          {/* Aba de Quadros */}
+          {workspaceTab === "boards" && (
+            <>
+              {/* Barra de Filtros e Busca */}
+              <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-800/40 border border-slate-800 p-3 rounded-xl">
+                <div className="relative flex-1 min-w-[240px] max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Filtrar quadros por nome ou código..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
-                <span className="px-2 py-0.5 rounded-full text-xs font-black bg-white/80 text-slate-700 shadow-2xs">
-                  {cardsInCol.length}
-                </span>
+
+                <div className="flex items-center gap-2 overflow-x-auto py-1">
+                  <span className="text-xs text-slate-400">Categoria:</span>
+                  {["ALL", "Infraestrutura", "Redes & Wi-Fi", "Sistemas & ERP", "Segurança & CFTV", "Hardware & Servidores"].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategoryFilter(cat)}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition whitespace-nowrap ${
+                        selectedCategoryFilter === cat
+                          ? "bg-blue-600/30 border-blue-500 text-blue-300 font-semibold"
+                          : "bg-slate-900/60 border-slate-700/60 text-slate-400 hover:text-white hover:border-slate-600"
+                      }`}
+                    >
+                      {cat === "ALL" ? "Todas" : cat}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* Lista de Cartões (Scrollável Verticalmente) */}
-              <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1">
-                {cardsInCol.map((project) => {
-                  const tasksCount = project.tasks_count || 0;
-                  const tasksDone = project.tasks_completed_count || 0;
-                  const hasTasks = tasksCount > 0;
-                  const allTasksDone = hasTasks && tasksCount === tasksDone;
-                  const catClass = CATEGORY_COLORS[project.category] || "bg-slate-500 text-white";
+              {/* Grade de Quadros (Trello Boards Grid) */}
+              <div>
+                <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <LayoutGrid className="w-4 h-4 text-blue-400" />
+                  Seus Quadros de Trabalho ({filteredProjects.length})
+                </h2>
 
-                  return (
-                    <div
-                      key={project.id}
-                      draggable="true"
-                      onDragStart={(e) => handleDragStart(e, project.id)}
-                      onClick={() => handleOpenCard(project)}
-                      className="bg-white rounded-xl p-3.5 shadow-2xs hover:shadow-md border border-slate-200/90 hover:border-blue-400/80 transition-all cursor-pointer space-y-2.5 group relative"
-                    >
-                      {/* Barra / Etiqueta da Categoria */}
-                      <div className="flex items-center justify-between gap-1">
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${catClass}`}>
-                          {project.category}
-                        </span>
-                        <span className="text-[11px] font-black text-slate-400 font-mono">
-                          {project.code}
-                        </span>
-                      </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {/* Card Criar Novo Quadro */}
+                  <div
+                    onClick={() => setIsNewBoardModalOpen(true)}
+                    className="group cursor-pointer rounded-xl border border-dashed border-slate-700 hover:border-blue-500/60 bg-slate-850/40 hover:bg-slate-800/60 p-5 flex flex-col items-center justify-center min-h-[160px] text-center transition duration-200"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-slate-800 group-hover:bg-blue-600/20 group-hover:text-blue-400 text-slate-400 flex items-center justify-center transition mb-2">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-300 group-hover:text-blue-300 transition">
+                      Criar novo quadro
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-1">Inicie um projeto do zero</span>
+                  </div>
 
-                      {/* Título do Projeto */}
-                      <h4 className="font-bold text-sm text-slate-900 leading-snug group-hover:text-blue-600 transition-colors">
-                        {project.title}
-                      </h4>
+                  {/* Lista de Quadros Existentes */}
+                  {filteredProjects.map((prj) => {
+                    const style = CATEGORY_STYLES[prj.category] || CATEGORY_STYLES["Outros"];
+                    const completedTasks = prj.tasks_completed || 0;
+                    const totalTasks = prj.tasks_count || 0;
+                    const progressPct = prj.progress || 0;
 
-                      {/* Barra de Progresso do Cartão */}
-                      {hasTasks && (
-                        <div className="space-y-1">
-                          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${
-                                allTasksDone ? "bg-emerald-500" : "bg-blue-600"
-                              }`}
-                              style={{ width: `${project.progress || 0}%` }}
-                            />
+                    return (
+                      <div
+                        key={prj.id}
+                        onClick={() => setActiveBoardId(prj.id)}
+                        className="group cursor-pointer rounded-xl overflow-hidden border border-slate-800 hover:border-slate-600 bg-slate-850 hover:bg-slate-800 shadow-lg hover:shadow-2xl transition duration-200 flex flex-col"
+                      >
+                        {/* Banner Colorido Superior */}
+                        <div className={`h-14 bg-gradient-to-r ${style.bg} p-3 flex items-start justify-between relative`}>
+                          <span className="text-[10px] font-bold tracking-wider uppercase bg-black/30 backdrop-blur text-white px-2 py-0.5 rounded-full border border-white/20">
+                            {prj.category}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-white/90 bg-black/20 px-1.5 py-0.5 rounded">
+                            {prj.code}
+                          </span>
+                        </div>
+
+                        {/* Corpo do Quadro */}
+                        <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                          <div>
+                            <h3 className="text-sm font-bold text-white group-hover:text-blue-300 transition line-clamp-1">
+                              {prj.title}
+                            </h3>
+                            <p className="text-xs text-slate-400 line-clamp-2 mt-1">
+                              {prj.description || "Sem descrição informada."}
+                            </p>
+                          </div>
+
+                          {/* Barra de Progresso */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[11px] font-medium text-slate-400">
+                              <span>Progresso</span>
+                              <span className="text-emerald-400 font-bold">{progressPct}%</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Rodapé com Indicadores */}
+                          <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+                            <div className="flex items-center gap-3">
+                              <span className="flex items-center gap-1" title="Tarefas no Quadro">
+                                <CheckSquare className="w-3.5 h-3.5 text-blue-400" />
+                                {completedTasks}/{totalTasks}
+                              </span>
+                              {prj.assets_count > 0 && (
+                                <span className="flex items-center gap-1" title="Equipamentos CMDB">
+                                  <Server className="w-3.5 h-3.5 text-amber-400" />
+                                  {prj.assets_count}
+                                </span>
+                              )}
+                              {prj.tickets_count > 0 && (
+                                <span className="flex items-center gap-1" title="Chamados Vinculados">
+                                  <Ticket className="w-3.5 h-3.5 text-rose-400" />
+                                  {prj.tickets_count}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Membros */}
+                            <div className="flex -space-x-1.5 overflow-hidden">
+                              {(prj.members || []).slice(0, 3).map((m, idx) => (
+                                <div
+                                  key={idx}
+                                  title={m.display_name}
+                                  className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-[9px] flex items-center justify-center border border-slate-900"
+                                >
+                                  {m.display_name.charAt(0)}
+                                </div>
+                              ))}
+                              {(prj.members || []).length === 0 && (
+                                <span className="text-[10px] text-slate-500">Sem equipe</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
 
-                      {/* Badges do Cartão (Estilo Trello) */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-[11px] text-slate-500">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* Data de Entrega */}
-                          {project.due_date && (
-                            <span
-                              className={`inline-flex items-center gap-1 font-semibold ${
-                                project.status === "Concluído"
-                                  ? "text-emerald-700"
-                                  : new Date(project.due_date) < new Date()
-                                  ? "text-rose-600 font-bold"
-                                  : "text-slate-500"
-                              }`}
-                              title="Data de Conclusão / Prazo"
-                            >
-                              <Clock size={12} />
-                              {new Date(project.due_date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-                            </span>
-                          )}
+          {/* Aba de Modelos (Templates de TI) */}
+          {workspaceTab === "templates" && (
+            <div className="space-y-6">
+              <div className="bg-gradient-to-r from-blue-900/40 via-indigo-900/30 to-purple-900/40 border border-blue-500/30 rounded-2xl p-6 text-white">
+                <div className="flex items-center gap-2 text-amber-300 text-xs font-semibold tracking-wider uppercase mb-1">
+                  <Sparkles className="w-4 h-4" /> Modelos Oficiais de Gestão de TI
+                </div>
+                <h2 className="text-xl font-bold">Inicie Projetos Prontos em 1 Clique</h2>
+                <p className="text-xs text-slate-300 max-w-2xl mt-1">
+                  Evite criar do zero. Utilize os fluxos testados da nossa infraestrutura hoteleira contendo checklists,
+                  tarefas pré-configuradas e etapas de validação para Wi-Fi, Servidores, CFTV e UHs.
+                </p>
+              </div>
 
-                          {/* Checklist de Tarefas */}
-                          {hasTasks && (
-                            <span
-                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold ${
-                                allTasksDone
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "text-slate-600"
-                              }`}
-                              title="Tarefas concluídas"
-                            >
-                              <CheckSquare size={12} />
-                              {tasksDone}/{tasksCount}
-                            </span>
-                          )}
-
-                          {/* Ativos CMDB */}
-                          {(project.assets_count || 0) > 0 && (
-                            <span className="inline-flex items-center gap-1 text-slate-500" title="Equipamentos CMDB vinculados">
-                              <Server size={12} className="text-emerald-600" />
-                              {project.assets_count}
-                            </span>
-                          )}
-
-                          {/* Chamados Vinculados */}
-                          {(project.tickets_count || 0) > 0 && (
-                            <span className="inline-flex items-center gap-1 text-slate-500" title="Chamados Helpdesk">
-                              <Ticket size={12} className="text-amber-600" />
-                              {project.tickets_count}
-                            </span>
-                          )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {IT_TEMPLATES.map((tpl) => {
+                  const Icon = tpl.icon;
+                  return (
+                    <div
+                      key={tpl.id}
+                      className="bg-slate-850 border border-slate-800 rounded-xl p-5 hover:border-blue-500/50 transition duration-200 flex flex-col justify-between space-y-4"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className={`p-2.5 rounded-lg bg-gradient-to-tr ${tpl.color} text-white shadow-md`}>
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <span className="text-[11px] font-semibold text-blue-400 bg-blue-950/70 border border-blue-800/60 px-2.5 py-0.5 rounded-full">
+                            {tpl.category}
+                          </span>
                         </div>
+                        <h3 className="text-base font-bold text-white">{tpl.title}</h3>
+                        <p className="text-xs text-slate-400 mt-1">{tpl.description}</p>
+                      </div>
 
-                        {/* Avatares dos Membros do Projeto (Canto Direito Inferior) */}
-                        <div className="flex items-center -space-x-1.5 overflow-hidden">
-                          {project.manager && (
-                            <div
-                              className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-black ring-2 ring-white"
-                              title={`Gestor: ${project.manager.display_name}`}
-                            >
-                              {project.manager.display_name?.charAt(0) || "G"}
-                            </div>
-                          )}
-                          {(project.members || []).slice(0, 3).map((m) => (
-                            <div
-                              key={m.id}
-                              className="w-5 h-5 rounded-full bg-slate-700 text-white flex items-center justify-center text-[9px] font-bold ring-2 ring-white"
-                              title={m.display_name}
-                            >
-                              {m.display_name?.charAt(0) || "U"}
+                      {/* Prévia das Tarefas */}
+                      <div className="space-y-1.5 bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                        <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                          <span>Tarefas incluídas no modelo ({tpl.tasks.length}):</span>
+                        </div>
+                        <div className="space-y-1 mt-1">
+                          {tpl.tasks.map((task, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-xs text-slate-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                              <span className="truncate flex-1">{task.title}</span>
+                              <span className="text-[10px] text-slate-500">
+                                ({task.checklist.length} subitens)
+                              </span>
                             </div>
                           ))}
                         </div>
                       </div>
+
+                      <button
+                        onClick={() => handleUseTemplate(tpl)}
+                        className="w-full py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 transition active:scale-98"
+                      >
+                        <Copy className="w-4 h-4" />
+                        Usar este Modelo de Projeto
+                      </button>
                     </div>
                   );
                 })}
-
-                {/* Inline Composer Trello */}
-                {isComposerActive ? (
-                  <div className="bg-white rounded-xl p-3 shadow-md border border-blue-400 space-y-2 animate-fadeIn">
-                    <textarea
-                      rows={2}
-                      autoFocus
-                      placeholder="Insira o título deste projeto..."
-                      value={inlineTitle}
-                      onChange={(e) => setInlineTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleQuickCreateCard(col.id);
-                        }
-                      }}
-                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={savingInlineCard || !inlineTitle.trim()}
-                        onClick={() => handleQuickCreateCard(col.id)}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
-                      >
-                        {savingInlineCard ? "Adicionando..." : "Adicionar Cartão"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setInlineComposerColumn(null);
-                          setInlineTitle("");
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  (isAdmin || isTechnician) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInlineComposerColumn(col.id);
-                        setInlineTitle("");
-                      }}
-                      className="w-full py-2 px-3 hover:bg-black/5 text-slate-600 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer text-left"
-                    >
-                      <Plus size={15} />
-                      <span>Adicionar um cartão</span>
-                    </button>
-                  )
-                )}
               </div>
             </div>
-          );
-        })}
-      </div>
+          )}
+        </main>
+      )}
 
-      {/* ─── MODAL DO CARTÃO (O FAMOSO TRELLO CARD MODAL) ─── */}
-      {openCardId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-            {/* Header do Cartão */}
-            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-start justify-between gap-4 bg-slate-50/50">
-              <div className="flex items-start gap-3 flex-1">
-                <FolderKanban className="text-blue-600 shrink-0 mt-1" size={24} />
-                <div className="space-y-1 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-black font-mono">
-                      {cardDetail?.code || "PRJ"}
-                    </span>
-                    <span className="text-xs text-slate-500 font-semibold">
-                      na lista
-                    </span>
-                    <select
-                      value={cardDetail?.status || "Planejamento"}
-                      onChange={(e) => handleMoveProjectStatus(cardDetail.id, e.target.value)}
-                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none"
-                    >
-                      {BOARD_COLUMNS.map((col) => (
-                        <option key={col.id} value={col.id}>{col.title}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
-                    {cardDetail?.title}
-                  </h2>
-                </div>
-              </div>
-
+      {/* ========================================================================= */}
+      {/* VISÃO 2: QUADRO TRELLO ABERTO (Active Board Canvas)                      */}
+      {/* ========================================================================= */}
+      {activeBoardId && activeBoard && (
+        <div className="flex-1 flex flex-col overflow-hidden bg-slate-900">
+          {/* Barra Superior do Quadro Específico */}
+          <div className="bg-slate-950/90 border-b border-slate-800 px-5 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
               <button
-                type="button"
-                onClick={handleCloseCard}
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl cursor-pointer"
-                title="Fechar cartão"
+                onClick={() => setActiveBoardId(null)}
+                title="Voltar ao Workspace"
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
               >
-                <X size={20} />
+                <ArrowLeft className="w-4 h-4" />
               </button>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold bg-blue-900/60 text-blue-300 border border-blue-700/60 px-1.5 py-0.5 rounded">
+                    {activeBoard.code}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    {activeBoard.category}
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {activeBoard.progress || 0}% Concluído
+                  </span>
+                </div>
+                <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                  {activeBoard.title}
+                </h2>
+              </div>
             </div>
 
-            {/* Conteúdo do Cartão (Grid 2 Colunas: Principal + Ações) */}
-            <div className="p-5 sm:p-7 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Coluna Principal (8 colunas) */}
-              <div className="lg:col-span-8 space-y-6">
-                {/* Meta-Informações (Membros, Etiqueta, Datas) */}
-                <div className="flex flex-wrap items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
-                  {/* Gestor & Membros */}
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Equipe</span>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {cardDetail?.manager && (
-                        <div
-                          className="px-2 py-1 rounded-lg bg-blue-100 text-blue-900 text-xs font-bold flex items-center gap-1"
-                          title="Gestor do Projeto"
-                        >
-                          👑 {cardDetail.manager.display_name}
-                        </div>
-                      )}
-                      {(cardDetail?.members || []).map((m) => (
-                        <div
-                          key={m.id}
-                          className="px-2 py-1 rounded-lg bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1 group"
-                        >
-                          <span>{m.display_name}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMember(m.id)}
-                            className="text-slate-400 hover:text-rose-600 rounded"
-                            title="Remover da equipe"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setIsAddMemberOpen(true)}
-                        className="px-2 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold cursor-pointer"
-                      >
-                        + Membro
-                      </button>
-                    </div>
-                  </div>
+            {/* Power-Ups e Controles do Quadro */}
+            <div className="flex items-center flex-wrap gap-2">
+              {/* Membros do Quadro */}
+              <button
+                onClick={() => setIsMembersModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs border border-slate-700 transition"
+              >
+                <Users className="w-3.5 h-3.5 text-blue-400" />
+                <span>Equipe ({(activeBoard.members || []).length})</span>
+              </button>
 
-                  {/* Categoria */}
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Categoria</span>
-                    <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${CATEGORY_COLORS[cardDetail?.category] || "bg-slate-500 text-white"}`}>
-                      {cardDetail?.category}
-                    </span>
-                  </div>
+              {/* Power-Up: CMDB Ativos */}
+              <button
+                onClick={() => setIsAssetsModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs border border-slate-700 transition"
+              >
+                <Server className="w-3.5 h-3.5 text-amber-400" />
+                <span>Ativos CMDB ({(activeBoard.assets || []).length})</span>
+              </button>
 
-                  {/* Prazo */}
-                  {cardDetail?.due_date && (
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Prazo de Entrega</span>
-                      <span className="text-xs font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-                        📅 {new Date(cardDetail.due_date).toLocaleDateString("pt-BR")}
+              {/* Power-Up: Chamados */}
+              <button
+                onClick={() => setIsTicketsModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs border border-slate-700 transition"
+              >
+                <Ticket className="w-3.5 h-3.5 text-rose-400" />
+                <span>Chamados ({(activeBoard.tickets || []).length})</span>
+              </button>
+
+              {/* Automação Butler */}
+              <button
+                onClick={() => setIsButlerModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-600/20 to-orange-600/20 hover:from-amber-600/30 hover:to-orange-600/30 text-amber-300 text-xs font-semibold border border-amber-500/40 transition"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span>Automação Butler</span>
+              </button>
+
+              {/* Linha do Tempo */}
+              <button
+                onClick={() => setIsTimelineModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs border border-slate-700 transition"
+              >
+                <History className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Histórico</span>
+              </button>
+
+              {/* Excluir Quadro */}
+              {isAdmin && (
+                <button
+                  onClick={handleDeleteBoard}
+                  title="Excluir Quadro"
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/50 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700 transition"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Canvas das Colunas / Listas Trello com Scroll Horizontal */}
+          <div className="flex-1 overflow-x-auto overflow-y-hidden p-5 flex gap-4 items-start">
+            {WORKFLOW_COLUMNS.map((column) => {
+              const columnTasks = (activeBoard.tasks || []).filter((t) => t.status === column.id);
+
+              return (
+                <div
+                  key={column.id}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDropOnColumn(e, column.id)}
+                  className="w-80 flex-shrink-0 bg-slate-950/60 border border-slate-800/90 rounded-2xl flex flex-col max-h-[calc(100vh-140px)] shadow-xl"
+                >
+                  {/* Cabeçalho da Lista */}
+                  <div className="px-4 py-3 border-b border-slate-800/80 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs font-bold text-slate-200 tracking-wide uppercase">
+                        {column.title}
+                      </h3>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${column.badgeBg}`}>
+                        {columnTasks.length}
                       </span>
                     </div>
-                  )}
-                </div>
 
-                {/* Descrição */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                    <MessageSquare size={14} />
-                    <span>Descrição / Escopo</span>
-                  </h4>
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                    {cardDetail?.description || "Nenhuma descrição detalhada informada para este projeto."}
-                  </div>
-                </div>
-
-                {/* CHECKLIST ESTILO TRELLO (Tarefas & Etapas) */}
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                      <CheckSquare className="text-blue-600" size={16} />
-                      <span>Checklist de Tarefas & Etapas</span>
-                    </h4>
-                    <span className="text-xs font-bold text-slate-500">
-                      {checklistStats.completed} de {checklistStats.total} concluídas
-                    </span>
+                    <button
+                      onClick={() => {
+                        setInlineComposerColumn(column.id);
+                        setInlineCardTitle("");
+                      }}
+                      className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded transition"
+                      title="Adicionar cartão"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
                   </div>
 
-                  {/* Barra de Progresso Verde Trello */}
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-black text-slate-600 w-8">{checklistStats.pct}%</span>
-                    <div className="h-2 flex-1 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          checklistStats.pct === 100 ? "bg-emerald-500" : "bg-blue-600"
-                        }`}
-                        style={{ width: `${checklistStats.pct}%` }}
-                      />
-                    </div>
-                  </div>
+                  {/* Área de Cartões com Rolagem Interna */}
+                  <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[100px]">
+                    {columnTasks.map((task) => {
+                      const priorityChip = PRIORITY_BADGES[task.priority] || "bg-slate-600 text-white";
+                      const checklistCount = Array.isArray(task.checklist) ? task.checklist.length : 0;
+                      const checklistDone = Array.isArray(task.checklist) ? task.checklist.filter((i) => i.done).length : 0;
+                      const hasChecklist = checklistCount > 0;
+                      const allDone = hasChecklist && checklistDone === checklistCount;
 
-                  {/* Itens do Checklist */}
-                  <div className="space-y-2 pt-1">
-                    {(cardDetail?.tasks || []).map((task) => {
-                      const isDone = task.status === "Concluído";
                       return (
                         <div
                           key={task.id}
-                          className={`p-3 rounded-xl border flex items-start justify-between gap-3 transition-colors ${
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, task)}
+                          onClick={() => handleOpenCard(task)}
+                          className={`group cursor-pointer bg-slate-850 hover:bg-slate-800 border rounded-xl p-3 shadow-md hover:shadow-lg transition-all duration-150 transform hover:-translate-y-0.5 select-none ${
                             task.is_blocked
-                              ? "bg-rose-50/60 border-rose-300"
-                              : isDone
-                              ? "bg-slate-50 border-slate-200 opacity-70"
-                              : "bg-white border-slate-200 hover:border-slate-300"
+                              ? "border-rose-500/70 bg-rose-950/10"
+                              : allDone
+                              ? "border-emerald-500/60"
+                              : "border-slate-800 hover:border-slate-700"
                           }`}
                         >
-                          <div className="flex items-start gap-3 flex-1">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleTaskCompleted(task)}
-                              className="mt-0.5 text-blue-600 hover:text-blue-700 cursor-pointer"
-                            >
-                              {isDone ? (
-                                <CheckCircle2 size={18} className="text-emerald-600" />
-                              ) : (
-                                <Square size={18} className="text-slate-400" />
-                              )}
-                            </button>
+                          {/* Etiquetas e Prioridade */}
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${priorityChip}`}>
+                              {task.priority}
+                            </span>
 
-                            <div className="space-y-1 flex-1">
-                              <span
-                                className={`text-sm leading-snug font-medium block ${
-                                  isDone ? "line-through text-slate-400" : "text-slate-900"
-                                }`}
-                              >
-                                {task.title}
+                            {task.is_blocked && (
+                              <span className="text-[9px] font-bold bg-rose-600 text-white px-2 py-0.5 rounded-md flex items-center gap-1 animate-pulse">
+                                <Ban className="w-2.5 h-2.5" /> BLOQUEADO
                               </span>
-
-                              {/* Aviso de Bloqueio */}
-                              {task.is_blocked && (
-                                <div className="p-2 bg-rose-100/70 border border-rose-300 rounded-lg text-rose-900 text-xs flex items-center justify-between gap-2">
-                                  <span className="font-bold flex items-center gap-1">
-                                    <AlertTriangle size={13} className="text-rose-600" />
-                                    Bloqueado: {task.blocked_reason || "Sem motivo informado"}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUnblockTask(task)}
-                                    className="px-2 py-0.5 bg-rose-200 hover:bg-rose-300 rounded font-bold text-[10px] text-rose-900 cursor-pointer"
-                                  >
-                                    Desbloquear
-                                  </button>
-                                </div>
-                              )}
-
-                              {/* Responsável e Chamado */}
-                              <div className="flex items-center gap-3 text-xs text-slate-500">
-                                {task.assigned_to && (
-                                  <span>👤 {task.assigned_to.display_name}</span>
-                                )}
-                                {task.ticket && (
-                                  <span className="text-blue-600 font-semibold">
-                                    🎫 #{task.ticket.id} {task.ticket.title}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                            )}
                           </div>
 
-                          <div className="flex items-center gap-1">
-                            {!task.is_blocked && !isDone && (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenBlockModal(task)}
-                                className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 cursor-pointer"
-                                title="Sinalizar impedimento"
+                          {/* Título do Cartão */}
+                          <h4 className="text-xs font-semibold text-white group-hover:text-blue-300 transition line-clamp-2 leading-relaxed">
+                            {task.title}
+                          </h4>
+
+                          {/* Badges / Indicadores do Cartão */}
+                          <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                            <div className="flex items-center gap-2.5">
+                              {/* Checklist Badge */}
+                              {hasChecklist && (
+                                <span
+                                  className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                    allDone ? "bg-emerald-950/80 text-emerald-400 border border-emerald-800/60" : "text-slate-400 bg-slate-800"
+                                  }`}
+                                  title={`Checklist: ${checklistDone} de ${checklistCount} concluídos`}
+                                >
+                                  <CheckSquare className="w-3 h-3" />
+                                  {checklistDone}/{checklistCount}
+                                </span>
+                              )}
+
+                              {/* Ativo Vinculado */}
+                              {task.asset && (
+                                <span
+                                  className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded"
+                                  title={`Ativo: ${task.asset.name} (${task.asset.asset_tag || "Sem tag"})`}
+                                >
+                                  <Server className="w-3 h-3" />
+                                  {task.asset.asset_tag || "CMDB"}
+                                </span>
+                              )}
+
+                              {/* Chamado Vinculado */}
+                              {task.ticket_id && (
+                                <span
+                                  className="flex items-center gap-1 text-[10px] text-rose-400 bg-rose-950/60 border border-rose-800/60 px-1.5 py-0.5 rounded"
+                                  title={`Chamado vinculado #${task.ticket_id}`}
+                                >
+                                  <Ticket className="w-3 h-3" />#{task.ticket_id}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Membro Atribuído */}
+                            {task.assigned_to ? (
+                              <div
+                                title={`Responsável: ${task.assigned_to.display_name}`}
+                                className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-[9px] flex items-center justify-center border border-slate-700"
                               >
-                                Bloquear
-                              </button>
+                                {task.assigned_to.display_name.charAt(0)}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-600">—</span>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTask(task.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
-                              title="Excluir item"
-                            >
-                              <Trash2 size={14} />
-                            </button>
                           </div>
                         </div>
                       );
                     })}
-                  </div>
 
-                  {/* Adicionar Item no Checklist */}
-                  {isAddingChecklistItem ? (
-                    <form onSubmit={handleAddChecklistItem} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Adicionar um item de tarefa..."
-                        value={newChecklistTitle}
-                        onChange={(e) => setNewChecklistTitle(e.target.value)}
-                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <div className="flex items-center justify-between gap-2">
-                        <select
-                          value={newChecklistAssignedId}
-                          onChange={(e) => setNewChecklistAssignedId(e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-700"
-                        >
-                          <option value="">Atribuir a técnico...</option>
-                          {usersList.map((u) => (
-                            <option key={u.id} value={u.id}>{u.display_name}</option>
-                          ))}
-                        </select>
-
-                        <div className="flex items-center gap-2">
+                    {/* Inline Composer (Se ativo nesta coluna) */}
+                    {inlineComposerColumn === column.id && (
+                      <div className="bg-slate-850 border border-blue-500/80 rounded-xl p-3 space-y-2 shadow-lg animate-in fade-in duration-150">
+                        <textarea
+                          autoFocus
+                          rows={2}
+                          value={inlineCardTitle}
+                          onChange={(e) => setInlineCardTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleCreateInlineCard(column.id);
+                            }
+                          }}
+                          placeholder="Insira o título para este cartão..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                        />
+                        <div className="flex items-center justify-between">
                           <button
-                            type="submit"
-                            disabled={!newChecklistTitle.trim()}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                            onClick={() => handleCreateInlineCard(column.id)}
+                            disabled={savingInlineCard || !inlineCardTitle.trim()}
+                            className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold shadow transition"
                           >
-                            Adicionar
+                            {savingInlineCard ? "Adicionando..." : "Adicionar Cartão"}
                           </button>
                           <button
-                            type="button"
-                            onClick={() => setIsAddingChecklistItem(false)}
-                            className="p-1.5 text-slate-400 hover:text-slate-600 rounded"
+                            onClick={() => {
+                              setInlineComposerColumn(null);
+                              setInlineCardTitle("");
+                            }}
+                            className="p-1 text-slate-400 hover:text-white transition"
                           >
-                            <X size={16} />
+                            <X className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                    </form>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingChecklistItem(true)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors"
-                    >
-                      + Adicionar item
-                    </button>
-                  )}
-                </div>
-
-                {/* ATIVOS CMDB VINCULADOS */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                      <Server className="text-emerald-600" size={16} />
-                      <span>Equipamentos CMDB Vinculados ({cardDetail?.assets?.length || 0})</span>
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={handleOpenLinkAsset}
-                      className="text-xs font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
-                    >
-                      + Vincular Ativo
-                    </button>
+                    )}
                   </div>
 
-                  {(!cardDetail?.assets || cardDetail.assets.length === 0) ? (
-                    <p className="text-xs text-slate-400 italic">Nenhum equipamento associado.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {cardDetail.assets.map((asset) => (
-                        <div key={asset.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-2 text-xs">
-                          <div>
-                            <span className="font-bold text-slate-800 block truncate">{asset.name}</span>
-                            <span className="text-[11px] text-slate-500 font-mono">
-                              Tag: {asset.asset_tag || "S/N"} • IP: {asset.ip_address || "DHCP"}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleUnlinkAsset(asset.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
-                            title="Desvincular"
-                          >
-                            <Unlink size={13} />
-                          </button>
-                        </div>
-                      ))}
+                  {/* Rodapé da Coluna: Botão Adicionar Cartão */}
+                  {inlineComposerColumn !== column.id && (
+                    <div className="p-2 border-t border-slate-800/80">
+                      <button
+                        onClick={() => {
+                          setInlineComposerColumn(column.id);
+                          setInlineCardTitle("");
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 text-xs font-medium transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Adicionar um cartão
+                      </button>
                     </div>
                   )}
                 </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-                {/* CHAMADOS VINCULADOS */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                      <Ticket className="text-amber-600" size={16} />
-                      <span>Chamados do Helpdesk ({cardDetail?.tickets?.length || 0})</span>
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => setIsLinkTicketOpen(true)}
-                      className="text-xs font-bold text-amber-700 hover:text-amber-800 cursor-pointer"
+      {/* ========================================================================= */}
+      {/* VISÃO 3: MODAL DO CARTÃO ESTILO TRELLO (Card Detail Modal)                */}
+      {/* ========================================================================= */}
+      {isCardModalOpen && activeCard && activeBoard && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col my-auto">
+            {/* Cabeçalho do Cartão */}
+            <div className="p-6 border-b border-slate-800 flex items-start justify-between gap-4 sticky top-0 bg-slate-900 z-10">
+              <div className="space-y-1 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">
+                    {activeBoard.code}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    Na lista <strong className="text-white underline">{activeCard.status}</strong>
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-white tracking-tight leading-snug">
+                  {activeCard.title}
+                </h3>
+              </div>
+
+              <button
+                onClick={() => setIsCardModalOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Grid Principal: Lado Esquerdo (Conteúdo) + Lado Direito (Ações Trello) */}
+            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Lado Esquerdo: Descrição, Checklist, Power-Ups e Atividades */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Metadados rápidos: Membro, Prioridade e Status */}
+                <div className="flex flex-wrap gap-4 items-center bg-slate-850 p-4 rounded-xl border border-slate-800">
+                  {/* Responsável */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Responsável
+                    </span>
+                    <select
+                      value={activeCard.assigned_to_id || ""}
+                      onChange={(e) => handleAssignCardMember(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
                     >
-                      + Vincular Chamado
-                    </button>
+                      <option value="">Não Atribuído</option>
+                      {usersList.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.display_name} ({u.role})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-                  {(!cardDetail?.tickets || cardDetail.tickets.length === 0) ? (
-                    <p className="text-xs text-slate-400 italic">Nenhum chamado vinculado.</p>
-                  ) : (
+                  {/* Prioridade */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Prioridade
+                    </span>
+                    <select
+                      value={activeCard.priority || "Média"}
+                      onChange={(e) => handleChangeCardPriority(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="Baixa">🟢 Baixa</option>
+                      <option value="Média">🔵 Média</option>
+                      <option value="Alta">🟠 Alta</option>
+                      <option value="Urgente">🔴 Urgente</option>
+                    </select>
+                  </div>
+
+                  {/* Mover de Lista */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Etapa / Lista
+                    </span>
+                    <select
+                      value={activeCard.status}
+                      onChange={(e) => handleChangeCardStatus(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      {WORKFLOW_COLUMNS.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Alerta de Bloqueio se houver */}
+                {activeCard.is_blocked && (
+                  <div className="bg-rose-950/40 border border-rose-500/70 p-4 rounded-xl flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-rose-300 uppercase tracking-wider">
+                        Atividade Bloqueada
+                      </h4>
+                      <p className="text-xs text-rose-200 mt-0.5">
+                        {activeCard.blocked_reason || "Sem justificativa informada."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Seção de Descrição */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                      <Edit3 className="w-4 h-4 text-blue-400" />
+                      Descrição
+                    </h4>
+                    {!isEditingDescription && (
+                      <button
+                        onClick={() => setIsEditingDescription(true)}
+                        className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+                      >
+                        Editar
+                      </button>
+                    )}
+                  </div>
+
+                  {isEditingDescription ? (
                     <div className="space-y-2">
-                      {cardDetail.tickets.map((t) => (
-                        <div key={t.id} className="p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs">
-                          <div className="flex items-center gap-2 truncate">
-                            <span className="font-black text-amber-800">#{t.id}</span>
-                            <span className="font-bold text-slate-800 truncate">{t.title}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-white text-[10px] font-bold text-slate-600 border border-amber-200">
-                              {t.status}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleUnlinkTicket(t.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
-                            title="Desvincular chamado"
-                          >
-                            <Unlink size={13} />
-                          </button>
-                        </div>
-                      ))}
+                      <textarea
+                        rows={4}
+                        value={tempDescription}
+                        onChange={(e) => setTempDescription(e.target.value)}
+                        placeholder="Adicione detalhes, especificações técnicas, links..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleSaveDescription}
+                          className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTempDescription(activeCard.description || "");
+                            setIsEditingDescription(false);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => setIsEditingDescription(true)}
+                      className="cursor-pointer bg-slate-850 hover:bg-slate-800 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-300 min-h-[60px] whitespace-pre-wrap transition"
+                    >
+                      {activeCard.description || "Clique para adicionar uma descrição detalhada a este cartão..."}
                     </div>
                   )}
                 </div>
 
-                {/* ATIVIDADE & COMENTÁRIOS DA LINHA DO TEMPO */}
-                <div className="space-y-3 pt-4 border-t border-slate-100">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                    <History className="text-violet-600" size={16} />
-                    <span>Atividade & Comentários</span>
-                  </h4>
+                {/* Checklist Trello com Barra de Progresso Verde */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4 text-emerald-400" />
+                      Lista de Verificação (Checklist)
+                    </h4>
+                    <span className="text-xs font-bold text-emerald-400">
+                      {cardChecklistStats.percent}%
+                    </span>
+                  </div>
 
-                  <form onSubmit={handlePostComment} className="flex gap-2">
+                  {/* Barra de Progresso Estilo Trello */}
+                  <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                      style={{ width: `${cardChecklistStats.percent}%` }}
+                    />
+                  </div>
+
+                  {/* Itens do Checklist */}
+                  <div className="space-y-2">
+                    {(activeCard.checklist || []).map((item) => (
+                      <div
+                        key={item.id}
+                        className="group flex items-center justify-between gap-3 bg-slate-850 hover:bg-slate-800 border border-slate-800/80 px-3.5 py-2.5 rounded-xl transition"
+                      >
+                        <div
+                          onClick={() => handleToggleChecklistItem(item.id)}
+                          className="flex items-center gap-3 cursor-pointer flex-1"
+                        >
+                          {item.done ? (
+                            <CheckSquare className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-500 group-hover:text-slate-400 flex-shrink-0" />
+                          )}
+                          <span
+                            className={`text-xs ${
+                              item.done
+                                ? "line-through text-slate-500 font-medium"
+                                : "text-slate-200"
+                            }`}
+                          >
+                            {item.text}
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => handleDeleteChecklistItem(item.id)}
+                          className="text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition p-1"
+                          title="Remover item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Adicionar Item ao Checklist */}
+                  <div className="flex items-center gap-2 pt-1">
                     <input
                       type="text"
-                      placeholder="Escreva um comentário técnico..."
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      className="flex-1 text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      value={newChecklistText}
+                      onChange={(e) => setNewChecklistText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddChecklistItem();
+                        }
+                      }}
+                      placeholder="Adicionar um item de verificação..."
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                     />
                     <button
-                      type="submit"
-                      disabled={postingComment || !newComment.trim()}
-                      className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                      onClick={handleAddChecklistItem}
+                      disabled={!newChecklistText.trim()}
+                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold shadow transition"
                     >
+                      Adicionar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Seção Power-Ups Vinculados Diretamente a Este Cartão */}
+                <div className="space-y-3 pt-2">
+                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <LinkIcon className="w-4 h-4 text-amber-400" />
+                    Conexões & Power-Ups do Cartão
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Equipamento CMDB */}
+                    <div className="bg-slate-850 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-400 font-semibold">
+                        <span className="flex items-center gap-1.5">
+                          <Server className="w-3.5 h-3.5 text-amber-400" /> Ativo CMDB
+                        </span>
+                        {activeCard.asset && (
+                          <button
+                            onClick={() => handleLinkAssetToCard(null)}
+                            className="text-[10px] text-rose-400 hover:underline"
+                          >
+                            Desvincular
+                          </button>
+                        )}
+                      </div>
+
+                      {activeCard.asset ? (
+                        <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                          <div className="text-xs font-bold text-white line-clamp-1">{activeCard.asset.name}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Tag: <span className="font-mono text-amber-400">{activeCard.asset.asset_tag || "S/N"}</span> • {activeCard.asset.type}
+                          </div>
+                        </div>
+                      ) : (
+                        <select
+                          onChange={(e) => handleLinkAssetToCard(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+                        >
+                          <option value="">Vincular equipamento...</option>
+                          {allAssetsList.map((ast) => (
+                            <option key={ast.id} value={ast.id}>
+                              [{ast.asset_tag || "S/T"}] {ast.name} ({ast.type})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {/* Chamado Helpdesk */}
+                    <div className="bg-slate-850 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-400 font-semibold">
+                        <span className="flex items-center gap-1.5">
+                          <Ticket className="w-3.5 h-3.5 text-rose-400" /> Chamado Helpdesk
+                        </span>
+                      </div>
+
+                      {activeCard.ticket ? (
+                        <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                          <div className="text-xs font-bold text-white line-clamp-1">
+                            #{activeCard.ticket.id} — {activeCard.ticket.title}
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Status: <span className="text-rose-400 font-semibold">{activeCard.ticket.status}</span> • Prioridade: {activeCard.ticket.priority}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-500 italic py-1">
+                          Nenhum chamado de suporte atrelado a este cartão.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Comentários e Histórico do Cartão */}
+                <div className="space-y-3 pt-2">
+                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-blue-400" />
+                    Atividade & Comentários
+                  </h4>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={cardCommentText}
+                      onChange={(e) => setCardCommentText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handlePostComment();
+                        }
+                      }}
+                      placeholder="Escreva um comentário neste cartão..."
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={handlePostComment}
+                      disabled={sendingCardComment || !cardCommentText.trim()}
+                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold shadow transition flex items-center gap-1.5"
+                    >
+                      <Send className="w-3 h-3" />
                       Enviar
                     </button>
-                  </form>
-
-                  <div className="space-y-2.5 pt-2">
-                    {(!cardDetail?.timeline || cardDetail.timeline.length === 0) ? (
-                      <p className="text-xs text-slate-400 italic">Nenhuma atividade registrada ainda.</p>
-                    ) : (
-                      cardDetail.timeline.map((entry) => (
-                        <div key={entry.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs space-y-1">
-                          <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                            <strong className="text-slate-800">{entry.author?.display_name || "Sistema"}</strong>
-                            <span>{new Date(entry.created_at).toLocaleString("pt-BR")}</span>
-                          </div>
-                          <p className="text-slate-700 whitespace-pre-line">{entry.content}</p>
-                        </div>
-                      ))
-                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Coluna Lateral de Ações Trello (4 colunas) */}
-              <div className="lg:col-span-4 space-y-5">
+              {/* Lado Direito: Ações Laterais estilo Trello */}
+              <div className="space-y-4">
                 <div>
-                  <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Adicionar ao Cartão
-                  </h5>
-                  <div className="space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    Ações do Cartão
+                  </span>
+
+                  <div className="space-y-2">
+                    {/* Botão Bloquear / Desbloquear */}
                     <button
-                      type="button"
-                      onClick={() => setIsAddMemberOpen(true)}
-                      className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
+                      onClick={handleToggleCardBlocked}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition ${
+                        activeCard.is_blocked
+                          ? "bg-rose-600/20 border-rose-500 text-rose-300 hover:bg-rose-600/30"
+                          : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200"
+                      }`}
                     >
-                      <Users size={14} className="text-indigo-600" />
-                      <span>Membros da Equipe</span>
+                      <Ban className="w-3.5 h-3.5 text-rose-400" />
+                      {activeCard.is_blocked ? "Desbloquear Cartão" : "Marcar como Bloqueado"}
                     </button>
+
+                    {/* Mover para Concluído */}
                     <button
-                      type="button"
-                      onClick={() => setIsAddingChecklistItem(true)}
-                      className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
+                      onClick={() => handleChangeCardStatus("Concluído")}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-emerald-950/40 border border-slate-700 hover:border-emerald-600 text-slate-200 hover:text-emerald-300 text-xs font-semibold transition"
                     >
-                      <CheckSquare size={14} className="text-blue-600" />
-                      <span>Checklist de Tarefas</span>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      Mover para Concluído
                     </button>
+
+                    {/* Excluir Cartão */}
                     <button
-                      type="button"
-                      onClick={handleOpenLinkAsset}
-                      className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
+                      onClick={handleDeleteCard}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-700 text-slate-400 hover:text-rose-300 text-xs font-semibold transition"
                     >
-                      <Server size={14} className="text-emerald-600" />
-                      <span>Equipamento CMDB</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsLinkTicketOpen(true)}
-                      className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
-                    >
-                      <Ticket size={14} className="text-amber-600" />
-                      <span>Chamado Helpdesk</span>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Excluir Cartão
                     </button>
                   </div>
                 </div>
 
-                <div>
-                  <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Ações do Projeto
-                  </h5>
-                  <div className="space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleCloseCard();
-                        setEditingProject(cardDetail);
-                        setProjectForm({
-                          title: cardDetail.title || "",
-                          category: cardDetail.category || "Infraestrutura",
-                          status: cardDetail.status || "Planejamento",
-                          priority: cardDetail.priority || "Média",
-                          start_date: cardDetail.start_date || "",
-                          due_date: cardDetail.due_date || "",
-                          budget: cardDetail.budget ? String(cardDetail.budget) : "",
-                          manager_id: cardDetail.manager_id || "",
-                          description: cardDetail.description || "",
-                        });
-                        setIsProjectModalOpen(true);
-                      }}
-                      className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
-                    >
-                      <Edit3 size={14} className="text-slate-600" />
-                      <span>Editar Dados Gerais</span>
-                    </button>
-
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (window.confirm("Atenção: deseja excluir este projeto permanentemente?")) {
-                            await projectsApi.deleteProject(cardDetail.id);
-                            handleCloseCard();
-                            loadData();
-                          }
-                        }}
-                        className="w-full px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
-                      >
-                        <Trash2 size={14} className="text-rose-600" />
-                        <span>Excluir Projeto</span>
-                      </button>
-                    )}
-                  </div>
+                {/* Informações de Criação */}
+                <div className="bg-slate-850 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                  <div>Criado em: {new Date(activeCard.created_at).toLocaleDateString("pt-BR")}</div>
+                  {activeCard.completed_at && (
+                    <div className="text-emerald-400 font-semibold">
+                      Concluído em: {new Date(activeCard.completed_at).toLocaleDateString("pt-BR")}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1286,358 +1823,443 @@ export default function Projects() {
         </div>
       )}
 
-      {/* ─── MODAL VINCULAR ATIVO CMDB ─── */}
-      {isLinkAssetOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Server className="text-emerald-600" size={18} />
-                Vincular Ativo CMDB
-              </h3>
+      {/* ========================================================================= */}
+      {/* MODAL 1: CRIAR NOVO QUADRO DE PROJETO                                    */}
+      {/* ========================================================================= */}
+      {isNewBoardModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-blue-600/20 text-blue-400">
+                  <LayoutGrid className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Criar Novo Quadro de Projeto</h3>
+                  <p className="text-xs text-slate-400">Organize tarefas, equipe e equipamentos da TI</p>
+                </div>
+              </div>
               <button
-                type="button"
-                onClick={() => setIsLinkAssetOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                onClick={() => setIsNewBoardModalOpen(false)}
+                className="text-slate-400 hover:text-white"
               >
-                <X size={18} />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-5 space-y-3 flex-1 overflow-y-auto">
-              <input
-                type="text"
-                placeholder="Buscar por tag, nome, modelo ou IP..."
-                value={assetSearch}
-                onChange={(e) => setAssetSearch(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+            <form onSubmit={handleCreateBoard} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Título do Quadro / Projeto *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newBoardForm.title}
+                  onChange={(e) => setNewBoardForm({ ...newBoardForm, title: e.target.value })}
+                  placeholder="Ex: Upgrade de Switches Core e Distribuição"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
 
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
-                {availableAssetsToLink.length === 0 ? (
-                  <p className="p-4 text-center text-xs text-slate-400">Nenhum equipamento encontrado.</p>
-                ) : (
-                  availableAssetsToLink.slice(0, 20).map((asset) => (
-                    <div key={asset.id} className="p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Categoria
+                  </label>
+                  <select
+                    value={newBoardForm.category}
+                    onChange={(e) => setNewBoardForm({ ...newBoardForm, category: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="Infraestrutura">Infraestrutura</option>
+                    <option value="Redes & Wi-Fi">Redes & Wi-Fi</option>
+                    <option value="Sistemas & ERP">Sistemas & ERP</option>
+                    <option value="Hotelaria & UHs">Hotelaria & UHs</option>
+                    <option value="Segurança & CFTV">Segurança & CFTV</option>
+                    <option value="Hardware & Servidores">Hardware & Servidores</option>
+                    <option value="Outros">Outros</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Prioridade
+                  </label>
+                  <select
+                    value={newBoardForm.priority}
+                    onChange={(e) => setNewBoardForm({ ...newBoardForm, priority: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="Baixa">Baixa</option>
+                    <option value="Média">Média</option>
+                    <option value="Alta">Alta</option>
+                    <option value="Crítica">Crítica</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Descrição do Objetivo
+                </label>
+                <textarea
+                  rows={3}
+                  value={newBoardForm.description}
+                  onChange={(e) => setNewBoardForm({ ...newBoardForm, description: e.target.value })}
+                  placeholder="Escopo geral, benefícios para a operação e resultados esperados..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsNewBoardModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingBoard}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold shadow-md shadow-blue-600/30 transition"
+                >
+                  {creatingBoard ? "Criando..." : "Criar Quadro"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2: GESTÃO DE EQUIPE DO QUADRO                                      */}
+      {/* ========================================================================= */}
+      {isMembersModalOpen && activeBoard && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-400" />
+                <h3 className="text-sm font-bold text-white">Equipe Técnica do Quadro</h3>
+              </div>
+              <button onClick={() => setIsMembersModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Adicionar Membro */}
+            <div className="flex gap-2">
+              <select
+                value={selectedMemberToAdd}
+                onChange={(e) => setSelectedMemberToAdd(e.target.value)}
+                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Selecione um técnico da TI...</option>
+                {usersList.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.display_name} ({u.role})
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleAddBoardMember}
+                disabled={!selectedMemberToAdd}
+                className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold transition"
+              >
+                Adicionar
+              </button>
+            </div>
+
+            {/* Membros Atuais */}
+            <div className="space-y-2 max-h-60 overflow-y-auto pt-2">
+              {(activeBoard.members || []).map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between bg-slate-850 p-2.5 rounded-xl border border-slate-800"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
+                      {m.display_name.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">{m.display_name}</div>
+                      <div className="text-[10px] text-slate-400">{m.email || m.role}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveBoardMember(m.id)}
+                    className="text-slate-500 hover:text-rose-400 p-1"
+                    title="Remover do quadro"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {(activeBoard.members || []).length === 0 && (
+                <div className="text-xs text-slate-500 text-center py-4">Nenhum membro vinculado ainda.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: POWER-UP ATIVOS CMDB DO QUADRO                                  */}
+      {/* ========================================================================= */}
+      {isAssetsModalOpen && activeBoard && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Server className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Equipamentos & Ativos (CMDB)</h3>
+                  <p className="text-xs text-slate-400">Ativos físicos ou lógicos envolvidos neste projeto</p>
+                </div>
+              </div>
+              <button onClick={() => setIsAssetsModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Busca para Vincular Novo Ativo */}
+            <div className="space-y-2">
+              <span className="text-xs font-semibold text-slate-300 block">Vincular Novo Equipamento</span>
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={assetSearchQuery}
+                  onChange={(e) => setAssetSearchQuery(e.target.value)}
+                  placeholder="Pesquisar por nome, patrimônio ou modelo..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {assetSearchQuery && (
+                <div className="max-h-40 overflow-y-auto bg-slate-950 border border-slate-800 rounded-lg divide-y divide-slate-800">
+                  {availableAssetsToLink.slice(0, 5).map((a) => (
+                    <div
+                      key={a.id}
+                      className="p-2 flex items-center justify-between hover:bg-slate-800/60 transition"
+                    >
                       <div>
-                        <strong className="text-slate-800 block">{asset.name}</strong>
-                        <span className="text-[11px] text-slate-500 font-mono">
-                          Tag: {asset.asset_tag || "S/N"} • IP: {asset.ip_address || "DHCP"}
-                        </span>
+                        <div className="text-xs font-bold text-white">{a.name}</div>
+                        <div className="text-[10px] text-slate-400">
+                          [{a.asset_tag || "Sem Tag"}] • {a.type} • {a.location_name || "Sem local"}
+                        </div>
                       </div>
                       <button
-                        type="button"
-                        onClick={() => handleLinkAsset(asset.id)}
-                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                        onClick={() => {
+                          handleLinkBoardAsset(a.id);
+                          setAssetSearchQuery("");
+                        }}
+                        className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-semibold"
                       >
                         Vincular
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODAL ASSOCIAR TÉCNICO À EQUIPE ─── */}
-      {isAddMemberOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Users className="text-indigo-600" size={18} />
-                Adicionar Membro à Equipe
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsAddMemberOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-              >
-                <X size={18} />
-              </button>
+                  ))}
+                  {availableAssetsToLink.length === 0 && (
+                    <div className="p-3 text-xs text-slate-500 text-center">Nenhum equipamento encontrado.</div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="p-5 space-y-4">
-              <select
-                value={selectedMemberToAdd}
-                onChange={(e) => setSelectedMemberToAdd(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none"
-              >
-                <option value="">Selecione o técnico...</option>
-                {availableUsersForTeam.map((u) => (
-                  <option key={u.id} value={u.id}>{u.display_name} ({u.role})</option>
-                ))}
-              </select>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddMemberOpen(false)}
-                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold"
+            {/* Lista dos Ativos já Vinculados */}
+            <div className="flex-1 overflow-y-auto space-y-2 pt-2">
+              <span className="text-xs font-semibold text-slate-300 block">
+                Equipamentos Vinculados ({(activeBoard.assets || []).length})
+              </span>
+              {(activeBoard.assets || []).map((ast) => (
+                <div
+                  key={ast.id}
+                  className="flex items-center justify-between bg-slate-850 p-3 rounded-xl border border-slate-800"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  disabled={!selectedMemberToAdd}
-                  onClick={() => handleAddMember(selectedMemberToAdd)}
-                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold disabled:opacity-50"
-                >
-                  Confirmar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODAL VINCULAR CHAMADO ─── */}
-      {isLinkTicketOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Ticket className="text-amber-600" size={18} />
-                Vincular Chamado Helpdesk
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsLinkTicketOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleLinkTicket} className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ID do Chamado *</label>
-                <input
-                  type="number"
-                  required
-                  placeholder="Ex: 142"
-                  value={ticketIdInput}
-                  onChange={(e) => setTicketIdInput(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsLinkTicketOpen(false)}
-                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold"
-                >
-                  Vincular
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODAL BLOQUEAR TAREFA ─── */}
-      {isBlockModalOpen && blockingTask && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-base font-black text-rose-700 flex items-center gap-2">
-                <Ban size={18} />
-                Sinalizar Impedimento Técnico
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsBlockModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleConfirmBlockTask} className="p-5 space-y-4">
-              <p className="text-xs text-slate-600">
-                Tarefa: <strong>{blockingTask.title}</strong>
-              </p>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Motivo do Bloqueio *</label>
-                <textarea
-                  rows={3}
-                  required
-                  value={blockReason}
-                  onChange={(e) => setBlockReason(e.target.value)}
-                  placeholder="Ex: Aguardando resposta do fornecedor sobre entrega dos cabos..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsBlockModalOpen(false)}
-                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold"
-                >
-                  Confirmar Bloqueio
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODAL COMPLETO DE PROJETO (CRIAR / EDITAR) ─── */}
-      {isProjectModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900">
-                {editingProject ? `Editar: ${editingProject.code}` : "Novo Projeto de TI"}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsProjectModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!projectForm.title.trim()) return;
-                try {
-                  const payload = {
-                    title: projectForm.title.trim(),
-                    category: projectForm.category,
-                    status: projectForm.status,
-                    priority: projectForm.priority,
-                    start_date: projectForm.start_date || null,
-                    due_date: projectForm.due_date || null,
-                    budget: projectForm.budget ? parseFloat(projectForm.budget) : 0.0,
-                    manager_id: projectForm.manager_id ? parseInt(projectForm.manager_id) : null,
-                    description: projectForm.description ? projectForm.description.trim() : null,
-                  };
-
-                  if (editingProject) {
-                    await projectsApi.updateProject(editingProject.id, payload);
-                  } else {
-                    await projectsApi.createProject(payload);
-                  }
-                  setIsProjectModalOpen(false);
-                  await loadData();
-                } catch (err) {
-                  alert("Erro ao salvar: " + (err.response?.data?.detail || err.message));
-                }
-              }}
-              className="p-5 space-y-3"
-            >
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Título do Projeto *</label>
-                <input
-                  type="text"
-                  required
-                  value={projectForm.title}
-                  onChange={(e) => setProjectForm({ ...projectForm, title: e.target.value })}
-                  placeholder="Ex: Reforma da Rede Wi-Fi dos Pavimentos"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Categoria *</label>
-                  <select
-                    value={projectForm.category}
-                    onChange={(e) => setProjectForm({ ...projectForm, category: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                      <Server className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">{ast.name}</div>
+                      <div className="text-[10px] text-slate-400">
+                        Tag: <span className="font-mono text-amber-300">{ast.asset_tag || "S/T"}</span> • {ast.type} • {ast.model || "Modelo padrão"}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleUnlinkBoardAsset(ast.id)}
+                    className="text-slate-500 hover:text-rose-400 p-1"
+                    title="Desvincular do quadro"
                   >
-                    {Object.keys(CATEGORY_COLORS).map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                    <Unlink className="w-4 h-4" />
+                  </button>
                 </div>
+              ))}
+              {(activeBoard.assets || []).length === 0 && (
+                <div className="text-xs text-slate-500 text-center py-6">Nenhum ativo associado a este projeto.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Coluna Inicial</label>
-                  <select
-                    value={projectForm.status}
-                    onChange={(e) => setProjectForm({ ...projectForm, status: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
-                  >
-                    {BOARD_COLUMNS.map((col) => (
-                      <option key={col.id} value={col.id}>{col.title}</option>
-                    ))}
-                  </select>
-                </div>
+      {/* ========================================================================= */}
+      {/* MODAL 4: POWER-UP CHAMADOS DO QUADRO                                     */}
+      {/* ========================================================================= */}
+      {isTicketsModalOpen && activeBoard && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Ticket className="w-5 h-5 text-rose-400" />
+                <h3 className="text-sm font-bold text-white">Chamados Vinculados</h3>
               </div>
+              <button onClick={() => setIsTicketsModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Gestor do Projeto</label>
-                  <select
-                    value={projectForm.manager_id}
-                    onChange={(e) => setProjectForm({ ...projectForm, manager_id: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
-                  >
-                    <option value="">Não atribuído</option>
-                    {usersList.map((u) => (
-                      <option key={u.id} value={u.id}>{u.display_name} ({u.role})</option>
-                    ))}
-                  </select>
-                </div>
+            {/* Vincular Chamado por ID */}
+            <div className="flex gap-2">
+              <input
+                type="number"
+                value={ticketSearchId}
+                onChange={(e) => setTicketSearchId(e.target.value)}
+                placeholder="Número ID do Chamado (Ex: 104)..."
+                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+              />
+              <button
+                onClick={handleLinkBoardTicket}
+                disabled={!ticketSearchId.trim()}
+                className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold transition"
+              >
+                Vincular
+              </button>
+            </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Prazo de Entrega</label>
-                  <input
-                    type="date"
-                    value={projectForm.due_date}
-                    onChange={(e) => setProjectForm({ ...projectForm, due_date: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Descrição / Escopo</label>
-                <textarea
-                  rows={3}
-                  value={projectForm.description}
-                  onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
-                  placeholder="Justificativa técnica, objetivos e escopo..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsProjectModalOpen(false)}
-                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold"
+            {/* Chamados Vinculados */}
+            <div className="flex-1 overflow-y-auto space-y-2 pt-2">
+              {(activeBoard.tickets || []).map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between bg-slate-850 p-3 rounded-xl border border-slate-800"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-xs"
-                >
-                  {editingProject ? "Atualizar" : "Criar Projeto"}
-                </button>
+                  <div>
+                    <div className="text-xs font-bold text-white">
+                      #{t.id} — {t.title}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Status: <span className="text-rose-400 font-semibold">{t.status}</span> • Prioridade: {t.priority}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleUnlinkBoardTicket(t.id)}
+                    className="text-slate-500 hover:text-rose-400 p-1"
+                    title="Desvincular chamado"
+                  >
+                    <Unlink className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {(activeBoard.tickets || []).length === 0 && (
+                <div className="text-xs text-slate-500 text-center py-6">Nenhum chamado vinculado.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: AUTOMAÇÃO BUTLER (Regras Ativas do Trello)                     */}
+      {/* ========================================================================= */}
+      {isButlerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-amber-400">
+                <Zap className="w-5 h-5 animate-pulse" />
+                <h3 className="text-base font-bold text-white">Automações Ativas (Butler)</h3>
               </div>
-            </form>
+              <button onClick={() => setIsButlerModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-3.5 bg-slate-850 border border-slate-800 rounded-xl space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4" /> Regra 1: Carimbo de Conclusão Automática
+                </div>
+                <p className="text-xs text-slate-300">
+                  Quando um cartão for arrastado para a coluna <strong>"Concluído"</strong>, a data de finalização é registrada e o progresso do quadro é recalculado instantaneamente.
+                </p>
+              </div>
+
+              <div className="p-3.5 bg-slate-850 border border-slate-800 rounded-xl space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-400">
+                  <CheckSquare className="w-4 h-4" /> Regra 2: Checklist 100% Completo
+                </div>
+                <p className="text-xs text-slate-300">
+                  Ao marcar todos os subitens de verificação de um cartão, a borda do cartão ganha destaque verde indicando prontidão para entrega.
+                </p>
+              </div>
+
+              <div className="p-3.5 bg-slate-850 border border-slate-800 rounded-xl space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-rose-400">
+                  <AlertTriangle className="w-4 h-4" /> Regra 3: Alerta de Impedimento (Bloqueio)
+                </div>
+                <p className="text-xs text-slate-300">
+                  Ao marcar uma atividade como bloqueada, um badge vermelho piscante é acionado e o evento é inserido no log de auditoria do projeto.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setIsButlerModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: LINHA DO TEMPO / HISTÓRICO COMPLETO DO QUADRO                   */}
+      {/* ========================================================================= */}
+      {isTimelineModalOpen && activeBoard && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-indigo-400">
+                <History className="w-5 h-5" />
+                <h3 className="text-base font-bold text-white">Linha do Tempo de Atividades</h3>
+              </div>
+              <button onClick={() => setIsTimelineModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {(activeBoard.timeline || []).map((ev) => (
+                <div key={ev.id} className="p-3 bg-slate-850 border border-slate-800 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span className="font-semibold text-white">{ev.author?.display_name || "Sistema"}</span>
+                    <span>{new Date(ev.created_at).toLocaleString("pt-BR")}</span>
+                  </div>
+                  <p className="text-xs text-slate-200">{ev.content}</p>
+                </div>
+              ))}
+              {(activeBoard.timeline || []).length === 0 && (
+                <div className="text-xs text-slate-500 text-center py-6">Nenhum evento registrado ainda.</div>
+              )}
+            </div>
           </div>
         </div>
       )}

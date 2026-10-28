@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Table, Column, Integer, String, Text, Date, DateTime, Numeric, ForeignKey, Boolean, Enum as SQLEnum
+    Table, Column, Integer, String, Text, Date, DateTime, Numeric, ForeignKey, Boolean, Enum as SQLEnum, JSON
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -108,6 +108,8 @@ class ProjectTask(Base):
     
     is_blocked = Column(Boolean, default=False, nullable=False)
     blocked_reason = Column(Text, nullable=True)
+    checklist = Column(JSON, nullable=True, default=list)
+    asset_id = Column(Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True, index=True)
     
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -131,6 +133,7 @@ class ProjectTask(Base):
     project = relationship("Project", back_populates="tasks")
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     ticket = relationship("Ticket", foreign_keys=[ticket_id])
+    asset = relationship("Asset", foreign_keys=[asset_id])
 
 
 class ProjectTimeline(Base):

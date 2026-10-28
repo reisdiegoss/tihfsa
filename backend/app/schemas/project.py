@@ -83,6 +83,8 @@ class ProjectTaskBase(BaseModel):
     is_blocked: bool = False
     blocked_reason: Optional[str] = None
     assigned_to_id: Optional[int] = None
+    asset_id: Optional[int] = None
+    checklist: Optional[List[dict]] = []
     due_date: Optional[date] = None
     order: int = 0
 
@@ -100,6 +102,9 @@ class ProjectTaskUpdate(BaseModel):
     is_blocked: Optional[bool] = None
     blocked_reason: Optional[str] = None
     assigned_to_id: Optional[int] = None
+    asset_id: Optional[int] = None
+    ticket_id: Optional[int] = None
+    checklist: Optional[List[dict]] = None
     due_date: Optional[date] = None
     order: Optional[int] = None
 
@@ -109,6 +114,7 @@ class ProjectTaskResponse(ProjectTaskBase):
     project_id: int
     ticket_id: Optional[int] = None
     ticket: Optional[ProjectTicketSummary] = None
+    asset: Optional[AssetMiniSummary] = None
     assigned_to: Optional[UserMiniSummary] = None
     completed_at: Optional[datetime] = None
     created_at: datetime

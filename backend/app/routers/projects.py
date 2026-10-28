@@ -154,6 +154,7 @@ def _format_ticket_summary(ticket: Ticket) -> ProjectTicketSummary:
 def _format_task_response(task: ProjectTask) -> ProjectTaskResponse:
     ticket_summary = _format_ticket_summary(task.ticket) if task.ticket else None
     assigned_summary = _format_user_summary(task.assigned_to) if task.assigned_to else None
+    asset_summary = _format_asset_summary(task.asset) if getattr(task, "asset", None) else None
     return ProjectTaskResponse(
         id=task.id,
         project_id=task.project_id,
@@ -167,6 +168,9 @@ def _format_task_response(task: ProjectTask) -> ProjectTaskResponse:
         assigned_to=assigned_summary,
         ticket_id=task.ticket_id,
         ticket=ticket_summary,
+        asset_id=getattr(task, "asset_id", None),
+        asset=asset_summary,
+        checklist=getattr(task, "checklist", []) or [],
         due_date=task.due_date,
         order=task.order,
         completed_at=task.completed_at,
@@ -554,6 +558,8 @@ def create_project_task(
         blocked_reason=data.blocked_reason,
         assigned_to_id=data.assigned_to_id,
         ticket_id=created_ticket_id,
+        asset_id=data.asset_id,
+        checklist=data.checklist or [],
         due_date=data.due_date,
         order=data.order or len(project.tasks),
     )
