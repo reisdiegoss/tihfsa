@@ -266,6 +266,8 @@ async def lifespan(app: FastAPI):
             conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS transfer_reason TEXT;"))
             conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS previous_technician_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_tickets_support_level ON tickets(support_level);"))
+            conn.execute(text("ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE NOT NULL;"))
+            conn.execute(text("ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS blocked_reason TEXT;"))
             conn.execute(text("ALTER TABLE ticket_interactions ADD COLUMN IF NOT EXISTS interaction_type VARCHAR(40) DEFAULT 'comment' NOT NULL;"))
             conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_requester_on_update BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notify_ti_on_create BOOLEAN DEFAULT TRUE;"))

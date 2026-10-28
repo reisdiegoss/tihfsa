@@ -18,6 +18,44 @@ class UserMiniSummary(BaseModel):
 
 
 # ----------------------------------------------------
+# Schemas para Ativos CMDB Vinculados (Resumo)
+# ----------------------------------------------------
+class AssetMiniSummary(BaseModel):
+    id: int
+    asset_tag: Optional[str] = None
+    name: str
+    type: str
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    ip_address: Optional[str] = None
+    location_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ----------------------------------------------------
+# Schemas para Linha do Tempo / Timeline de Projetos
+# ----------------------------------------------------
+class ProjectTimelineCreate(BaseModel):
+    content: str = Field(..., min_length=1)
+    event_type: str = "comment"  # comment, system, task, ticket, asset, status
+
+
+class ProjectTimelineResponse(BaseModel):
+    id: int
+    project_id: int
+    author_id: Optional[int] = None
+    author: Optional[UserMiniSummary] = None
+    event_type: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ----------------------------------------------------
 # Schemas para Chamados Vinculados (Resumo)
 # ----------------------------------------------------
 class ProjectTicketSummary(BaseModel):
@@ -42,6 +80,8 @@ class ProjectTaskBase(BaseModel):
     description: Optional[str] = None
     status: str = Field(default="A Fazer")
     priority: str = Field(default="Média")
+    is_blocked: bool = False
+    blocked_reason: Optional[str] = None
     assigned_to_id: Optional[int] = None
     due_date: Optional[date] = None
     order: int = 0
@@ -57,6 +97,8 @@ class ProjectTaskUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
     priority: Optional[str] = None
+    is_blocked: Optional[bool] = None
+    blocked_reason: Optional[str] = None
     assigned_to_id: Optional[int] = None
     due_date: Optional[date] = None
     order: Optional[int] = None
@@ -118,9 +160,12 @@ class ProjectResponse(ProjectBase):
     created_by_id: Optional[int] = None
     manager: Optional[UserMiniSummary] = None
     created_by: Optional[UserMiniSummary] = None
+    members: List[UserMiniSummary] = []
     tasks_count: int = 0
     tasks_completed_count: int = 0
     tickets_count: int = 0
+    assets_count: int = 0
+    members_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -131,13 +176,15 @@ class ProjectResponse(ProjectBase):
 class ProjectDetailResponse(ProjectResponse):
     tasks: List[ProjectTaskResponse] = []
     tickets: List[ProjectTicketSummary] = []
+    assets: List[AssetMiniSummary] = []
+    timeline: List[ProjectTimelineResponse] = []
 
     class Config:
         from_attributes = True
 
 
 # ----------------------------------------------------
-# Ações Rápidas de Chamados dentro do Projeto
+# Ações Rápidas de Chamados, Membros e Ativos
 # ----------------------------------------------------
 class ProjectCreateTicketRequest(BaseModel):
     title: str = Field(..., max_length=300)
@@ -151,3 +198,11 @@ class ProjectCreateTicketRequest(BaseModel):
 
 class ProjectLinkTicketRequest(BaseModel):
     ticket_id: int
+
+
+class ProjectMemberRequest(BaseModel):
+    user_id: int
+
+
+class ProjectAssetRequest(BaseModel):
+    asset_id: int

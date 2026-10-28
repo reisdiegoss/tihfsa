@@ -1,5 +1,5 @@
 """
-Router Projects — Gestão de Projetos, Portfólio, Kanban e Integração com Chamados do Helpdesk.
+Router Projects — Gestão de Projetos, Portfólio, Kanban, CMDB, Equipe e Linha do Tempo.
 """
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -10,7 +10,8 @@ from sqlalchemy import or_, desc
 from app.database import get_db
 from app.auth.dependencies import get_current_user
 from app.models.user import User, UserRole
-from app.models.project import Project, ProjectTask, ProjectStatus, ProjectPriority, TaskStatus
+from app.models.project import Project, ProjectTask, ProjectStatus, ProjectPriority, TaskStatus, ProjectTimeline
+from app.models.asset import Asset
 from app.models.ticket import Ticket, TicketStatus, TicketPriority, SupportLevel
 from app.schemas.project import (
     ProjectCreate,
@@ -23,6 +24,11 @@ from app.schemas.project import (
     ProjectTicketSummary,
     ProjectCreateTicketRequest,
     ProjectLinkTicketRequest,
+    ProjectMemberRequest,
+    ProjectAssetRequest,
+    AssetMiniSummary,
+    ProjectTimelineCreate,
+    ProjectTimelineResponse,
     UserMiniSummary,
 )
 
@@ -88,6 +94,47 @@ def _format_user_summary(user: Optional[User]) -> Optional[UserMiniSummary]:
     )
 
 
+def _format_asset_summary(asset: Optional[Asset]) -> Optional[AssetMiniSummary]:
+    if not asset:
+        return None
+    loc_name = asset.location.name if getattr(asset, "location", None) else None
+    return AssetMiniSummary(
+        id=asset.id,
+        asset_tag=asset.asset_tag,
+        name=asset.name,
+        type=asset.type.value if hasattr(asset.type, "value") else str(asset.type),
+        brand=asset.brand,
+        model=asset.model,
+        ip_address=asset.ip_address,
+        location_name=loc_name,
+    )
+
+
+def _format_timeline_response(entry: ProjectTimeline) -> ProjectTimelineResponse:
+    return ProjectTimelineResponse(
+        id=entry.id,
+        project_id=entry.project_id,
+        author_id=entry.author_id,
+        author=_format_user_summary(entry.author),
+        event_type=entry.event_type,
+        content=entry.content,
+        created_at=entry.created_at,
+    )
+
+
+def _add_timeline_event(db: Session, project_id: int, content: str, event_type: str = "system", author_id: Optional[int] = None):
+    try:
+        event = ProjectTimeline(
+            project_id=project_id,
+            author_id=author_id,
+            event_type=event_type,
+            content=content,
+        )
+        db.add(event)
+    except Exception as e:
+        print(f"[Timeline Event Error] {e}")
+
+
 def _format_ticket_summary(ticket: Ticket) -> ProjectTicketSummary:
     status_str = ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status)
     priority_str = ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)
@@ -114,6 +161,8 @@ def _format_task_response(task: ProjectTask) -> ProjectTaskResponse:
         description=task.description,
         status=task.status,
         priority=task.priority,
+        is_blocked=getattr(task, "is_blocked", False) or False,
+        blocked_reason=getattr(task, "blocked_reason", None),
         assigned_to_id=task.assigned_to_id,
         assigned_to=assigned_summary,
         ticket_id=task.ticket_id,
@@ -179,6 +228,9 @@ def list_projects(
         tasks_count = len(p.tasks)
         tasks_completed = sum(1 for t in p.tasks if t.status == TaskStatus.CONCLUIDO.value)
         tickets_count = len(p.tickets)
+        assets_count = len(p.assets)
+        members_count = len(p.members)
+        members_formatted = [_format_user_summary(m) for m in p.members]
 
         result.append(
             ProjectResponse(
@@ -199,9 +251,12 @@ def list_projects(
                 created_by_id=p.created_by_id,
                 manager=_format_user_summary(p.manager),
                 created_by=_format_user_summary(p.created_by),
+                members=members_formatted,
                 tasks_count=tasks_count,
                 tasks_completed_count=tasks_completed,
                 tickets_count=tickets_count,
+                assets_count=assets_count,
+                members_count=members_count,
                 created_at=p.created_at,
                 updated_at=p.updated_at,
             )
@@ -241,6 +296,15 @@ def create_project(
     db.commit()
     db.refresh(project)
 
+    # Registrar evento inicial na timeline
+    _add_timeline_event(
+        db, project.id,
+        f"Projeto {project.code} — '{project.title}' criado por {current_user.display_name}.",
+        event_type="system",
+        author_id=current_user.id
+    )
+    db.commit()
+
     return ProjectResponse(
         id=project.id,
         code=project.code,
@@ -259,9 +323,12 @@ def create_project(
         created_by_id=project.created_by_id,
         manager=_format_user_summary(project.manager),
         created_by=_format_user_summary(project.created_by),
+        members=[],
         tasks_count=0,
         tasks_completed_count=0,
         tickets_count=0,
+        assets_count=0,
+        members_count=0,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -273,7 +340,7 @@ def get_project_detail(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Obtém detalhes de um projeto com tarefas e chamados vinculados."""
+    """Obtém detalhes de um projeto com tarefas, chamados, ativos, equipe e linha do tempo."""
     _check_project_permission(current_user, action="view")
 
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -283,9 +350,14 @@ def get_project_detail(
     tasks_count = len(project.tasks)
     tasks_completed = sum(1 for t in project.tasks if t.status == TaskStatus.CONCLUIDO.value)
     tickets_count = len(project.tickets)
+    assets_count = len(project.assets)
+    members_count = len(project.members)
 
     tasks_formatted = [_format_task_response(t) for t in project.tasks]
     tickets_formatted = [_format_ticket_summary(t) for t in project.tickets]
+    assets_formatted = [_format_asset_summary(a) for a in project.assets]
+    members_formatted = [_format_user_summary(m) for m in project.members]
+    timeline_formatted = [_format_timeline_response(tl) for tl in project.timeline]
 
     return ProjectDetailResponse(
         id=project.id,
@@ -305,11 +377,16 @@ def get_project_detail(
         created_by_id=project.created_by_id,
         manager=_format_user_summary(project.manager),
         created_by=_format_user_summary(project.created_by),
+        members=members_formatted,
         tasks_count=tasks_count,
         tasks_completed_count=tasks_completed,
         tickets_count=tickets_count,
+        assets_count=assets_count,
+        members_count=members_count,
         tasks=tasks_formatted,
         tickets=tickets_formatted,
+        assets=assets_formatted,
+        timeline=timeline_formatted,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -330,6 +407,7 @@ def update_project(
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
 
     update_dict = data.dict(exclude_unset=True)
+    old_status = project.status
 
     # Se status mudou para Concluído, registrar completed_at
     if "status" in update_dict and update_dict["status"] == ProjectStatus.CONCLUIDO.value:
@@ -342,12 +420,24 @@ def update_project(
     for field, val in update_dict.items():
         setattr(project, field, val)
 
+    # Evento de alteração de status
+    if "status" in update_dict and update_dict["status"] != old_status:
+        _add_timeline_event(
+            db, project.id,
+            f"Status do projeto alterado de '{old_status}' para '{project.status}'.",
+            event_type="status",
+            author_id=current_user.id
+        )
+
     db.commit()
     db.refresh(project)
 
     tasks_count = len(project.tasks)
     tasks_completed = sum(1 for t in project.tasks if t.status == TaskStatus.CONCLUIDO.value)
     tickets_count = len(project.tickets)
+    assets_count = len(project.assets)
+    members_count = len(project.members)
+    members_formatted = [_format_user_summary(m) for m in project.members]
 
     return ProjectResponse(
         id=project.id,
@@ -367,9 +457,12 @@ def update_project(
         created_by_id=project.created_by_id,
         manager=_format_user_summary(project.manager),
         created_by=_format_user_summary(project.created_by),
+        members=members_formatted,
         tasks_count=tasks_count,
         tasks_completed_count=tasks_completed,
         tickets_count=tickets_count,
+        assets_count=assets_count,
+        members_count=members_count,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -418,7 +511,6 @@ def create_project_task(
 
     # Se selecionado "Criar Chamado", cria chamado Helpdesk correspondente
     if data.create_ticket:
-        # Converter prioridade para o Enum do Helpdesk
         prio_map = {
             "Baixa": TicketPriority.LOW,
             "Média": TicketPriority.MEDIUM,
@@ -443,7 +535,6 @@ def create_project_task(
         db.flush()
         created_ticket_id = ticket.id
 
-        # Notificar técnico se atribuído
         if data.assigned_to_id:
             try:
                 from app.services.email_service import notify_technician_assigned
@@ -459,6 +550,8 @@ def create_project_task(
         description=data.description,
         status=data.status or TaskStatus.A_FAZER.value,
         priority=data.priority or "Média",
+        is_blocked=data.is_blocked,
+        blocked_reason=data.blocked_reason,
         assigned_to_id=data.assigned_to_id,
         ticket_id=created_ticket_id,
         due_date=data.due_date,
@@ -471,6 +564,14 @@ def create_project_task(
 
     # Recalcula progresso
     _recalc_project_progress(project)
+
+    # Timeline event
+    _add_timeline_event(
+        db, project.id,
+        f"Nova atividade adicionada: '{task.title}' ({task.status}).",
+        event_type="task",
+        author_id=current_user.id
+    )
     db.commit()
 
     return _format_task_response(task)
@@ -484,7 +585,7 @@ def update_project_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Atualiza status, responsável, prioridade ou ordem da tarefa (movimentação no Kanban)."""
+    """Atualiza status, responsável, prioridade, bloqueio ou ordem da tarefa (Kanban)."""
     _check_project_permission(current_user, action="edit")
 
     task = db.query(ProjectTask).filter(
@@ -496,6 +597,8 @@ def update_project_task(
         raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
 
     update_dict = data.dict(exclude_unset=True)
+    old_status = task.status
+    old_blocked = task.is_blocked
 
     # Conclusão
     if "status" in update_dict and update_dict["status"] == TaskStatus.CONCLUIDO.value:
@@ -505,6 +608,32 @@ def update_project_task(
 
     for field, val in update_dict.items():
         setattr(task, field, val)
+
+    # Eventos de timeline para a tarefa
+    if "status" in update_dict and update_dict["status"] != old_status:
+        _add_timeline_event(
+            db, project_id,
+            f"Tarefa '{task.title}' movida para status '{task.status}'.",
+            event_type="task",
+            author_id=current_user.id
+        )
+
+    if "is_blocked" in update_dict and update_dict["is_blocked"] != old_blocked:
+        if task.is_blocked:
+            reason_str = f" Motivo: {task.blocked_reason}" if task.blocked_reason else ""
+            _add_timeline_event(
+                db, project_id,
+                f"Tarefa '{task.title}' marcada como BLOQUEADA.{reason_str}",
+                event_type="task",
+                author_id=current_user.id
+            )
+        else:
+            _add_timeline_event(
+                db, project_id,
+                f"Tarefa '{task.title}' foi DESBLOQUEADA.",
+                event_type="task",
+                author_id=current_user.id
+            )
 
     db.commit()
     db.refresh(task)
@@ -536,8 +665,16 @@ def delete_project_task(
     if not task:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
 
+    task_title = task.title
     db.delete(task)
     db.commit()
+
+    _add_timeline_event(
+        db, project_id,
+        f"Tarefa '{task_title}' excluída do projeto.",
+        event_type="task",
+        author_id=current_user.id
+    )
 
     project = db.query(Project).filter(Project.id == project_id).first()
     if project:
@@ -545,6 +682,190 @@ def delete_project_task(
         db.commit()
 
     return None
+
+
+# ====================================================
+# EQUIPE / MEMBROS DO PROJETO
+# ====================================================
+
+@router.post("/{project_id}/members", response_model=List[UserMiniSummary])
+def add_project_member(
+    project_id: int,
+    data: ProjectMemberRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Adiciona um técnico participante à equipe do projeto."""
+    _check_project_permission(current_user, action="edit")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    user = db.query(User).filter(User.id == data.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    if user not in project.members:
+        project.members.append(user)
+        _add_timeline_event(
+            db, project.id,
+            f"Técnico {user.display_name} associado à equipe do projeto.",
+            event_type="system",
+            author_id=current_user.id
+        )
+        db.commit()
+
+    return [_format_user_summary(m) for m in project.members]
+
+
+@router.delete("/{project_id}/members/{user_id}", response_model=List[UserMiniSummary])
+def remove_project_member(
+    project_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove um técnico da equipe do projeto."""
+    _check_project_permission(current_user, action="edit")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    if user in project.members:
+        project.members.remove(user)
+        _add_timeline_event(
+            db, project.id,
+            f"Técnico {user.display_name} desvinculado da equipe do projeto.",
+            event_type="system",
+            author_id=current_user.id
+        )
+        db.commit()
+
+    return [_format_user_summary(m) for m in project.members]
+
+
+# ====================================================
+# ATIVOS / EQUIPAMENTOS CMDB DO PROJETO
+# ====================================================
+
+@router.post("/{project_id}/assets", response_model=List[AssetMiniSummary])
+def link_asset_to_project(
+    project_id: int,
+    data: ProjectAssetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Associa um ativo/equipamento do CMDB a este projeto."""
+    _check_project_permission(current_user, action="edit")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    asset = db.query(Asset).filter(Asset.id == data.asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Ativo não encontrado.")
+
+    if asset not in project.assets:
+        project.assets.append(asset)
+        tag_str = f" [Patrimônio: {asset.asset_tag}]" if asset.asset_tag else ""
+        _add_timeline_event(
+            db, project.id,
+            f"Equipamento '{asset.name}'{tag_str} associado ao projeto.",
+            event_type="asset",
+            author_id=current_user.id
+        )
+        db.commit()
+
+    return [_format_asset_summary(a) for a in project.assets]
+
+
+@router.delete("/{project_id}/assets/{asset_id}", response_model=List[AssetMiniSummary])
+def unlink_asset_from_project(
+    project_id: int,
+    asset_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Desvincula um equipamento do CMDB deste projeto."""
+    _check_project_permission(current_user, action="edit")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Ativo não encontrado.")
+
+    if asset in project.assets:
+        project.assets.remove(asset)
+        tag_str = f" [Patrimônio: {asset.asset_tag}]" if asset.asset_tag else ""
+        _add_timeline_event(
+            db, project.id,
+            f"Equipamento '{asset.name}'{tag_str} desvinculado do projeto.",
+            event_type="asset",
+            author_id=current_user.id
+        )
+        db.commit()
+
+    return [_format_asset_summary(a) for a in project.assets]
+
+
+# ====================================================
+# LINHA DO TEMPO / HISTÓRICO & COMENTÁRIOS
+# ====================================================
+
+@router.get("/{project_id}/timeline", response_model=List[ProjectTimelineResponse])
+def get_project_timeline(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lista eventos e comentários cronológicos da linha do tempo do projeto."""
+    _check_project_permission(current_user, action="view")
+
+    events = (
+        db.query(ProjectTimeline)
+        .filter(ProjectTimeline.project_id == project_id)
+        .order_by(desc(ProjectTimeline.created_at))
+        .all()
+    )
+
+    return [_format_timeline_response(e) for e in events]
+
+
+@router.post("/{project_id}/timeline", response_model=ProjectTimelineResponse, status_code=status.HTTP_201_CREATED)
+def add_project_timeline_comment(
+    project_id: int,
+    data: ProjectTimelineCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Publica um comentário técnico ou registro de evolução na linha do tempo do projeto."""
+    _check_project_permission(current_user, action="view")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    event = ProjectTimeline(
+        project_id=project.id,
+        author_id=current_user.id,
+        event_type=data.event_type or "comment",
+        content=data.content.strip(),
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+
+    return _format_timeline_response(event)
 
 
 # ====================================================
@@ -610,6 +931,13 @@ def create_ticket_for_project(
         )
         db.add(task)
 
+    _add_timeline_event(
+        db, project.id,
+        f"Chamado #{ticket.id} ('{ticket.title}') aberto e vinculado ao projeto.",
+        event_type="ticket",
+        author_id=current_user.id
+    )
+
     db.commit()
     db.refresh(ticket)
 
@@ -666,6 +994,13 @@ def link_existing_ticket_to_project(
         )
         db.add(task)
 
+    _add_timeline_event(
+        db, project.id,
+        f"Chamado #{ticket.id} ('{ticket.title}') vinculado ao projeto.",
+        event_type="ticket",
+        author_id=current_user.id
+    )
+
     db.commit()
     db.refresh(ticket)
 
@@ -697,6 +1032,13 @@ def unlink_ticket_from_project(
         ProjectTask.project_id == project_id,
         ProjectTask.ticket_id == ticket_id,
     ).update({"ticket_id": None})
+
+    _add_timeline_event(
+        db, project_id,
+        f"Chamado #{ticket_id} desvinculado do projeto.",
+        event_type="ticket",
+        author_id=current_user.id
+    )
 
     db.commit()
     return None

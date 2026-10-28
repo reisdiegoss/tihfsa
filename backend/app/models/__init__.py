@@ -20,7 +20,10 @@ from app.models.qrcode import QRCodeItem, QRCodeConfig
 from app.models.notification_log import NotificationLog
 from app.models.contract import Supplier, SupplierContact, Contract, ContractService, ContractInvoice
 from app.models.term import EquipmentTerm, EquipmentTermItem, EquipmentTermTemplate
-from app.models.project import Project, ProjectTask, ProjectStatus, ProjectPriority, TaskStatus, TaskPriority
+from app.models.project import (
+    Project, ProjectTask, ProjectStatus, ProjectPriority, TaskStatus, TaskPriority,
+    ProjectTimeline, project_members, project_assets
+)
 from app.models.knowledge_base import KnowledgeCategory, KnowledgeArticle
 
 __all__ = [
@@ -59,6 +62,9 @@ __all__ = [
     "EquipmentTermTemplate",
     "Project",
     "ProjectTask",
+    "ProjectTimeline",
+    "project_members",
+    "project_assets",
     "ProjectStatus",
     "ProjectPriority",
     "TaskStatus",
