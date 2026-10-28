@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.system_setting import SystemSetting
 from app.models.user import User
-from app.auth.dependencies import require_admin, get_current_user
+from app.auth.dependencies import require_admin, get_current_user, get_optional_user
 
 router = APIRouter(prefix="/api/v1/settings/general", tags=["Settings"])
 
@@ -51,7 +51,7 @@ class SystemSettingsSchema(BaseModel):
 @router.get("", response_model=SystemSettingsSchema, summary="Obter parâmetros gerais do sistema")
 def get_general_settings(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     setting = db.query(SystemSetting).first()
     if not setting:

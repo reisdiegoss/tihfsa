@@ -1,5 +1,5 @@
 // TIHFSA Service Worker - PWA Standalone Support
-const CACHE_NAME = "tihfsa-cache-v2";
+const CACHE_NAME = "tihfsa-cache-v3";
 const STATIC_ASSETS = [
   "/",
   "/manifest.webmanifest",
@@ -40,6 +40,30 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Apenas requisições GET devem ser interceptadas pelo cache do Service Worker
+  if (event.request.method !== "GET") {
+    return;
+  }
+
+  // Para navegações de página (SPA), se a rede falhar ou for abortada, faz fallback para o shell "/" (index.html)
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(async () => {
+        const cachedRoot = await caches.match("/");
+        if (cachedRoot) {
+          return cachedRoot;
+        }
+        return new Response("Offline", {
+          status: 503,
+          statusText: "Offline",
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      })
+    );
+    return;
+  }
+
+  // Para recursos estáticos (scripts, styles, imagens, fontes)
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -51,6 +75,13 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) {
+          return cached;
+        }
+        // NUNCA retorne undefined para o respondWith: evita TypeError: Failed to convert value to 'Response'
+        return new Response("", { status: 404, statusText: "Not Found in Cache" });
+      })
   );
 });

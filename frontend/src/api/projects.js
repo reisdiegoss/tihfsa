@@ -48,7 +48,7 @@ export const projectsApi = {
 
   // Chamados Vinculados
   createTicketForProject: async (projectId, data) => {
-    const res = await api.post(`/projects/${projectId}/tickets`, data);
+    const res = await api.post(`/projects/${projectId}/create-ticket`, data);
     return res.data;
   },
 
@@ -58,7 +58,7 @@ export const projectsApi = {
   },
 
   unlinkTicket: async (projectId, ticketId) => {
-    const res = await api.delete(`/projects/${projectId}/tickets/${ticketId}`);
+    const res = await api.delete(`/projects/${projectId}/unlink-ticket/${ticketId}`);
     return res.data;
   },
 };
