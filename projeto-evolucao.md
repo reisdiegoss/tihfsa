@@ -1,69 +1,51 @@
-# Plano de Evolução do Módulo de Projetos & Portfólio (TIHFSA)
+# Plano de Evolução do Módulo de Projetos — Padrão Trello Board (TIHFSA)
 
 > **Status:** Concluído com Sucesso  
 > **Data:** 28/10/2026  
-> **Escopo:** Transformar o módulo de projetos em um centro de comando operacional para a equipe de TI, integrando Tarefas (com flag e motivo de Bloqueio), CMDB (Ativos vinculados), Chamados (Helpdesk), Equipe Técnica e Linha do Tempo Híbrida.
+> **Escopo:** Transformação completa do módulo em uma cópia fiel do Trello: O Quadro Kanban horizontal organiza os Projetos em suas Etapas, e cada Projeto é um Cartão que ao ser aberto expande o Modal do Trello com Checklist (tarefas), Equipe, Ativos CMDB, Chamados e Linha do Tempo.
 
 ---
 
-## 1. Decisões Consolidadas no Socratic Gate
+## 1. Arquitetura do Quadro Trello (Board View)
 
-1. **Quadro Kanban & Bloqueio:**
-   - As 4 colunas clássicas são mantidas: **A Fazer**, **Em Andamento**, **Em Revisão**, **Concluído**.
-   - Cada tarefa ganha suporte nativo a impedimentos: `is_blocked: bool` e `blocked_reason: str`. O cartão exibe um badge visual chamativo de "Bloqueado" e o motivo do impedimento com ação rápida de bloquear/desbloquear.
-2. **Vínculo com Ativos (CMDB):**
-   - Vínculo simples direto N:N (`project_assets`).
-   - Permite associar equipamentos (switches, servidores, antenas AP, nobreaks) pelo patrimônio/nome/IP, exibindo-os organizados na aba de ativos do projeto.
-3. **Equipe do Projeto:**
-   - Mantém o **Gestor do Projeto** (`manager_id`) e adiciona a lista de **Técnicos Participantes** via tabela associativa `project_members` (`project_id`, `user_id`).
-4. **Linha do Tempo (Timeline Híbrida):**
-   - Registra comentários manuais da equipe técnica + logs automáticos do sistema (mudança de status de tarefas, bloqueios/desbloqueios, vinculação de chamados e equipamentos).
-
----
-
-## 2. Arquitetura e Modelagem
-
-### Novas Tabelas e Colunas:
-- **`project_members`** (Tabela associativa N:N):
-  - `project_id`: FK `projects.id`
-  - `user_id`: FK `users.id`
-- **`project_assets`** (Tabela associativa N:N):
-  - `project_id`: FK `projects.id`
-  - `asset_id`: FK `assets.id`
-- **`project_timeline`** (Tabela de eventos e comentários):
-  - `id`: PK
-  - `project_id`: FK `projects.id`
-  - `author_id`: FK `users.id` (nullable para eventos do sistema)
-  - `event_type`: `comment`, `system`, `task`, `ticket`, `asset`, `status`
-  - `content`: Text
-  - `created_at`: DateTime UTC
-- **`project_tasks`** (Colunas adicionais):
-  - `is_blocked`: Boolean (default False)
-  - `blocked_reason`: Text (nullable)
+- **Colunas do Quadro (Listas / Etapas):**
+  1. 📋 **Planejamento**
+  2. ⚡ **Em Andamento**
+  3. ⏸️ **Pausado / Bloqueado**
+  4. ✅ **Concluído**
+- **Cartões do Quadro (Projetos):**
+  - Barra de etiqueta colorida por Categoria (Infraestrutura, Redes, Sistemas, etc.).
+  - Código identificador (`PRJ-001`, `PRJ-002`) e Título do projeto.
+  - Barra de progresso visual baseada nos itens de checklist concluídos.
+  - Badges rápidos no rodapé:
+    - 📅 Data de entrega com relógio (alerta visual se em atraso).
+    - ☑️ Checklist de tarefas `x/y`.
+    - 💻 Contador de equipamentos CMDB vinculados.
+    - 🎫 Contador de chamados de suporte associados.
+    - 👤 Avatares circulares sobrepostos da equipe técnica.
+  - Arraste e solte nativo (Drag and Drop HTML5) entre as colunas para movimentação rápida de etapa.
+  - Botão "+ Adicionar um cartão" no rodapé de cada lista (compositor rápido inline).
 
 ---
 
-## 3. Resumo da Implementação
+## 2. Modal do Cartão (Trello Card Modal)
 
-### Fase 1: Backend (FastAPI + SQLAlchemy + Pydantic)
-- Modelos atualizados em [`backend/app/models/project.py`](file:///c:/Users/diego.reis/Documents/DEV/TIHFSA/backend/app/models/project.py) e exportados em `__init__.py`.
-- Auto-migração configurada em [`backend/app/main.py`](file:///c:/Users/diego.reis/Documents/DEV/TIHFSA/backend/app/main.py) (`ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS is_blocked...`).
-- DTOs atualizados em [`backend/app/schemas/project.py`](file:///c:/Users/diego.reis/Documents/DEV/TIHFSA/backend/app/schemas/project.py).
-- Endpoints REST implementados em [`backend/app/routers/projects.py`](file:///c:/Users/diego.reis/Documents/DEV/TIHFSA/backend/app/routers/projects.py) com geração automática de eventos de linha do tempo.
-
-### Fase 2: Frontend (React + Tailwind CSS)
-- Métodos de API integrados em [`frontend/src/api/projects.js`](file:///c:/Users/diego.reis/Documents/DEV/TIHFSA/frontend/src/api/projects.js).
-- Interface completa em [`frontend/src/pages/admin/Projects.jsx`](file:///c:/Users/diego.reis/Documents/DEV/TIHFSA/frontend/src/pages/admin/Projects.jsx):
-  - **Quadro Kanban**: Suporte a bloqueio rápido com motivo, banner animado de impedimento e desbloqueio em 1 clique.
-  - **Equipe Técnica**: Gestor em destaque + lista de técnicos participantes com modal de adição e remoção.
-  - **Ativos CMDB**: Catálogo de equipamentos vinculados (Patrimônio, IP, Modelo) e modal de pesquisa no CMDB.
-  - **Chamados**: Listagem dos chamados de suporte associados com ação de desvinculação.
-  - **Linha do Tempo**: Feed cronológico interativo com publicação de comentários técnicos e logs automáticos do sistema.
+Ao clicar em qualquer cartão do quadro, abre a visualização rica do projeto no padrão Trello:
+- **Cabeçalho:** Título grande do projeto e seletor da lista atual ("na lista Em Andamento").
+- **Coluna Principal (70%):**
+  - **Membros & Etiquetas:** Avatares dos técnicos associados + botão `+ Membro` + etiqueta colorida de categoria.
+  - **Descrição:** Caixa de texto do escopo e justificativa técnica.
+  - **Checklist (Tarefas & Etapas):** Título com % de progresso, barra verde animada e checkboxes interativos (risca o texto quando feito) com indicação de responsável e bloqueio.
+  - **Ativos CMDB Vinculados:** Lista de switches, APs, servidores associados com tag e IP + botão `+ Vincular Ativo`.
+  - **Chamados Helpdesk:** Lista de tickets associados + botão `+ Vincular Chamado`.
+  - **Atividade & Comentários:** Campo para publicar notas técnicas e feed cronológico com comentários e logs automáticos do sistema.
+- **Barra Lateral Direita (30% - Ações do Trello):**
+  - Adicionar ao cartão: `Membros da Equipe`, `Checklist de Tarefas`, `Equipamento CMDB`, `Chamado Helpdesk`.
+  - Ações do projeto: `Editar Dados Gerais`, `Excluir Projeto`.
 
 ---
 
 ## ✅ PHASE X COMPLETE
-- Backend Python Syntax: ✅ Pass (py_compile sem erros)
-- Frontend Build: ✅ Success (`dist/assets/index-CLCsOinN.js` compilado sem falhas)
-- Rule Compliance: ✅ Socratic Gate respeitado e decisões aplicadas
+- Frontend Build: ✅ Success (`dist/assets/index-CpI6R9oq.js` compilado sem erros)
+- Interatividade: ✅ Drag & drop HTML5, criação inline de cartões, checklist interativo, modais de ativos e chamados
 - Data: 28/10/2026
