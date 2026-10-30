@@ -2,35 +2,22 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   Laptop,
-  Building2,
   User,
   MapPin,
   Tag,
-  Phone,
-  Ticket,
-  Copy,
-  Check,
-  CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  ExternalLink,
   ShieldCheck,
   Server,
   Cpu,
-  Smartphone,
-  Eye,
-  ArrowRight,
 } from "lucide-react";
 import api from "../../api/client";
-import NativeAlertDialog from "../../components/ui/NativeAlertDialog";
 
 export default function PublicAssetTag() {
   const { code } = useParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [showNativeModal, setShowNativeModal] = useState(false);
 
   useEffect(() => {
     if (!code) return;
@@ -49,49 +36,6 @@ export default function PublicAssetTag() {
         setLoading(false);
       });
   }, [code]);
-
-  // Monta a mensagem formatada para cópia e modal
-  const getFormattedMessage = () => {
-    if (!data) return "";
-    const lines = [];
-    lines.push(`[${(data.company || "HOTEL FASANO SALVADOR").toUpperCase()}]`);
-    lines.push(`FICHA DE IDENTIFICAÇÃO DE EQUIPAMENTO`);
-    if (data.asset_name || data.title) {
-      lines.push(`Equipamento: ${data.asset_name || data.title}`);
-    }
-    if (data.code) {
-      lines.push(`Patrimônio: ${data.code}`);
-    }
-    if (data.collaborator) {
-      lines.push(`Responsável: ${data.collaborator}`);
-    }
-    const brandModel = [data.brand, data.model].filter(Boolean).join(" • ");
-    if (brandModel) {
-      lines.push(`Marca/Modelo: ${brandModel}`);
-    }
-    if (data.address) {
-      lines.push(`Localização: ${data.address}`);
-    }
-    if (data.serial_number) {
-      lines.push(`Nº de Série: ${data.serial_number}`);
-    }
-    if (data.message) {
-      lines.push(`\nInstruções:\n"${data.message}"`);
-    }
-    return lines.join("\n");
-  };
-
-  const handleCopy = () => {
-    const text = getFormattedMessage();
-    if (!text) return;
-    try {
-      navigator.clipboard?.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch (e) {
-      console.warn("Falha ao copiar:", e);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col justify-between font-sans selection:bg-amber-500 selection:text-slate-950">
@@ -157,12 +101,6 @@ export default function PublicAssetTag() {
               >
                 Tentar Novamente
               </button>
-              <Link
-                to="/chamado"
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-xs font-semibold rounded-xl text-white transition"
-              >
-                Abrir Chamado na TI
-              </Link>
             </div>
           </div>
         )}
@@ -287,81 +225,11 @@ export default function PublicAssetTag() {
                 </div>
               )}
 
-              {/* Barra de Ações Rápidas */}
-              <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
-                <Link
-                  to={`/chamado?asset=${encodeURIComponent(data.code || data.title)}`}
-                  className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-2xl shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition active:scale-98"
-                >
-                  <Ticket className="w-4 h-4" />
-                  <span>Abrir Chamado para este Equipamento</span>
-                  <ArrowRight className="w-3.5 h-3.5 ml-auto" />
-                </Link>
-
-                <button
-                  onClick={handleCopy}
-                  className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-2xl border border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-400" />
-                      <span className="text-emerald-300 font-bold">Copiado!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 text-slate-400" />
-                      <span>Copiar Ficha</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Ação secundária: Visualizar modal nativo iOS/Android */}
-              <div className="pt-2 text-center">
-                <button
-                  onClick={() => setShowNativeModal(true)}
-                  className="text-[11px] text-slate-400 hover:text-amber-300 font-medium inline-flex items-center gap-1.5 transition underline underline-offset-4"
-                >
-                  <Smartphone className="w-3 h-3" />
-                  <span>Visualizar em formato de Alerta Nativo (iOS / Android)</span>
-                </button>
-              </div>
-
-            </div>
-
-            {/* Suporte Rápido */}
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center shrink-0">
-                  <Phone className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white">Precisa de Suporte Técnico?</h4>
-                  <p className="text-[11px] text-slate-400">Contate a equipe de TI pelo ramal interno 8000</p>
-                </div>
-              </div>
-              <a
-                href="tel:8000"
-                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition shrink-0"
-              >
-                Ligar Ramal 8000
-              </a>
             </div>
 
           </div>
         )}
       </main>
-
-      {/* Modal Nativo iOS / Android Opcional */}
-      {showNativeModal && data && (
-        <NativeAlertDialog
-          isOpen={true}
-          title={data.company || "Hotel Fasano Salvador"}
-          message={getFormattedMessage()}
-          okText="OK"
-          onOk={() => setShowNativeModal(false)}
-        />
-      )}
 
       {/* ======================================================== */}
       {/* RODAPÉ PÚBLICO                                           */}

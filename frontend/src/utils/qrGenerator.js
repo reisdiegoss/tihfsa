@@ -169,25 +169,17 @@ export function getCanonicalPublicBaseUrl(overrideOrigin = null) {
 
 /**
  * Formata o payload para Equipamento.
- * Por padrão e especificação, gera o link para a URL pública oficial do fassa29:
+ * Gera SEMPRE e OBRIGATORIAMENTE o link para a URL pública oficial do fassa29:
  * https://fassa29/qr/{code}
- * para que qualquer câmera (iPhone, Android, Google Lens) abra diretamente no navegador
- * a Ficha Pública de Informações do Equipamento no fassa29.
+ * Independentemente de qualquer configuração antiga (vcard/texto), garantindo
+ * que tanto novos quanto antigos QR Codes abram diretamente a Ficha Pública no fassa29.
  */
 export function formatEquipmentPayload(item, modeOverride = null, origin = null) {
   if (!item) return "";
   const base = getCanonicalPublicBaseUrl(origin);
   const code = item.code || "QR-CODE";
-  const mode = modeOverride || item.encode_mode || "url";
 
-  if (mode === "vcard") {
-    return formatEquipmentVCard(item);
-  }
-  if (mode === "text") {
-    return formatEquipmentText(item);
-  }
-
-  // Padrão oficial: Link para a URL pública do fassa29
+  // Equipamentos geram SEMPRE o link para a URL pública do fassa29
   return `${base}/qr/${code}`;
 }
 

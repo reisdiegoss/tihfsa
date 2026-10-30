@@ -20,11 +20,9 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const isWifi = item?.type === "wifi";
   const isUrl = item?.type === "url";
 
-  // Sincroniza modo padrão do item ao abrir (padrão oficial: URL pública do fassa29)
+  // Para equipamento, é SEMPRE a URL pública oficial do fassa29
   useEffect(() => {
-    if (item) {
-      setEquipmentMode(item.encode_mode || "url");
-    }
+    setEquipmentMode("url");
   }, [isOpen, item]);
 
   // Gera o texto bruto a ser codificado no QR
@@ -36,7 +34,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
     if (isUrl) {
       return formatUrlPayload(item.url || item.title);
     }
-    return formatEquipmentPayload(item, equipmentMode);
+    return formatEquipmentPayload(item);
   };
 
   // Renderiza preview em tela e gera imagem para impressão

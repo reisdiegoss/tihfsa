@@ -424,7 +424,9 @@ async def lifespan(app: FastAPI):
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
             """))
-            conn.execute(text("ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS encode_mode VARCHAR(20) DEFAULT 'vcard';"))
+            conn.execute(text("ALTER TABLE qrcodes ADD COLUMN IF NOT EXISTS encode_mode VARCHAR(20) DEFAULT 'url';"))
+            conn.execute(text("UPDATE qrcodes SET encode_mode = 'url' WHERE type = 'equipment';"))
+            conn.execute(text("UPDATE qrcodes SET url = 'https://fassa29/qr/' || code WHERE type = 'equipment' AND (url IS NULL OR url = '' OR url NOT LIKE '%/qr/%');"))
             conn.execute(text("ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("UPDATE categories SET is_public = TRUE WHERE is_public IS NULL;"))
             conn.execute(text("ALTER TABLE locations ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;"))

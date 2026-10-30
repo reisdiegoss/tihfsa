@@ -117,14 +117,17 @@ class QRCodeResponse(BaseModel):
 
 def _format_item(item: QRCodeItem) -> dict:
     canonical_url = item.url
-    if item.type == "equipment" and not canonical_url:
+    if item.type == "equipment" and (not canonical_url or "/qr/" not in canonical_url):
         canonical_url = f"{get_app_base_url()}/qr/{item.code}"
+
+    # Para equipamento, o modo de codificação é SEMPRE "url"
+    encode_mode = "url" if item.type == "equipment" else (getattr(item, "encode_mode", "url") or "url")
 
     return {
         "id": item.id,
         "code": item.code,
         "type": item.type,
-        "encode_mode": getattr(item, "encode_mode", "url") or "url",
+        "encode_mode": encode_mode,
         "title": item.title,
         "company": item.company,
         "url": canonical_url,
