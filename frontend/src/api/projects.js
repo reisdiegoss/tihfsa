@@ -97,6 +97,12 @@ export const projectsApi = {
     });
     return res.data;
   },
+
+  // Verificação e Notificação de Prazos
+  checkDeadlines: async () => {
+    const res = await api.post("/projects/check-deadlines");
+    return res.data;
+  },
 };
 
 export default projectsApi;

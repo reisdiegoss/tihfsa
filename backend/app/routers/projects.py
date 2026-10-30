@@ -1,9 +1,9 @@
 """
 Router Projects — Gestão de Projetos, Portfólio, Kanban, CMDB, Equipe e Linha do Tempo.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc
 
@@ -13,6 +13,7 @@ from app.models.user import User, UserRole
 from app.models.project import Project, ProjectTask, ProjectStatus, ProjectPriority, TaskStatus, ProjectTimeline
 from app.models.asset import Asset
 from app.models.ticket import Ticket, TicketStatus, TicketPriority, SupportLevel
+from app.services import project_notification_service as project_notifications
 from app.schemas.project import (
     ProjectCreate,
     ProjectUpdate,
@@ -272,6 +273,7 @@ def list_projects(
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project(
     data: ProjectCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -308,6 +310,13 @@ def create_project(
         author_id=current_user.id
     )
     db.commit()
+
+    # Disparar notificação Dual (WhatsApp no grupo de TI + E-mail)
+    background_tasks.add_task(
+        project_notifications.notify_project_created,
+        project,
+        current_user.display_name,
+    )
 
     return ProjectResponse(
         id=project.id,
@@ -400,6 +409,7 @@ def get_project_detail(
 def update_project(
     project_id: int,
     data: ProjectUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -431,6 +441,14 @@ def update_project(
             f"Status do projeto alterado de '{old_status}' para '{project.status}'.",
             event_type="status",
             author_id=current_user.id
+        )
+        # Disparar notificação Dual (WhatsApp no grupo de TI + E-mail aos membros)
+        background_tasks.add_task(
+            project_notifications.notify_project_status_changed,
+            project,
+            old_status,
+            project.status,
+            current_user.display_name,
         )
 
     db.commit()
@@ -588,6 +606,7 @@ def update_project_task(
     project_id: int,
     task_id: int,
     data: ProjectTaskUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -633,6 +652,16 @@ def update_project_task(
                 event_type="task",
                 author_id=current_user.id
             )
+            # Notifica impedimento no WhatsApp do Grupo de TI
+            project_obj = db.query(Project).filter(Project.id == project_id).first()
+            if project_obj:
+                background_tasks.add_task(
+                    project_notifications.notify_task_blocked,
+                    project_obj,
+                    task.title,
+                    task.blocked_reason,
+                    current_user.display_name,
+                )
         else:
             _add_timeline_event(
                 db, project_id,
@@ -698,6 +727,7 @@ def delete_project_task(
 def add_project_member(
     project_id: int,
     data: ProjectMemberRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -721,6 +751,14 @@ def add_project_member(
             author_id=current_user.id
         )
         db.commit()
+
+        # Notifica o técnico por e-mail e WhatsApp direto
+        background_tasks.add_task(
+            project_notifications.notify_member_assigned,
+            project,
+            user,
+            current_user.display_name,
+        )
 
     return [_format_user_summary(m) for m in project.members]
 
@@ -1048,3 +1086,33 @@ def unlink_ticket_from_project(
 
     db.commit()
     return None
+
+
+@router.post("/check-deadlines")
+def check_project_deadlines(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Varre os projetos ativos (Planejamento / Em Andamento) e dispara notificações
+    de prazo próximo (2 dias ou hoje) ou atrasado no WhatsApp do grupo de TI.
+    """
+    _check_project_permission(current_user, action="view")
+    active_projects = db.query(Project).filter(
+        Project.status.in_([ProjectStatus.PLANEJAMENTO.value, ProjectStatus.EM_ANDAMENTO.value]),
+        Project.due_date.isnot(None),
+    ).all()
+
+    today = date.today()
+    notified_count = 0
+
+    for prj in active_projects:
+        diff_days = (prj.due_date - today).days
+        # Notifica se faltam 2 dias ou menos (ou já atrasado)
+        if diff_days <= 2:
+            background_tasks.add_task(project_notifications.notify_deadline_warning, prj, diff_days)
+            notified_count += 1
+
+    return {"message": f"{notified_count} projetos com alertas de prazo processados."}
+

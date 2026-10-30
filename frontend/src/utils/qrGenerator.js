@@ -145,19 +145,50 @@ export function formatEquipmentVCard(item) {
 }
 
 /**
- * Formata o payload para Equipamento.
- * Por padrão, utiliza o padrão vCard 3.0 para abrir a FICHA NATIVA DO IOS E ANDROID 100% OFFLINE.
- * Se o modo for "url", retorna o link da página web.
+ * Retorna a URL base pública oficial do fassa29.
+ * Se o usuário estiver acessando via fassa29 ou fassa29.fasanobr.local, preserva a origem acessada.
+ * Se estiver em ambiente local (localhost / 127.0.0.1 / portas de dev), utiliza 'https://fassa29'
+ * para garantir que os QR Codes gerados e impressos funcionem em qualquer celular de ponta a ponta.
  */
-export function formatEquipmentPayload(item, modeOverride = null, origin = window.location.origin) {
-  const mode = modeOverride || item.encode_mode || "vcard";
-  if (mode === "url" && item.code) {
-    return `${origin}/qr/${item.code}`;
+export function getCanonicalPublicBaseUrl(overrideOrigin = null) {
+  if (overrideOrigin) {
+    return overrideOrigin.replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined" && window.location) {
+    const origin = window.location.origin;
+    if (origin.toLowerCase().includes("fassa29")) {
+      return origin.replace(/\/$/, "");
+    }
+    const isDev = /localhost|127\.0\.0\.1|:5173|:3000|:8000/i.test(origin);
+    if (!isDev && origin.startsWith("http")) {
+      return origin.replace(/\/$/, "");
+    }
+  }
+  return "https://fassa29";
+}
+
+/**
+ * Formata o payload para Equipamento.
+ * Por padrão e especificação, gera o link para a URL pública oficial do fassa29:
+ * https://fassa29/qr/{code}
+ * para que qualquer câmera (iPhone, Android, Google Lens) abra diretamente no navegador
+ * a Ficha Pública de Informações do Equipamento no fassa29.
+ */
+export function formatEquipmentPayload(item, modeOverride = null, origin = null) {
+  if (!item) return "";
+  const base = getCanonicalPublicBaseUrl(origin);
+  const code = item.code || "QR-CODE";
+  const mode = modeOverride || item.encode_mode || "url";
+
+  if (mode === "vcard") {
+    return formatEquipmentVCard(item);
   }
   if (mode === "text") {
     return formatEquipmentText(item);
   }
-  return formatEquipmentVCard(item);
+
+  // Padrão oficial: Link para a URL pública do fassa29
+  return `${base}/qr/${code}`;
 }
 
 /**

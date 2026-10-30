@@ -11,7 +11,7 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [printMode, setPrintMode] = useState(false);
   const [showPasswordOnPlacard, setShowPasswordOnPlacard] = useState(true);
-  const [equipmentMode, setEquipmentMode] = useState("vcard"); // "vcard" (Ficha Nativa iOS/Android 100% Offline)
+  const [equipmentMode, setEquipmentMode] = useState("url"); // "url" (Link público fassa29)
   const [qrDataUrl, setQrDataUrl] = useState("");
 
   const previewCanvasRef = useRef(null);
@@ -20,10 +20,10 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
   const isWifi = item?.type === "wifi";
   const isUrl = item?.type === "url";
 
-  // Sincroniza modo padrão do item ao abrir (sempre prioriza vCard 100% offline)
+  // Sincroniza modo padrão do item ao abrir (padrão oficial: URL pública do fassa29)
   useEffect(() => {
     if (item) {
-      setEquipmentMode(item.encode_mode || "vcard");
+      setEquipmentMode(item.encode_mode || "url");
     }
   }, [isOpen, item]);
 
@@ -341,15 +341,15 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
             </div>
           )}
 
-          {/* Informação de Formato para Equipamento: Ficha Nativa iOS & Android 100% Offline */}
+          {/* Informação de Formato para Equipamento: Link Público fassa29 */}
           {!isWifi && !isUrl && (
             <div className="bg-emerald-50/80 p-4 rounded-2xl border border-emerald-200 space-y-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-sm">📇</span>
-                <p className="text-xs font-bold text-emerald-950">Ficha Nativa iOS & Android (100% Offline)</p>
+                <Globe size={16} className="text-emerald-700" />
+                <p className="text-xs font-bold text-emerald-950">Link Público Oficial fassa29</p>
               </div>
               <p className="text-[11px] text-emerald-800 leading-relaxed">
-                Ao apontar a câmera do celular (iPhone ou Android), o sistema abre diretamente a <strong>Ficha Técnica do Equipamento</strong> integrada ao sistema operacional, sem necessidade de internet, rede interna, navegador ou bloco de notas.
+                Ao apontar a câmera do celular (iPhone ou Android), o sistema abre diretamente no navegador a <strong>Ficha Pública do Equipamento no fassa29</strong> (<span className="font-mono font-semibold">/qr/{item.code}</span>), exibindo todos os dados patrimoniais, localização, responsável e atalho para abertura de chamados.
               </p>
             </div>
           )}
@@ -379,7 +379,8 @@ export default function QRCodeExportModal({ isOpen, onClose, item, defaultLogoUr
               </>
             ) : (
               <>
-                <p><strong>Padrão:</strong> vCard 3.0 Nativo (RFC 2426 - 100% Offline)</p>
+                <p><strong>Padrão:</strong> Link Web Público Oficial (fassa29)</p>
+                <p className="break-all"><strong>URL Canônica:</strong> <span className="font-mono text-emerald-700 font-semibold">{getPayloadText()}</span></p>
                 <p><strong>Equipamento:</strong> {item.asset_name || item.title || "—"}</p>
                 <p><strong>Patrimônio:</strong> {item.code || "—"}</p>
                 <p><strong>Responsável:</strong> {item.collaborator || "—"}</p>

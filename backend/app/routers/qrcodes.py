@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth.dependencies import get_current_user
+from app.config import get_app_base_url
 from app.models.user import User
 from app.models.qrcode import QRCodeItem, QRCodeConfig
 from app.models.asset import Asset
@@ -29,7 +30,7 @@ os.makedirs(UPLOAD_LOGOS_DIR, exist_ok=True)
 
 class QRCodeCreate(BaseModel):
     type: str = "equipment"  # "equipment" | "wifi" | "url"
-    encode_mode: Optional[str] = "vcard"  # "vcard" (Ficha Nativa iOS/Android 100% Offline) | "url" (Web)
+    encode_mode: Optional[str] = "url"  # "url" (Página Web Pública fassa29) | "vcard" (Offline)
     title: str
     company: Optional[str] = "Hotel Fasano Salvador"
     url: Optional[str] = None  # URL direta
@@ -115,14 +116,18 @@ class QRCodeResponse(BaseModel):
 
 
 def _format_item(item: QRCodeItem) -> dict:
+    canonical_url = item.url
+    if item.type == "equipment" and not canonical_url:
+        canonical_url = f"{get_app_base_url()}/qr/{item.code}"
+
     return {
         "id": item.id,
         "code": item.code,
         "type": item.type,
-        "encode_mode": getattr(item, "encode_mode", "vcard") or "vcard",
+        "encode_mode": getattr(item, "encode_mode", "url") or "url",
         "title": item.title,
         "company": item.company,
-        "url": item.url,
+        "url": canonical_url,
         "ssid": item.ssid,
         "password": item.password,
         "security_type": item.security_type,
@@ -200,13 +205,18 @@ def create_qrcode(
         if cfg and cfg.default_logo_url:
             logo_url = cfg.default_logo_url
 
+    # Se for QR Code de equipamento e URL não foi informada, vincula à URL pública do fassa29
+    url_to_save = payload.url
+    if payload.type == "equipment" and not url_to_save:
+        url_to_save = f"{get_app_base_url()}/qr/{code}"
+
     item = QRCodeItem(
         code=code,
         type=payload.type,
-        encode_mode=payload.encode_mode or "vcard",
+        encode_mode=payload.encode_mode or "url",
         title=payload.title,
         company=payload.company or "Hotel Fasano Salvador",
-        url=payload.url,
+        url=url_to_save,
         ssid=payload.ssid,
         password=payload.password,
         security_type=payload.security_type or "WPA",
@@ -310,6 +320,9 @@ def update_qrcode(
     for field, val in data.items():
         setattr(item, field, val)
 
+    if item.type == "equipment" and not item.url:
+        item.url = f"{get_app_base_url()}/qr/{item.code}"
+
     item.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(item)
@@ -343,24 +356,74 @@ def get_public_qrcode(
     code: str,
     db: Session = Depends(get_db),
 ):
-    item = db.query(QRCodeItem).filter(QRCodeItem.code == code).first()
+    clean_code = (code or "").strip()
+    item = db.query(QRCodeItem).filter(QRCodeItem.code == clean_code).first()
+
+    # Se não encontrar pelo código do QR Code, busca no CMDB por asset_tag ou id
     if not item:
+        asset = db.query(Asset).filter(
+            (Asset.asset_tag == clean_code) | (Asset.asset_tag.ilike(clean_code))
+        ).first()
+        if not asset and clean_code.isdigit():
+            asset = db.query(Asset).filter(Asset.id == int(clean_code)).first()
+
+        if asset:
+            loc_name = asset.location.name if getattr(asset, "location", None) else None
+            user_name = asset.assigned_user.display_name if getattr(asset, "assigned_user", None) else None
+            return {
+                "code": asset.asset_tag or f"AST-{asset.id}",
+                "type": "equipment",
+                "title": asset.name,
+                "company": "Hotel Fasano Salvador",
+                "collaborator": user_name,
+                "asset_name": asset.name,
+                "brand": asset.brand,
+                "model": asset.model,
+                "address": loc_name,
+                "message": "Equipamento cadastrado e monitorado pelo setor de Tecnologia da Informação do Hotel Fasano Salvador.",
+                "url": f"{get_app_base_url()}/qr/{asset.asset_tag or asset.id}",
+                "logo_url": None,
+                "created_at": asset.created_at,
+                "updated_at": asset.updated_at,
+                "asset_id": asset.id,
+                "serial_number": asset.serial_number,
+                "ip_address": asset.ip_address,
+                "mac_address": asset.mac_address,
+                "asset_type": asset.type,
+            }
+
         raise HTTPException(status_code=404, detail="Registro de equipamento ou QR Code não localizado")
 
-    # Retorna apenas dados públicos seguros para exibição
+    # Se o item possui um ativo associado, enriquece com dados técnicos do CMDB
+    asset_obj = item.asset
+    serial_number = asset_obj.serial_number if asset_obj else None
+    ip_address = asset_obj.ip_address if asset_obj else None
+    mac_address = asset_obj.mac_address if asset_obj else None
+    asset_type = asset_obj.type if asset_obj else None
+    location_name = (asset_obj.location.name if asset_obj and getattr(asset_obj, "location", None) else None) or item.address
+    collaborator_name = (asset_obj.assigned_user.display_name if asset_obj and getattr(asset_obj, "assigned_user", None) else None) or item.collaborator
+
+    public_url = item.url or f"{get_app_base_url()}/qr/{item.code}"
+
+    # Retorna ficha técnica completa e segura para exibição pública
     return {
         "code": item.code,
         "type": item.type,
         "title": item.title,
         "company": item.company or "Hotel Fasano Salvador",
-        "collaborator": item.collaborator,
-        "asset_name": item.asset_name,
-        "brand": item.brand,
-        "model": item.model,
-        "address": item.address,
-        "message": item.message,
-        "url": item.url,
+        "collaborator": collaborator_name,
+        "asset_name": item.asset_name or item.title,
+        "brand": item.brand or (asset_obj.brand if asset_obj else None),
+        "model": item.model or (asset_obj.model if asset_obj else None),
+        "address": location_name,
+        "message": item.message or "Em caso de dúvidas, avaria ou perda deste equipamento, contate o Suporte de TI.",
+        "url": public_url,
         "logo_url": item.logo_url,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
+        "asset_id": item.asset_id,
+        "serial_number": serial_number,
+        "ip_address": ip_address,
+        "mac_address": mac_address,
+        "asset_type": asset_type,
     }

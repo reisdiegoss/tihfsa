@@ -30,7 +30,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
     address: "",
     message: "",
     asset_id: null,
-    encode_mode: "vcard",
+    encode_mode: "url",
     // Visual
     include_logo: true,
   });
@@ -70,7 +70,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
           address: editingItem.address || "",
           message: editingItem.message || "",
           asset_id: editingItem.asset_id || null,
-          encode_mode: editingItem.encode_mode || "vcard",
+          encode_mode: editingItem.encode_mode || "url",
           include_logo: editingItem.include_logo !== false,
         });
       } else {
@@ -90,7 +90,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
           address: "",
           message: "Em caso de perda ou dúvidas, favor entrar em contato com o suporte de TI (Ramal 8000).",
           asset_id: null,
-          encode_mode: "vcard",
+          encode_mode: "url",
           include_logo: true,
         });
       }
@@ -119,8 +119,8 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
         model: formData.model,
         address: formData.address,
         message: formData.message,
-        encode_mode: formData.encode_mode || "vcard",
-      }, formData.encode_mode || "vcard");
+        encode_mode: formData.encode_mode || "url",
+      }, formData.encode_mode || "url");
     }
 
     renderQRCodeToCanvas(canvasRef.current, {
@@ -189,7 +189,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
         address: activeTab === "equipment" ? formData.address.trim() : null,
         message: activeTab === "equipment" || activeTab === "url" ? (formData.message || "").trim() : null,
         asset_id: activeTab === "equipment" ? formData.asset_id : null,
-        encode_mode: formData.encode_mode || "vcard",
+        encode_mode: formData.encode_mode || "url",
         include_logo: formData.include_logo,
       };
 
@@ -658,7 +658,7 @@ export default function QRCodeFormModal({ isOpen, onClose, editingItem, defaultL
                 </span>
               ) : (
                 <span>
-                  📱 Ao escanear, o iPhone ou Android abrirá a ficha digital com todos os dados cadastrados.
+                  📱 Ao escanear, o iPhone ou Android abrirá diretamente o link da ficha pública do equipamento no fassa29.
                 </span>
               )}
             </div>

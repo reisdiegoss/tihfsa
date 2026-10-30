@@ -421,6 +421,18 @@ export default function QRCodeManager() {
                                 <span className="text-slate-400">• {item.brand} {item.model || ""}</span>
                               )}
                             </div>
+                            <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-mono mt-0.5">
+                              <ExternalLink size={11} className="shrink-0" />
+                              <a
+                                href={`/qr/${item.code}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:underline font-semibold"
+                                title="Abrir ficha pública do equipamento"
+                              >
+                                /qr/{item.code}
+                              </a>
+                            </div>
                           </div>
                         )}
                       </td>
